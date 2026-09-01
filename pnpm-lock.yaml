@@ -14,6 +14,9 @@ importers:
       oxlint:
         specifier: latest
         version: 1.80.0
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
       ultracite:
         specifier: 7.10.6
         version: 7.10.6(oxfmt@0.65.0)(oxlint@1.80.0)

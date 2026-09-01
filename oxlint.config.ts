@@ -6,7 +6,7 @@ import vitest from "ultracite/oxlint/vitest";
 export default defineConfig({
 	extends: [core, react, vitest],
 	ignorePatterns: [
-		...core.ignorePatterns,
+		...(core.ignorePatterns ?? []),
 		"**/worker-configuration.d.ts",
 		"**/migrations/**",
 	],

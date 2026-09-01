@@ -1,0 +1,8 @@
+{
+	// The two root-level config files. `pnpm -r typecheck` visits workspaces
+	// only, so without this they were never checked — and an editor opening
+	// them found no tsconfig at all, fell back to Node10 resolution, and could
+	// not read the `exports` map that `ultracite/oxfmt` is published behind.
+	"extends": "./tsconfig.base.json",
+	"include": ["oxfmt.config.ts", "oxlint.config.ts"]
+}

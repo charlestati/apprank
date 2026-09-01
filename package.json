@@ -5,7 +5,7 @@
 	"type": "module",
 	"scripts": {
 		"types": "pnpm --filter collector --filter web types",
-		"typecheck": "pnpm -r typecheck",
+		"typecheck": "tsc -p tsconfig.json && pnpm -r typecheck",
 		"lint": "ultracite check",
 		"lint:fix": "ultracite fix",
 		"test": "pnpm -r test",
@@ -22,6 +22,7 @@
 	"devDependencies": {
 		"oxfmt": "latest",
 		"oxlint": "latest",
+		"typescript": "5.9.3",
 		"ultracite": "7.10.6"
 	},
 	"packageManager": "pnpm@11.25.0"
