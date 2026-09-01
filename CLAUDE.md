@@ -2,7 +2,7 @@
 
 Self-hosted App Store Optimization tracking on Cloudflare's free tier. It collects App Store keyword ranks, Apple Ads search popularity, app metadata changes, ratings and reviews, then presents them as a keyword-performance report. The repository is public, so nothing personal belongs in it.
 
-`README.md` is the user-facing setup guide. This file is the working context: architecture, conventions, and the traps that already cost time once.
+`README.md` is the short pitch and quick start; `docs/` holds the operator-facing guides (`deploy`, `credentials`, `access`, `mcp`, `architecture`). This file is the working context: architecture, conventions, and the traps that already cost time once.
 
 ## The five invariants
 
@@ -106,7 +106,7 @@ The planner is pure and tested (`pnpm test:scripts`); the two rules worth not br
 
 ## Credentials
 
-`README.md` holds the operator-facing procedure: what each secret is for, how to rotate it, and how to generate the two Apple keys. Three things there are load-bearing and were each learned the expensive way.
+`docs/credentials.md` holds the operator-facing procedure: what each secret is for, how to rotate it, and how to generate the two Apple keys. Three things there are load-bearing and were each learned the expensive way.
 
 `ADMIN_TOKEN` lives in **three** places that must agree — the Cloudflare secret, `apps/collector/.dev.vars`, and the GitHub Actions secret — because it is both sides of one check: `wrangler dev` reads `.dev.vars` to tell the Worker what to expect, and `refresh.sh` reads the same file to build its request. Rotating one is the failure mode to watch for.
 
