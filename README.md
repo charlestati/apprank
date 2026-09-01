@@ -65,7 +65,11 @@ Full walkthrough, including the GitHub Actions secrets: [docs/deploy.md](docs/de
 
 ## Costs
 
-Free tier, and the binding constraint is D1 row-writes (100k/day), not fetches. One full crawl pass over the tracked set is roughly 5,000. When demand outgrows the budget the collector stretches intervals across a `1 / 2 / 3 / 7`-day ladder rather than dropping pairs — flex frequency, never coverage, because a dropped pair loses its history for good.
+The unit is the **crawl pair** — one (keyword, storefront, locale) triple, so 20 keywords in 5 storefronts is 100 pairs.
+
+One daily GitHub Actions run fits roughly **100 pair crawls** in its 45-minute window, measured at the rate the collector learned it can fetch without being throttled. Past that the cadence ladder re-spaces pairs across 1, 2, 3 and 7-day rungs so the load still fits — adding keywords costs frequency on the least informative pairs, never coverage, because a dropped pair loses its history for good.
+
+Cloudflare's free tier is not what runs out: at ~21 row-writes per cold crawl, D1's 100k/day binds around 4,700 crawls. [The numbers](docs/limits.md).
 
 ## Docs
 
@@ -75,6 +79,7 @@ Free tier, and the binding constraint is D1 row-writes (100k/day), not fetches. 
 | [Credentials](docs/credentials.md) | Every secret, rotation, generating the Apple keys |
 | [Access control](docs/access.md) | Basic auth, accounts, why 404 and not 403 |
 | [MCP](docs/mcp.md) | Issuing tokens, the fourteen tools |
+| [Limits](docs/limits.md) | How many keywords and storefronts fit in the free tier |
 | [Architecture](docs/architecture.md) | Work loop, cadence, data model, R2 layout |
 
 ## Development
