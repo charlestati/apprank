@@ -102,6 +102,16 @@ The planner is pure and tested (`pnpm test:scripts`); the two rules worth not br
 - **Route handlers hold no SQL.** Every query lives in `apps/web/src/queries/*` as a plain `(db, params)` function and the handler parses, guards ownership, and calls it. That is what lets a second transport reuse a query instead of copying it, and it keeps one place to change when a column moves.
 - **The dashboard follows the Appfigures keyword-performance layout** (sidebar, filter bar, three summary tiles, multi-series inverted rank chart, dense grouped-header table) styled with **Atlassian Design System tokens**, defined as CSS variables in `apps/web/client/src/theme.css`.
 
+## Credentials
+
+`README.md` holds the operator-facing procedure: what each secret is for, how to rotate it, and how to generate the two Apple keys. Three things there are load-bearing and were each learned the expensive way.
+
+`ADMIN_TOKEN` lives in **three** places that must agree — the Cloudflare secret, `apps/collector/.dev.vars`, and the GitHub Actions secret — because it is both sides of one check: `wrangler dev` reads `.dev.vars` to tell the Worker what to expect, and `refresh.sh` reads the same file to build its request. Rotating one is the failure mode to watch for.
+
+App Store Connect needs **Admin**, permanently, not just for setup: the collector creates report requests and re-creates them after `stoppedDueToInactivity`. Apple Ads needs an **API-role user** — an Account Admin cannot mint credentials at all, and the public-key field simply does not appear for them.
+
+`CLOUDFLARE_API_TOKEN` needs **Workers Scripts: Edit** on top of D1 and R2, because remote bindings provision a proxy Worker. A token scoped to storage alone fails with "the remote session could not be authenticated", which reads like a credential problem rather than a scope one.
+
 ## Access control
 
 HTTP Basic against a fixed set of accounts held in the `BASIC_AUTH_ACCOUNTS` secret — a JSON array of `{ username, password, userId? }`. `userId` is the durable identity: it is what `tracked_app.user_id` and the ownership checks compare against, so passwords can rotate freely but changing a `userId` re-points that person at a different set of apps. It defaults to the username.
