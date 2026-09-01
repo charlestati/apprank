@@ -172,7 +172,7 @@ describe("POST /admin/run", () => {
 	});
 
 	// A Durable Object receives the Worker's deployed env, not the per-call
-	// overrides handed to worker.fetch — so a DO-executed job cannot be given a
+	// overrides handed to worker.fetch, so a DO-executed job cannot be given a
 	// synthetic Apple key here. What matters, and what is asserted, is that a
 	// credential the DO cannot use surfaces as a 502 naming the recorded error
 	// rather than a cheerful 200.
@@ -193,7 +193,7 @@ describe("POST /admin/run", () => {
 
 	it("verifies the ads credential without writing rows", async () => {
 		// A credential check that rewrote 500 terms per unit spent a real slice of
-		// the daily write budget to learn only that Apple answered — which the R2
+		// the daily write budget to learn only that Apple answered, which the R2
 		// archive already proves.
 		stubFetch((url) => {
 			if (url.includes("appleid.apple.com")) {

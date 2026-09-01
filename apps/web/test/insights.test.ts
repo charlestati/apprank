@@ -63,7 +63,7 @@ describe(classify, () => {
 		expect(v.reason).toContain("no search volume");
 	});
 
-	it("treats never-queried the same as absent — both are silence", () => {
+	it("treats never-queried the same as absent, since both are silence", () => {
 		expect(
 			classify(
 				row({ popularity: null, popularityStatus: "unqueried", position: 2 })
@@ -85,7 +85,8 @@ describe(classify, () => {
 	});
 
 	it("never marks an unmeasured term blocked, however entrenched the page", () => {
-		// "blocked" asserts real volume; without a measurement there is none to assert.
+		// "blocked" asserts real volume; without a measurement there is none to
+		// assert.
 		expect(
 			classify(
 				row({
@@ -123,7 +124,7 @@ describe(classify, () => {
 
 	it("treats a measured zero as genuinely low volume, not as missing data", () => {
 		// present = 1 with a low number is a real measurement and must still sort
-		// to vanity — the fix must not swallow the signal it was meant to protect.
+		// to vanity: the fix must not swallow the signal it was meant to protect.
 		expect(
 			classify(
 				row({ popularity: 1, popularityStatus: "measured", position: 2 })

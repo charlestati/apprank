@@ -1,4 +1,5 @@
-// The SchedulerDO work loop processes one task step per alarm tick. A step does
+// The SchedulerDO work loop processes one task step per alarm tick. A step
+// does
 // bounded work (well under the 50-subrequest / 10ms-CPU free limits) and may
 // return follow-up tasks. Everything a step writes must be idempotent: alarms
 // are at-least-once.
@@ -7,7 +8,7 @@ export type Task =
 	| {
 			type: "asc_poll";
 			stage?: "init" | "reports" | "instances";
-			appId?: string; // App Store id, from the tracked_app table — never config
+			appId?: string; // App Store id, from the tracked_app table, never config
 			requestId?: string;
 			reportQueue?: AscReportRef[];
 			attempt?: number;
@@ -47,7 +48,7 @@ export interface AscReportRef {
 
 export interface AdsPullUnit {
 	storefront: string; // lowercase code, e.g. 'fr'
-	/** Top-level genre id — the granularity Apple Ads popularity actually has. */
+	/** Top-level genre id: the granularity Apple Ads popularity actually has. */
 	genreId: number;
 	/** Apple Ads category enum, e.g. 'GAMES'. */
 	category: string;

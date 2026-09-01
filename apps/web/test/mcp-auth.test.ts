@@ -73,7 +73,7 @@ describe("the MCP transport switch", () => {
 	it("withdraws the Basic exemption along with the route", async () => {
 		// The exemption exists only to hand anonymous requests to the bearer gate.
 		// With the transport off there is no gate downstream, so the wall has to
-		// take the request back — otherwise switching MCP off would open the one
+		// take the request back. Otherwise switching MCP off would open the one
 		// path that skips authentication entirely.
 		const accounts = JSON.stringify([
 			{ password: "pw", userId: USER_ID, username: "operator" },
@@ -112,7 +112,7 @@ describe("the MCP transport boundary", () => {
 		expect(mcp.status).toBe(401);
 	});
 
-	it("rejects a Basic credential — the two transports do not cross", async () => {
+	it("rejects a Basic credential, because the two transports do not cross", async () => {
 		const accounts = JSON.stringify([
 			{ password: "pw", userId: USER_ID, username: "operator" },
 		]);

@@ -2,7 +2,7 @@
 // much work exists and how fast Apple currently lets us go.
 //
 // Runs once a day, after the learned rate has been adjusted. It never adds or
-// removes pairs — it only moves them between rungs of the interval ladder, so
+// removes pairs, only moves them between rungs of the interval ladder, so
 // growth in tracked apps or keywords costs resolution, never coverage.
 
 import type { Env } from "../env";
@@ -47,7 +47,7 @@ const SCORE_SQL = `
 
 /**
  * Refresh each pair's volatility: the spread of its recent ranks, computed in
- * SQL so the rows never cross into the isolate. Unranked days are ignored —
+ * SQL so the rows never cross into the isolate. Unranked days are ignored:
  * "not in the top 200" is not a position to take a variance over.
  */
 async function refreshVolatility(env: Env, since: string): Promise<void> {
@@ -103,7 +103,8 @@ async function measureOverhead(env: Env): Promise<number> {
 
 /**
  * Apply the plan: rank every active pair by score and give the top slice the
- * fast interval, the rest the slow one. A pair inside its metadata-change burst
+ * fast interval, the rest the slow one. A pair inside its metadata-change
+ * burst
  * window is pinned to daily regardless of where it scores.
  */
 async function applyIntervals(

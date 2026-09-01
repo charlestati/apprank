@@ -110,8 +110,8 @@ describe("throttled batch pulls", () => {
 		// 2 units × 2 attempts each: the next attempt has nowhere left to go.
 		const r = await lookupPullStep(env, { queue: units, attempt: 3 });
 		expect(r.throttled).toBeTruthy();
-		// Still throttled, so pacing still backs off — but the queue is not
-		// handed back, or tomorrow's fresh copy would stack on a wedged one.
+		// Still throttled, so pacing still backs off, but the queue is not handed
+		// back, or tomorrow's fresh copy would stack on a wedged one.
 		expect(r.followUps).toStrictEqual([]);
 		const row = await env.DB.prepare(
 			"SELECT error_class, params FROM fetch_error WHERE error_class = 'pull_abandoned'"
@@ -368,7 +368,7 @@ describe(chartPullStep, () => {
 
 	it("updates the storefront-wide chart instead of appending a duplicate", async () => {
 		// genre_id IS NULL for the whole-storefront chart, and SQLite counts every
-		// NULL as distinct in a UNIQUE index — so the ordinary conflict target
+		// NULL as distinct in a UNIQUE index, so the ordinary conflict target
 		// never matched and each pull appended a row. Alarms are at-least-once, so
 		// a second run is the normal case, not an edge one.
 		stubFetch(() => Response.json(chartFeed));

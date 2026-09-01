@@ -1,11 +1,11 @@
 // Apple Ads reports search-term popularity per *top-level* App Store category
-// only — the API's own allowed values are the fifteen below, and a sub-genre
+// only. The API's own allowed values are the fifteen below, and a sub-genre
 // like "Games/Word" is rejected with INVALID_VALUE.
 //
 // That is a fact about the data, not a limitation of this mapping: Word,
 // Puzzle, Board, Trivia and Educational all resolve to GAMES and yield one
 // identical ranked list. So popularity is stored against the *parent* genre id
-// (Games = 6014), never the sub-genre we happen to track — recording a
+// (Games = 6014), never the sub-genre we happen to track. Recording a
 // GAMES-wide ranking as "Games/Word popularity" would be exactly the kind of
 // precision-we-do-not-have that invariant 3 forbids.
 //

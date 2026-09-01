@@ -111,7 +111,7 @@ describe(onThrottle, () => {
 
 	it("halves once per day, not once per throttle", () => {
 		// Applying the halve on every hit past tolerance turned the rate back into
-		// a one-way ratchet — 4 → 2 → 1 in three throttles — which is the failure
+		// a one-way ratchet, 4 → 2 → 1 in three throttles, which is the failure
 		// the pause/rate split exists to prevent.
 		let now = 1_000_000;
 		let p = defaultPacing();

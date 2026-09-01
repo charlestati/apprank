@@ -1,4 +1,4 @@
-// Daily difficulty recompute. Pure SQL plus arithmetic — no fetches, so it
+// Daily difficulty recompute. Pure SQL plus arithmetic, no fetches, so it
 // costs nothing against the Apple budget and can be re-run at will.
 
 import type { Env } from "../env";
@@ -89,8 +89,8 @@ export interface DifficultyRun {
 
 /**
  * Score every tracked pair's most recent observation. Pairs whose result page
- * we hold no rating counts for are skipped rather than scored from nothing —
- * a difficulty number with no evidence behind it is worse than none.
+ * we hold no rating counts for are skipped rather than scored from nothing: a
+ * difficulty number with no evidence behind it is worse than none.
  */
 export async function recomputeDifficulty(env: Env): Promise<DifficultyRun> {
 	const since = new Date(Date.now() - STABILITY_WINDOW_DAYS * 24 * 3_600_000)

@@ -155,8 +155,8 @@ describe(crawlPair, () => {
 	it("also indexes a tracked app found deep in the results", async () => {
 		await insertPair(1);
 		const body = fakeSearchResponse(50);
-		// Put the tracked app at position 47 — the depth that tells us when a
-		// climb started.
+		// Put the tracked app at position 47, the depth that tells us when a climb
+		// started.
 		body.results[46] = { ...body.results[46], trackId: TRACKED_APP } as never;
 		stubFetch(() => Response.json(body));
 		await crawlPair(env, pair, 3);
@@ -330,8 +330,9 @@ describe("metadata write economy", () => {
 
 	it("writes no new metadata rows when the page is unchanged", async () => {
 		// app_metadata_version dedupes on content_hash, but its key is
-		// AUTOINCREMENT, so an ignored insert still costs a write — SQLite touches
-		// sqlite_sequence regardless. Crawling an unchanged board must not spend a
+		// AUTOINCREMENT, so an ignored insert still costs a write, because SQLite
+		// touches sqlite_sequence regardless. Crawling an unchanged board must not
+		// spend a
 		// write per app to store nothing.
 		await insertPair(1);
 		stubFetch(() => Response.json(fakeSearchResponse(12)));
