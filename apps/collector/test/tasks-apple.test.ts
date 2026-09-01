@@ -87,7 +87,7 @@ describe(adsPullStep, () => {
   it("archives the raw response, seeds Tier 2 and records tracked-keyword popularity", async () => {
     await env.DB.batch([
       env.DB.prepare(
-        "INSERT INTO keyword (id, text, normalized, language) VALUES (1, 'mots croisés', 'mots croisés', 'fr')"
+        "INSERT INTO keyword (id, text, normalized, language) VALUES (1, 'recettes de crêpes', 'recettes de crêpes', 'fr')"
       ),
       env.DB.prepare(
         "INSERT INTO crawl_pair (id, keyword_id, storefront_code, locale_code, tier, ref_count, interval_hours, next_due_at) VALUES (1, 1, 'fr', 'fr-FR', 1, 1, 24, 0)"
@@ -107,7 +107,7 @@ describe(adsPullStep, () => {
               rankInGenre: 3,
               searchPopularity1to100: 62,
               searchPopularity1to5: 4,
-              searchTerm: "mots croisés",
+              searchTerm: "recettes de crêpes",
             },
             {
               rankInGenre: 9,
@@ -135,7 +135,7 @@ describe(adsPullStep, () => {
       "SELECT term, rank_in_genre FROM seed_term ORDER BY rank_in_genre"
     ).all<{ term: string; rank_in_genre: number }>();
     expect(seeds.results.map((s) => s.term)).toStrictEqual([
-      "mots croisés",
+      "recettes de crêpes",
       "other term",
     ]);
 

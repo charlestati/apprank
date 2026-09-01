@@ -138,7 +138,10 @@ export async function lookupPullStep(
     env.DB.prepare(
       `INSERT INTO app (id, bundle_id, current_name, developer_id, developer_name, primary_genre_id, first_seen_at, last_seen_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET current_name = excluded.current_name, last_seen_at = excluded.last_seen_at`
+       ON CONFLICT(id) DO UPDATE SET current_name = excluded.current_name, last_seen_at = excluded.last_seen_at
+       -- Same reason as the crawl path: last_seen_at always differs, so
+       -- without this the row is rewritten daily for a column nothing reads.
+       WHERE current_name IS NOT excluded.current_name`
     ).bind(
       napp.id,
       napp.bundleId,

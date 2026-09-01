@@ -43,6 +43,15 @@ say() {
   printf '%s %s\n' "$(date -u +%H:%M:%S)" "$*" | tee -a "$LOG" >&2
 }
 
+# Strip the keyword out of a response body before it is logged. This log ships
+# as a CI artifact, and on a public repository both artifacts and job logs are
+# readable by anyone with the run URL — the tracked keyword set is the
+# operator's ASO strategy and has no business being published with it. Applied
+# to every body logged whole, not only the ones known to carry the field today.
+redact() {
+  printf '%s' "$1" | sed -E 's/"keyword":"([^"\\]|\\.)*"/"keyword":"<redacted>"/g'
+}
+
 cd "$COLLECTOR" || { say "FATAL cannot cd to $COLLECTOR"; exit 1; }
 [ -f "$CONFIG" ] || { say "FATAL missing $CONFIG"; exit 1; }
 [ -f .dev.vars ] || { say "FATAL missing .dev.vars (ADMIN_TOKEN)"; exit 1; }
@@ -106,15 +115,12 @@ for _ in $(seq 1 "$MAX_UNITS"); do
     *'"empty":true'*) say "drained after $crawled pair(s)"; break ;;
     *'"throttled":true'*)
       throttled=1
-      say "THROTTLED — stopping this cycle: $r"
+      say "THROTTLED — stopping this cycle: $(redact "$r")"
       break ;;
     *'"empty":false'*)
       crawled=$((crawled + 1))
-      # Log the pair id, never the keyword. This log ships as a CI artifact,
-      # and on a public repository both artifacts and job logs are readable by
-      # anyone with the run URL — the tracked keyword set is the operator's ASO
-      # strategy and has no business being published with it. A pair id means
-      # nothing without the database.
+      # The pair id, never the keyword (see redact) — an id means nothing
+      # without the database.
       say "crawled pair $(printf '%s' "$r" | sed -n 's/.*"pairId":\([0-9]*\).*/\1/p')"
       sleep "$SPACING" ;;
     "")
@@ -125,7 +131,7 @@ for _ in $(seq 1 "$MAX_UNITS"); do
       [ "$misses" -ge 2 ] && { say "stopping after repeated empty responses"; break; }
       sleep "$SPACING" ;;
     *)
-      say "UNEXPECTED response, stopping: $r"
+      say "UNEXPECTED response, stopping: $(redact "$r")"
       break ;;
   esac
 done

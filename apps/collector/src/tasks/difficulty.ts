@@ -126,7 +126,13 @@ export async function recomputeDifficulty(env: Env): Promise<DifficultyRun> {
            stability = excluded.stability, saturation = excluded.saturation,
            sample_size = excluded.sample_size,
            formula_version = excluded.formula_version,
-           computed_at = excluded.computed_at`
+           computed_at = excluded.computed_at
+         -- Recomputed daily from data that mostly has not moved; without this
+         -- every pair rewrote an identical score once a day.
+         WHERE score IS NOT excluded.score
+            OR sample_size IS NOT excluded.sample_size
+            OR formula_version IS NOT excluded.formula_version
+      `
       ).bind(
         row.pair_id,
         row.observed_date,

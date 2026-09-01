@@ -26,9 +26,9 @@ describe("URL builders", () => {
   });
 
   it("builds a search URL carrying storefront and locale separately", () => {
-    const url = new URL(searchUrl("mots croisés", "fr", "fr-FR"));
+    const url = new URL(searchUrl("recettes de crêpes", "fr", "fr-FR"));
     expect(url.origin + url.pathname).toBe("https://itunes.apple.com/search");
-    expect(url.searchParams.get("term")).toBe("mots croisés");
+    expect(url.searchParams.get("term")).toBe("recettes de crêpes");
     expect(url.searchParams.get("country")).toBe("fr");
     expect(url.searchParams.get("lang")).toBe("fr_FR");
     expect(url.searchParams.get("limit")).toBe("200");
