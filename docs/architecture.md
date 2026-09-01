@@ -26,10 +26,10 @@ bucket.
 
 ## The work loop
 
-The collector runs one bounded unit of work per Durable Object alarm tick — one
-API task, or one keyword crawl — at an adaptive learned rate. Two brakes,
+The collector runs one bounded unit of work per Durable Object alarm tick, one
+API task or one keyword crawl, at an adaptive learned rate. Two brakes,
 deliberately separate: any 403/429 **pauses** the loop with exponential backoff
-(30 m to a 4 h cap), while the **rate** is a per-day trend — it starts at 4/min,
+(30 m to a 4 h cap), while the **rate** is a per-day trend. It starts at 4/min,
 halves once on the throttle that takes a day past tolerance, and recovers 10%
 per day that stayed within it (floor 1/min, ceiling 6/min). Halving on every hit
 made the rate a one-way ratchet to the floor on a shared egress IP, which
@@ -52,15 +52,15 @@ total fits. Pairs are ordered by keyword popularity, how close the app sits to
 the top-10 boundary, how much the rank has been moving, storefront weight, and
 whether the app's metadata changed recently.
 
-Adding apps or keywords costs resolution on the least informative pairs — never
+Adding apps or keywords costs resolution on the least informative pairs, never
 coverage, because a dropped pair loses its history for good. The current plan
 appears on the data-health page ("340 pairs every 1d, 260 every 2d").
 
 ## Data model
 
 User intent (`tracked_app`, `tracked_keyword`) is separate from what the
-collector observes. The crawl unit is `crawl_pair` — the reference-counted union
-of distinct (keyword, storefront, locale) triples — so two users tracking the
+collector observes. The crawl unit is `crawl_pair`, the reference-counted union
+of distinct (keyword, storefront, locale) triples, so two users tracking the
 same keyword produce one fetch, not two.
 
 A keyword is always tracked against a **(storefront, locale)** pair because
@@ -70,7 +70,7 @@ content language (`app_language`), not market size.
 
 `app_localization` records "this app has no localization for this storefront's
 indexed locale" as a first-class state, because that gap is itself an ASO
-finding — an extra localization buys an extra keyword field.
+finding: an extra localization buys an extra keyword field.
 
 `ranking` stores the full ordered list of up to 200 track ids as JSON plus
 provenance; `rank_entry` indexes only the top 10 and any tracked app, because a
@@ -93,7 +93,7 @@ retention and schema changes performance choices rather than lossy ones.
 
 ## Difficulty
 
-Computed daily from observations already held — the rating mass of the top 3 and
+Computed daily from observations already held: the rating mass of the top 3 and
 top 10 on the result page, how much that page turns over, and how full it is,
 all on a log scale. Every input is stored beside the score along with
 `formula_version` and the sample size, so the weights can change and the whole

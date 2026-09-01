@@ -2,8 +2,8 @@
 
 Self-hosted App Store Optimization tracking that runs on Cloudflare's free tier.
 Keyword ranks, Apple Ads search popularity, metadata changes, ratings and
-reviews — for your own apps, on your own infrastructure, with the raw responses
-archived so nothing is ever locked in a vendor's database.
+reviews, for your own apps on your own infrastructure. The raw responses are
+archived, so nothing is ever locked in a vendor's database.
 
 You describe what to track in one file:
 
@@ -27,18 +27,18 @@ pnpm track --apply
 ```
 
 That is the whole configuration surface. Storefronts, locales and keywords are
-rows in a database, so adding one is an `INSERT` — never a migration, never a
+rows in a database, so adding one is an `INSERT`. Never a migration, never a
 redeploy.
 
 ## Before you deploy
 
 **Apple blocks Cloudflare's egress.** Every Worker shares an IP pool that
 Apple's iTunes endpoints have already rate-limited, so the deployed collector
-gets HTTP 429 on _every_ keyword search — at one request per minute. The
-fetching therefore runs from GitHub Actions, executing the same collector code
-against the same D1 and R2 with only the source address different. Cloudflare
-still runs App Store Connect and Apple Ads, which are credentialed and work fine
-from a Worker.
+gets HTTP 429 on _every_ keyword search, at one request per minute. The fetching
+therefore runs from GitHub Actions, executing the same collector code against
+the same D1 and R2 with only the source address different. Cloudflare still runs
+App Store Connect and Apple Ads, which are credentialed and work fine from a
+Worker.
 
 Deploy the Workers without wiring up the workflow and you get a dashboard and
 429s.
@@ -71,7 +71,7 @@ Full walkthrough, including the GitHub Actions secrets:
 
 ## What you get
 
-- **A keyword-performance dashboard** — rank history on a calendar axis, the
+- **A keyword-performance dashboard**: rank history on a calendar axis, the
   competitors holding each result page, difficulty scored from what that page
   actually shows, and metadata releases drawn as anchors against rank moves.
 - **An honest one.** Every observation carries provenance, and the chart keeps
@@ -79,20 +79,20 @@ Full walkthrough, including the GitHub Actions secrets:
   and collected and failed. Apple's throttle returns 403 with an empty result
   array, and that is recorded as an error rather than stored as "not ranking".
 - **A JSON API** behind HTTP Basic, gating the whole origin.
-- **An MCP endpoint** (opt-in) so Claude Code can query the same data — fourteen
+- **An MCP endpoint** (opt-in) so Claude Code can query the same data. Fourteen
   read-only tools, no SQL passthrough.
 - **An R2 archive as the source of truth.** D1 is a rebuildable materialised
   view; `scripts/rebuild-d1` reconstructs it from the archive alone.
 
 ## Costs
 
-The unit is the **crawl pair** — one (keyword, storefront, locale) triple, so 20
+The unit is the **crawl pair**: one (keyword, storefront, locale) triple, so 20
 keywords in 5 storefronts is 100 pairs.
 
 One daily GitHub Actions run fits roughly **100 pair crawls** in its 45-minute
 window, measured at the rate the collector learned it can fetch without being
 throttled. Past that the cadence ladder re-spaces pairs across 1, 2, 3 and 7-day
-rungs so the load still fits — adding keywords costs frequency on the least
+rungs so the load still fits. Adding keywords costs frequency on the least
 informative pairs, never coverage, because a dropped pair loses its history for
 good.
 

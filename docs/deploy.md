@@ -57,18 +57,18 @@ The one thing to know before deploying. Apple rate-limits the public iTunes
 endpoints per IP, and every Cloudflare Worker egresses from a shared pool that
 is already spent: the deployed collector gets HTTP 429 on **every** keyword
 search, while the identical request from an ordinary connection succeeds. That
-is not a volume problem — it happens at one request per minute.
+is not a volume problem. It happens at one request per minute.
 
 So the fetching runs somewhere else, and `.github/workflows/collect.yml` is that
 somewhere. It starts `wrangler dev` on a runner with `remote: true` bindings,
-which means the **same collector code** executes against the same D1 and R2 —
-only the source address differs. Observations carry the same normaliser, the
+which means the **same collector code** executes against the same D1 and R2.
+Only the source address differs. Observations carry the same normaliser, the
 same provenance and the same idempotent keys as the scheduler's own.
 
 Cloudflare still runs App Store Connect and Apple Ads, which are credentialed,
 reached over different infrastructure, and work fine from a Worker. The
 deployment sets `COLLECTION_MODE=credentialed` so it stops attempting the
-fetches it cannot complete — those 429s were not free, each one fed the daily
+fetches it cannot complete. Those 429s were not free: each one fed the daily
 tally that halves the learned crawl rate.
 
 `scripts/local-refresh` runs the same cycle from your own machine, which is

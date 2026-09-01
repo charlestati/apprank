@@ -4,22 +4,22 @@ Nothing personal lives in the repository. Every credential is a Worker secret,
 and the apps to collect for come from the `tracked_app` table rather than from
 configuration.
 
-| Name                                                            | Lives on                                               | Purpose                                                                                                                                                                                        |
-| --------------------------------------------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BASIC_AUTH_ACCOUNTS`                                           | web Worker                                             | The wall in front of the whole origin. A JSON array of accounts — see [access control](access.md). Without it the Worker serves nothing at all, deliberately: it fails closed rather than open |
-| `ADMIN_TOKEN`                                                   | collector Worker, `.dev.vars`, GitHub                  | Gates `POST /admin/run?job=…`, the collector's only public route. Not a debug convenience — every collection run drives the collector through it, so no token means no collection              |
-| `ASC_ISSUER_ID`, `ASC_KEY_ID`, `ASC_PRIVATE_KEY`                | collector Worker                                       | App Store Connect analytics. Optional; the daily job skips them quietly when absent                                                                                                            |
-| `ADS_CLIENT_ID`, `ADS_TEAM_ID`, `ADS_KEY_ID`, `ADS_PRIVATE_KEY` | collector Worker                                       | Apple Ads search-term popularity — the only official source of search volume. Optional in the same way                                                                                         |
-| `MCP_ENABLED`                                                   | web `wrangler.local.jsonc` (a var, not a secret)       | Off unless set to `true`. The MCP endpoint at `/mcp` is opt-in: without it the route 404s and nothing is published                                                                             |
-| `COLLECTION_MODE`                                               | collector `wrangler.local.jsonc` (a var, not a secret) | `all` by default. Set it to `credentialed` on a deployment whose egress Apple rejects, which is every Cloudflare Worker                                                                        |
+| Name                                                            | Lives on                                               | Purpose                                                                                                                                                                                             |
+| --------------------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BASIC_AUTH_ACCOUNTS`                                           | web Worker                                             | The wall in front of the whole origin. A JSON array of accounts, listed in [access control](access.md). Without it the Worker serves nothing at all, deliberately: it fails closed rather than open |
+| `ADMIN_TOKEN`                                                   | collector Worker, `.dev.vars`, GitHub                  | Gates `POST /admin/run?job=…`, the collector's only public route. Not a debug convenience: every collection run drives the collector through it, so no token means no collection                    |
+| `ASC_ISSUER_ID`, `ASC_KEY_ID`, `ASC_PRIVATE_KEY`                | collector Worker                                       | App Store Connect analytics. Optional; the daily job skips them quietly when absent                                                                                                                 |
+| `ADS_CLIENT_ID`, `ADS_TEAM_ID`, `ADS_KEY_ID`, `ADS_PRIVATE_KEY` | collector Worker                                       | Apple Ads search-term popularity, the only official source of search volume. Optional in the same way                                                                                               |
+| `MCP_ENABLED`                                                   | web `wrangler.local.jsonc` (a var, not a secret)       | Off unless set to `true`. The MCP endpoint at `/mcp` is opt-in: without it the route 404s and nothing is published                                                                                  |
+| `COLLECTION_MODE`                                               | collector `wrangler.local.jsonc` (a var, not a secret) | `all` by default. Set it to `credentialed` on a deployment whose egress Apple rejects, which is every Cloudflare Worker                                                                             |
 
 ```sh
 cd apps/collector   # or apps/web
 npx wrangler secret put <NAME> -c wrangler.local.jsonc
 ```
 
-`wrangler secret put` publishes a new Worker version by itself — **no deploy is
-needed** — and the value takes effect immediately. Reading a secret back is
+`wrangler secret put` publishes a new Worker version by itself, so **no deploy
+is needed** and the value takes effect immediately. Reading a secret back is
 impossible by design, so rotation always means overwriting, never comparing.
 
 ## Rotating
@@ -41,7 +41,7 @@ printf 'ADMIN_TOKEN=%s\n' 'THE_NEW_VALUE' > .dev.vars        # 2. local runs
 #                                    3. GitHub → Settings → Secrets → Actions
 ```
 
-Do them in that order. Between the first and the last, workflow runs will 401 —
+Do them in that order. Between the first and the last, workflow runs will 401,
 so rotate outside the collection window. Verify with the old value (expect
 `401`) and the new one against `?job=cadence`, which recomputes from data
 already held and costs no Apple traffic.
@@ -49,7 +49,7 @@ already held and costs no Apple traffic.
 **`BASIC_AUTH_ACCOUNTS` carries identity, not just a password.** The `userId`
 field is what `tracked_app.user_id` and every ownership check compare against,
 so passwords rotate freely but changing a `userId` re-points that person at a
-different set of apps — they will sign in successfully and see an empty
+different set of apps. They will sign in successfully and see an empty
 dashboard, because a resource you do not own answers 404 rather than an error.
 
 ## App Store Connect key
@@ -64,7 +64,7 @@ Note what that grants: an ASC **Team Key** with Admin is account-wide.
 1. App Store Connect → **Users and Access → Integrations → App Store Connect API
    → Team Keys**
 2. **+**, name it, Access = **Admin**
-3. Download the `.p8` — **once only**, Apple never shows it again
+3. Download the `.p8`. **Once only**, Apple never shows it again
 4. Copy the **Key ID** (that row) and the **Issuer ID** (top of the page)
 
 ```sh
@@ -88,8 +88,8 @@ Two traps here, and both cost an evening if you meet them the hard way.
 appears for a user holding an API role. Create one first: Apple Ads → **Account
 Settings → User Management → Add Users**, role **API Account Manager** (Apple's
 recommended choice) or **API Account Read Only**, which is enough here since
-this only reads. It needs its own Apple Account — a different address from the
-admin's — then sign in **as that user**.
+this only reads. It needs its own Apple Account, a different address from the
+admin's, then sign in **as that user**.
 
 **The key must be PKCS#8.** `openssl ecparam -genkey` emits SEC1
 (`BEGIN EC PRIVATE KEY`), and `packages/core/src/apple/jwt.ts` imports as
@@ -114,7 +114,7 @@ npx wrangler secret put ADS_KEY_ID    -c wrangler.local.jsonc
 npx wrangler secret put ADS_PRIVATE_KEY -c wrangler.local.jsonc < ads-private-key.pem
 ```
 
-The public half is never deployed — Apple keeps it and verifies your signature
+The public half is never deployed. Apple keeps it and verifies your signature
 against it. No ad account id is needed either: the collector discovers it
 through `GET /v1/acls`, one of only two endpoints that work without the
 `X-AP-Context` header, and caches it.

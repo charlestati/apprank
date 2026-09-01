@@ -1,13 +1,13 @@
 # MCP
 
 The same data the dashboard shows is available to Claude Code over MCP, at
-`/mcp` on the same Worker — streamable HTTP, no separate deployment.
+`/mcp` on the same Worker. Streamable HTTP, no separate deployment.
 
 **It is off by default.** Set `MCP_ENABLED` to `"true"` in the web Worker's vars
 to turn it on; until then `/mcp` 404s and no agent endpoint exists. Publishing
 one should be a choice, not something that happens because you deployed someone
-else's repository. Switching it off does not shrink the bundle — the `agents`
-SDK is imported statically and `nodejs_compat` is required either way.
+else's repository. Switching it off does not shrink the bundle, because the
+`agents` SDK is imported statically and `nodejs_compat` is required either way.
 
 It is never anonymous. The endpoint has its own credential type, stored in the
 `mcp_credential` table and checked before any tool code is constructed. A
@@ -24,12 +24,12 @@ node scripts/mcp-token/issue.mjs --user admin --name laptop
 ```
 
 `--user` is the durable `userId`, the same value as in `BASIC_AUTH_ACCOUNTS` and
-`tracked_app.user_id` — not the username. `--name` is how you tell two
+`tracked_app.user_id`, not the username. `--name` is how you tell two
 credentials apart later. Optional flags: `--days 365`, `--scopes read:all` (or a
 comma-separated subset: `read:rankings`, `read:popularity`, `read:metadata`,
 `read:charts`, `read:reviews`, `read:ratings`, `read:health`).
 
-Connect it at user scope — never a committed `.mcp.json`, if your repository is
+Connect it at user scope, never a committed `.mcp.json`, if your repository is
 public:
 
 ```sh
@@ -52,7 +52,7 @@ principal, the tool, its parameters, the row count and the duration.
 
 ## Tools
 
-Fourteen, all read-only and all intent-shaped — there is deliberately no
+Fourteen, all read-only and all intent-shaped. There is deliberately no
 `run_sql` or any other passthrough.
 
 | Tool                         | Answers                                                         |
@@ -77,13 +77,13 @@ Two behaviours matter more than the list.
 **Every response describes its own holes.** Answers carry observation counts,
 actual date coverage, gap ranges and the error periods behind them. Apple's
 throttle returns HTTP 403 with an empty result array, so a rate-limited week
-looks exactly like a ranking collapse unless the answer says otherwise — and it
-does, in prose, in the body. Coverage is measured against each pair's own crawl
+looks exactly like a ranking collapse unless the answer says otherwise. It does,
+in prose, in the body. Coverage is measured against each pair's own crawl
 cadence, so a keyword on a stretched seven-day rung is not reported as missing
 six days out of seven.
 
-**Aggregates by default.** Series come back summarised — min, max, mean, median,
-inflection points and an evenly-sampled curve — with `detail` to opt into raw
+**Aggregates by default.** Series come back summarised (min, max, mean, median,
+inflection points and an evenly-sampled curve), with `detail` to opt into raw
 observations. Every tool caps its rows and tells you when it truncated.
 
 Two limits are enforced per credential and independently of anything
