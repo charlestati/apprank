@@ -3,6 +3,11 @@
   "name": "apprank-web",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-01",
+  // The MCP server is built on the Agents SDK, which imports node:async_hooks.
+  // This flag was deliberately avoided while Better Auth was in the tree — that
+  // dependency took the bundle from 84 KiB to 1.9 MB — but the flag itself
+  // costs nothing; the bundle did. Keep an eye on the deploy size below.
+  "compatibility_flags": ["nodejs_compat"],
   "assets": {
     "directory": "./dist/client",
     "binding": "ASSETS",
