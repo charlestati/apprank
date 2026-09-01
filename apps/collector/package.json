@@ -19,7 +19,7 @@
     "drizzle-orm": "^0.45.0"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.20.3",
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@vitest/coverage-istanbul": "^4.1.11",
     "typescript": "^5.9.2",
     "vitest": "^4.1.11",
