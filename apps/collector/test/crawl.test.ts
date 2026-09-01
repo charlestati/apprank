@@ -293,3 +293,27 @@ describe(crawlPair, () => {
     vi.restoreAllMocks();
   });
 });
+
+describe("write economy", () => {
+  it("refuses to re-crawl a pair already observed today", async () => {
+    // The ranking table is unique on (pair_id, observed_date), so a second
+    // crawl of the same day overwrites its own row: no new history, a full
+    // write set spent. Five manual re-runs in one evening cost ~25,000 writes
+    // against a 100,000/day budget before this guard existed.
+    await insertPair(1);
+    await env.DB.prepare(
+      "INSERT INTO ranking (pair_id, observed_date, fetched_at, http_status, result_count, result_ids, collector_version, valid) VALUES (1, ?, 0, 200, 5, '[]', 'test', 1)"
+    )
+      .bind(new Date().toISOString().slice(0, 10))
+      .run();
+    await expect(pickDuePair(env.DB)).resolves.toBeNull();
+  });
+
+  it("still offers a pair whose only observation is from another day", async () => {
+    await insertPair(1);
+    await env.DB.prepare(
+      "INSERT INTO ranking (pair_id, observed_date, fetched_at, http_status, result_count, result_ids, collector_version, valid) VALUES (1, '2020-01-01', 0, 200, 5, '[]', 'test', 1)"
+    ).run();
+    await expect(pickDuePair(env.DB)).resolves.not.toBeNull();
+  });
+});

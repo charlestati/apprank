@@ -42,11 +42,21 @@ export async function pickDuePair(
        JOIN keyword k ON k.id = cp.keyword_id
        JOIN storefront s ON s.code = cp.storefront_code
        WHERE cp.ref_count > 0 AND cp.tier = 1 AND cp.next_due_at <= ?1
+         -- The ranking table is unique on (pair_id, observed_date), so a
+         -- second crawl of the same UTC day overwrites the row it already
+         -- wrote: no new history, ~30 row-writes spent. Anything that moves
+         -- next_due_at backwards -- a reseed, a manual re-run -- would
+         -- otherwise re-crawl the whole set. Coverage is unaffected: the pair
+         -- is still due, it just becomes collectable once the day turns.
+         AND NOT EXISTS (
+           SELECT 1 FROM ranking r
+           WHERE r.pair_id = cp.id AND r.observed_date = ?2
+         )
        ORDER BY (?1 - cp.next_due_at) * s.weight *
                 (CASE WHEN cp.burst_until IS NOT NULL AND cp.burst_until > ?1 THEN 3 ELSE 1 END) DESC
        LIMIT 1`
     )
-    .bind(now)
+    .bind(now, new Date(now).toISOString().slice(0, 10))
     .first<DuePair>();
   return row ?? null;
 }
@@ -148,7 +158,15 @@ export async function crawlPair(
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET bundle_id = excluded.bundle_id, current_name = excluded.current_name,
            developer_id = excluded.developer_id, developer_name = excluded.developer_name,
-           primary_genre_id = excluded.primary_genre_id, last_seen_at = excluded.last_seen_at`
+           primary_genre_id = excluded.primary_genre_id, last_seen_at = excluded.last_seen_at
+         -- Without this, every top-10 app on every pair was a guaranteed
+         -- row-write each day, because last_seen_at always differs. It is
+         -- written and never read, so it alone must not cost anything.
+         WHERE bundle_id IS NOT excluded.bundle_id
+            OR current_name IS NOT excluded.current_name
+            OR developer_id IS NOT excluded.developer_id
+            OR developer_name IS NOT excluded.developer_name
+            OR primary_genre_id IS NOT excluded.primary_genre_id`
       ).bind(
         napp.id,
         napp.bundleId,
@@ -219,19 +237,40 @@ export async function crawlPair(
     .bind(pair.id, date)
     .first<{ id: number }>();
   if (rk) {
-    const entryStmts: D1PreparedStatement[] = [
-      env.DB.prepare("DELETE FROM rank_entry WHERE ranking_id = ?").bind(rk.id),
-    ];
-    for (const [i, r] of json.results.entries()) {
-      if (i < 10 || trackedIds.has(r.trackId)) {
+    const wanted = json.results
+      .map((r, i) => ({ appId: r.trackId, position: i + 1 }))
+      .filter((e, i) => i < 10 || trackedIds.has(e.appId));
+
+    // Rewrite only when the indexed page actually moved. A board that held its
+    // order — the common case between two consecutive days — used to cost a
+    // delete plus eleven inserts for an identical result.
+    const existing = await env.DB.prepare(
+      "SELECT position, app_id FROM rank_entry WHERE ranking_id = ? ORDER BY position"
+    )
+      .bind(rk.id)
+      .all<{ position: number; app_id: number }>();
+    const same =
+      existing.results.length === wanted.length &&
+      existing.results.every(
+        (e, i) =>
+          e.position === wanted[i]?.position && e.app_id === wanted[i]?.appId
+      );
+
+    if (!same) {
+      const entryStmts: D1PreparedStatement[] = [
+        env.DB.prepare("DELETE FROM rank_entry WHERE ranking_id = ?").bind(
+          rk.id
+        ),
+      ];
+      for (const e of wanted) {
         entryStmts.push(
           env.DB.prepare(
             "INSERT OR IGNORE INTO rank_entry (ranking_id, position, app_id) VALUES (?, ?, ?)"
-          ).bind(rk.id, i + 1, r.trackId)
+          ).bind(rk.id, e.position, e.appId)
         );
       }
+      await env.DB.batch(entryStmts);
     }
-    await env.DB.batch(entryStmts);
   }
 
   // Normalised observation to staging (compacted into daily NDJSON overnight).
