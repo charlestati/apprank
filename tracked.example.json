@@ -19,8 +19,7 @@
 				"_comment": [
 					"Same appId, second language. `language` stamps the keywords AND picks",
 					"the locale per storefront, so one entry cannot mix languages. List the",
-					"app again to track Spanish terms in the Spanish store; app_language",
-					"ends up with both rows, which is exactly right for a bilingual listing."
+					"app again to track Spanish terms in the Spanish store."
 				],
 				"appId": 123456789,
 				"name": "Your App",

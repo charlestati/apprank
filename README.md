@@ -1,9 +1,17 @@
 # AppRank
 
-Self-hosted App Store Optimization tracking that runs on Cloudflare's free tier.
-Keyword ranks, Apple Ads search popularity, metadata changes, ratings and
-reviews, for your own apps on your own infrastructure. The raw responses are
-archived, so nothing is ever locked in a vendor's database.
+Self-hosted App Store Optimization tracking that runs on Cloudflare's free tier,
+for your own apps on your own infrastructure.
+
+| What it collects                             | From                 | How often                               |
+| -------------------------------------------- | -------------------- | --------------------------------------- |
+| Keyword rank, the full top 200               | iTunes Search        | every 1 to 7 days per keyword           |
+| Search popularity                            | Apple Ads            | weekly, the only official volume figure |
+| Title, subtitle, version, price, screenshots | iTunes Lookup        | daily, versioned on change              |
+| Ratings and reviews                          | iTunes RSS           | daily                                   |
+| Top free, paid and grossing charts           | marketingtools + RSS | daily                                   |
+| Engagement, usage and commerce reports       | App Store Connect    | daily, first-party                      |
+| Keyword difficulty                           | derived, not fetched | daily, from the pages already held      |
 
 You describe what to track in one file:
 

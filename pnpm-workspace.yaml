@@ -4,16 +4,7 @@ packages:
   - scripts/*
 
 allowBuilds:
-  # pnpm fails every command, `pnpm generate` included, until each build
-  # script is either allowed or denied. Deciding is the point; the value
-  # below is the decision.
-  #
-  # Reached through agents -> mimetext -> @babel/runtime-corejs3. Its
-  # postinstall only prints an Open Collective funding notice, and nothing
-  # here imports the package, so: denied.
   core-js-pure: false
-  # Both fetch or link a platform binary in postinstall and are useless
-  # without it.
   esbuild: true
   workerd: true
 
