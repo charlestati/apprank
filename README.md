@@ -1,21 +1,24 @@
 # AppRank
 
-Self-hosted App Store Optimization tracking that runs on Cloudflare's free tier. Keyword ranks, Apple Ads search popularity, metadata changes, ratings and reviews — for your own apps, on your own infrastructure, with the raw responses archived so nothing is ever locked in a vendor's database.
+Self-hosted App Store Optimization tracking that runs on Cloudflare's free tier.
+Keyword ranks, Apple Ads search popularity, metadata changes, ratings and
+reviews — for your own apps, on your own infrastructure, with the raw responses
+archived so nothing is ever locked in a vendor's database.
 
 You describe what to track in one file:
 
 ```json
 {
-  "admin": {
-    "apps": [
-      {
-        "appId": 123456789,
-        "language": "en",
-        "storefronts": ["us", "gb", "ca"],
-        "keywords": ["habit tracker", "daily planner"]
-      }
-    ]
-  }
+	"admin": {
+		"apps": [
+			{
+				"appId": 123456789,
+				"language": "en",
+				"storefronts": ["us", "gb", "ca"],
+				"keywords": ["habit tracker", "daily planner"]
+			}
+		]
+	}
 }
 ```
 
@@ -23,13 +26,23 @@ You describe what to track in one file:
 pnpm track --apply
 ```
 
-That is the whole configuration surface. Storefronts, locales and keywords are rows in a database, so adding one is an `INSERT` — never a migration, never a redeploy.
+That is the whole configuration surface. Storefronts, locales and keywords are
+rows in a database, so adding one is an `INSERT` — never a migration, never a
+redeploy.
 
 ## Before you deploy
 
-**Apple blocks Cloudflare's egress.** Every Worker shares an IP pool that Apple's iTunes endpoints have already rate-limited, so the deployed collector gets HTTP 429 on _every_ keyword search — at one request per minute. The fetching therefore runs from GitHub Actions, executing the same collector code against the same D1 and R2 with only the source address different. Cloudflare still runs App Store Connect and Apple Ads, which are credentialed and work fine from a Worker.
+**Apple blocks Cloudflare's egress.** Every Worker shares an IP pool that
+Apple's iTunes endpoints have already rate-limited, so the deployed collector
+gets HTTP 429 on _every_ keyword search — at one request per minute. The
+fetching therefore runs from GitHub Actions, executing the same collector code
+against the same D1 and R2 with only the source address different. Cloudflare
+still runs App Store Connect and Apple Ads, which are credentialed and work fine
+from a Worker.
 
-Deploy the Workers without wiring up the workflow and you get a dashboard and 429s. [Details](docs/deploy.md#apple-blocks-cloudflare-so-collection-runs-from-github-actions).
+Deploy the Workers without wiring up the workflow and you get a dashboard and
+429s.
+[Details](docs/deploy.md#apple-blocks-cloudflare-so-collection-runs-from-github-actions).
 
 ## Quick start
 
@@ -53,34 +66,49 @@ pnpm track --apply
 pnpm deploy
 ```
 
-Full walkthrough, including the GitHub Actions secrets: [docs/deploy.md](docs/deploy.md).
+Full walkthrough, including the GitHub Actions secrets:
+[docs/deploy.md](docs/deploy.md).
 
 ## What you get
 
-- **A keyword-performance dashboard** — rank history on a calendar axis, the competitors holding each result page, difficulty scored from what that page actually shows, and metadata releases drawn as anchors against rank moves.
-- **An honest one.** Every observation carries provenance, and the chart keeps four states apart: ranked, observed but outside the top 200, never collected, and collected and failed. Apple's throttle returns 403 with an empty result array, and that is recorded as an error rather than stored as "not ranking".
+- **A keyword-performance dashboard** — rank history on a calendar axis, the
+  competitors holding each result page, difficulty scored from what that page
+  actually shows, and metadata releases drawn as anchors against rank moves.
+- **An honest one.** Every observation carries provenance, and the chart keeps
+  four states apart: ranked, observed but outside the top 200, never collected,
+  and collected and failed. Apple's throttle returns 403 with an empty result
+  array, and that is recorded as an error rather than stored as "not ranking".
 - **A JSON API** behind HTTP Basic, gating the whole origin.
-- **An MCP endpoint** (opt-in) so Claude Code can query the same data — fourteen read-only tools, no SQL passthrough.
-- **An R2 archive as the source of truth.** D1 is a rebuildable materialised view; `scripts/rebuild-d1` reconstructs it from the archive alone.
+- **An MCP endpoint** (opt-in) so Claude Code can query the same data — fourteen
+  read-only tools, no SQL passthrough.
+- **An R2 archive as the source of truth.** D1 is a rebuildable materialised
+  view; `scripts/rebuild-d1` reconstructs it from the archive alone.
 
 ## Costs
 
-The unit is the **crawl pair** — one (keyword, storefront, locale) triple, so 20 keywords in 5 storefronts is 100 pairs.
+The unit is the **crawl pair** — one (keyword, storefront, locale) triple, so 20
+keywords in 5 storefronts is 100 pairs.
 
-One daily GitHub Actions run fits roughly **100 pair crawls** in its 45-minute window, measured at the rate the collector learned it can fetch without being throttled. Past that the cadence ladder re-spaces pairs across 1, 2, 3 and 7-day rungs so the load still fits — adding keywords costs frequency on the least informative pairs, never coverage, because a dropped pair loses its history for good.
+One daily GitHub Actions run fits roughly **100 pair crawls** in its 45-minute
+window, measured at the rate the collector learned it can fetch without being
+throttled. Past that the cadence ladder re-spaces pairs across 1, 2, 3 and 7-day
+rungs so the load still fits — adding keywords costs frequency on the least
+informative pairs, never coverage, because a dropped pair loses its history for
+good.
 
-Cloudflare's free tier is not what runs out: at ~21 row-writes per cold crawl, D1's 100k/day binds around 4,700 crawls. [The numbers](docs/limits.md).
+Cloudflare's free tier is not what runs out: at ~21 row-writes per cold crawl,
+D1's 100k/day binds around 4,700 crawls. [The numbers](docs/limits.md).
 
 ## Docs
 
-|  |  |
-| --- | --- |
-| [Deploying](docs/deploy.md) | Cloudflare resources, tracked set, GitHub Actions |
-| [Credentials](docs/credentials.md) | Every secret, rotation, generating the Apple keys |
-| [Access control](docs/access.md) | Basic auth, accounts, why 404 and not 403 |
-| [MCP](docs/mcp.md) | Issuing tokens, the fourteen tools |
-| [Limits](docs/limits.md) | How many keywords and storefronts fit in the free tier |
-| [Architecture](docs/architecture.md) | Work loop, cadence, data model, R2 layout |
+|                                      |                                                        |
+| ------------------------------------ | ------------------------------------------------------ |
+| [Deploying](docs/deploy.md)          | Cloudflare resources, tracked set, GitHub Actions      |
+| [Credentials](docs/credentials.md)   | Every secret, rotation, generating the Apple keys      |
+| [Access control](docs/access.md)     | Basic auth, accounts, why 404 and not 403              |
+| [MCP](docs/mcp.md)                   | Issuing tokens, the fourteen tools                     |
+| [Limits](docs/limits.md)             | How many keywords and storefronts fit in the free tier |
+| [Architecture](docs/architecture.md) | Work loop, cadence, data model, R2 layout              |
 
 ## Development
 
