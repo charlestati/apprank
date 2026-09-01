@@ -92,8 +92,12 @@ export async function adsPullStep(
       stmts.push(
         // Tier-2 seed list entry.
         env.DB.prepare(
+          // The WHERE turns an unchanged row into a no-op. Apple's list is
+          // weekly, so most of a re-pull is identical — without this, every
+          // repeat spent a write per term against the free tier's daily budget.
           "INSERT INTO seed_term (month, storefront_code, genre_id, term, rank_in_genre, popularity_1_100) VALUES (?, ?, ?, ?, ?, ?) " +
-            "ON CONFLICT(month, storefront_code, genre_id, term) DO UPDATE SET rank_in_genre = excluded.rank_in_genre, popularity_1_100 = excluded.popularity_1_100"
+            "ON CONFLICT(month, storefront_code, genre_id, term) DO UPDATE SET rank_in_genre = excluded.rank_in_genre, popularity_1_100 = excluded.popularity_1_100 " +
+            "WHERE rank_in_genre IS NOT excluded.rank_in_genre OR popularity_1_100 IS NOT excluded.popularity_1_100"
         ).bind(
           month,
           unit.storefront,
@@ -108,7 +112,11 @@ export async function adsPullStep(
            SELECT k.id, ?, ?, ?, 1, ?, ?, ?, ? FROM keyword k WHERE k.normalized = ?
            ON CONFLICT(keyword_id, storefront_code, genre_id, week_start) DO UPDATE SET
              present = 1, popularity_1_100 = excluded.popularity_1_100,
-             popularity_1_5 = excluded.popularity_1_5, rank_in_genre = excluded.rank_in_genre`
+             popularity_1_5 = excluded.popularity_1_5, rank_in_genre = excluded.rank_in_genre
+           WHERE present IS NOT 1
+             OR popularity_1_100 IS NOT excluded.popularity_1_100
+             OR popularity_1_5 IS NOT excluded.popularity_1_5
+             OR rank_in_genre IS NOT excluded.rank_in_genre`
         ).bind(
           unit.storefront,
           unit.genreId,
@@ -140,6 +148,11 @@ export async function adsPullStep(
     for (let i = 0; i < stmts.length; i += 50) {
       await env.DB.batch(stmts.slice(i, i + 50));
     }
+    await setState(
+      env.DB,
+      `ads:pulled:${unit.storefront}:${unit.category}`,
+      task.weekStart
+    );
     return requeue;
   } catch (error) {
     if (error instanceof AdsRateLimitedError) {

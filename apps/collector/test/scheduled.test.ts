@@ -10,6 +10,8 @@ import {
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 import worker from "../src/index";
+import { setState } from "../src/lib/state";
+import { latestCompleteWeekStart } from "../src/tasks/ads";
 import type { Task } from "../src/tasks/types";
 import { generateP8Pem } from "./helpers";
 
@@ -241,5 +243,50 @@ describe("collection mode", () => {
     const types = queued.map((t) => t.type);
     expect(types).toContain("lookup_pull");
     expect(types).toContain("chart_pull");
+  });
+});
+
+describe("ads weekly gate", () => {
+  // The Ads pull is Monday-only, so these must run on one or the cron never
+  // queues the task and the assertions pass for the wrong reason.
+  const MONDAY = new Date("2026-09-07T03:00:00Z");
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(MONDAY);
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT OR IGNORE INTO genre (id, name, parent_id) VALUES (6014, 'Games', NULL)"
+      ),
+      env.DB.prepare(
+        "INSERT OR IGNORE INTO genre (id, name, parent_id) VALUES (7019, 'Games/Word', 6014)"
+      ),
+    ]);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("queues the pull when the week has not been collected", async () => {
+    await runCron("0 3 * * *", { ADS_CLIENT_ID: "x" });
+    const queued = await drainQueue();
+    expect(queued.find((t) => t.type === "ads_pull")).toBeDefined();
+  });
+
+  it("skips a storefront whose week is already held", async () => {
+    // Apple publishes WEEKLY_SUN_SAT: a second pull of the same week fetches
+    // identical data and re-walks 500 terms per unit for nothing.
+    await setState(env.DB, "ads:pulled:fr:GAMES", latestCompleteWeekStart());
+    await runCron("0 3 * * *", { ADS_CLIENT_ID: "x" });
+    const queued = await drainQueue();
+    expect(queued.find((t) => t.type === "ads_pull")).toBeUndefined();
+  });
+
+  it("still pulls once the published week moves on", async () => {
+    await setState(env.DB, "ads:pulled:fr:GAMES", "1999-01-03");
+    await runCron("0 3 * * *", { ADS_CLIENT_ID: "x" });
+    const queued = await drainQueue();
+    expect(queued.find((t) => t.type === "ads_pull")).toBeDefined();
   });
 });

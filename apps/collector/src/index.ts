@@ -5,7 +5,7 @@ import type { GenreRow } from "./lib/ads-genres";
 import { collectsPublicEndpoints } from "./lib/mode";
 import { loadPacing, savePacing, maybeRaise } from "./lib/pacing";
 import { tracked } from "./lib/runs";
-import { getStateJson } from "./lib/state";
+import { getState, getStateJson } from "./lib/state";
 import { latestCompleteWeekStart } from "./tasks/ads";
 import { ascDetectSkippedDates } from "./tasks/asc";
 import { recomputeCadence } from "./tasks/cadence";
@@ -30,7 +30,7 @@ const CHART_GENRES_DEFAULT: (number | null)[] = [7019, null]; // Word + storefro
  * `popularity` is unique on (keyword, storefront, genre, week_start), so
  * re-pulling the same week is a no-op.
  */
-async function buildAdsTask(env: Env): Promise<Task | null> {
+async function buildAdsTask(env: Env, force = false): Promise<Task | null> {
   const genres =
     (await getStateJson<number[]>(env.DB, "ads:focus_genres")) ??
     FOCUS_GENRES_DEFAULT;
@@ -52,6 +52,7 @@ async function buildAdsTask(env: Env): Promise<Task | null> {
   // Word, Puzzle, Board, Trivia and Educational all resolve to GAMES and would
   // otherwise fetch the same ranked list five times over. Dedupe on the pair
   // that actually varies the response.
+  const weekStart = latestCompleteWeekStart();
   const seen = new Set<string>();
   const queue: AdsPullUnit[] = [];
   for (const s of storefronts.results) {
@@ -65,6 +66,19 @@ async function buildAdsTask(env: Env): Promise<Task | null> {
         continue;
       }
       seen.add(key);
+      // Apple publishes WEEKLY_SUN_SAT, so a second pull of a week already held
+      // fetches identical data and re-walks 500 terms per unit. `force` keeps
+      // the manual trigger honest: a credential check that silently skipped the
+      // request would report success without having made one.
+      if (!force) {
+        const pulled = await getState(
+          env.DB,
+          `ads:pulled:${s.code}:${resolved.category}`
+        );
+        if (pulled === weekStart) {
+          continue;
+        }
+      }
       queue.push({
         category: resolved.category,
         genreId: resolved.genreId,
@@ -75,7 +89,7 @@ async function buildAdsTask(env: Env): Promise<Task | null> {
   if (queue.length === 0) {
     return null;
   }
-  return { queue, type: "ads_pull", weekStart: latestCompleteWeekStart() };
+  return { queue, type: "ads_pull", weekStart };
 }
 
 async function runDailyJobs(env: Env): Promise<{
@@ -224,7 +238,7 @@ async function runJob(env: Env, job: Job): Promise<Response> {
       if (!env.ADS_CLIENT_ID) {
         return json({ error: "ADS secrets not configured", job }, 412);
       }
-      const task = await buildAdsTask(env);
+      const task = await buildAdsTask(env, true);
       if (!task) {
         return json({ error: "no active storefronts to pull", job }, 412);
       }
