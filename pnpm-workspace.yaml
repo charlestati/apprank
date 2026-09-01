@@ -1,0 +1,17 @@
+packages:
+  - packages/*
+  - apps/*
+  - scripts/*
+
+allowBuilds:
+  # Pulled in transitively by `agents` (via its Babel plugins). Its
+  # postinstall only prints a funding notice and nothing here imports it,
+  # so it is denied rather than approved — an unapproved build script
+  # fails every pnpm command, including `pnpm generate`.
+  core-js-pure: false
+  esbuild: true
+  workerd: true
+
+# Supply-chain guard: only install packages published at least 7 days ago
+# (mirrors the npm min-release-age policy this repo used before pnpm).
+minimumReleaseAge: 10080

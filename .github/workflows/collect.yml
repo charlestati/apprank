@@ -1,0 +1,73 @@
+# Rank collection from GitHub's runners.
+#
+# Apple rate-limits the public iTunes endpoints per IP, and every Cloudflare
+# Worker egresses from a shared pool Apple already rejects — the deployed
+# collector gets HTTP 429 on every attempt while the identical request succeeds
+# from an ordinary connection. This runs the *same* collector code from a
+# GitHub runner, so the observations carry the same normaliser, provenance and
+# idempotent keys as the scheduler's own; only the source address differs.
+#
+# Whether Azure's egress fares better than Cloudflare's is the open question
+# this workflow exists to answer. Run it once by hand before trusting the cron.
+name: Collect
+
+on:
+  schedule:
+    # Pairs come due at 03:00 UTC. Ten minutes later, so a run never races the
+    # daily job that queues the work. GitHub's scheduler is best-effort and can
+    # be delayed under load; that is fine, since due pairs stay due.
+    - cron: "10 3 * * *"
+  workflow_dispatch:
+
+# One collector at a time. Two concurrent runs would fetch the same pairs twice
+# and spend the same IP's budget against itself.
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    # 50 pairs at 15s spacing is ~13 minutes, plus the app-level pulls.
+    timeout-minutes: 45
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
+      APPRANK_LOG_DIR: ${{ github.workspace }}/.collect-logs
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build the crawl config
+        run: node scripts/local-refresh/write-config.mjs
+
+      - name: Provide the admin token to the dev session
+        # refresh.sh drives the collector through its own admin route, which is
+        # gated by ADMIN_TOKEN; wrangler reads it from .dev.vars, not the shell.
+        #
+        # Passed through `env`, not interpolated into the command: a secret on a
+        # command line is visible to `ps` and lands in audit events, and this
+        # one contains characters the shell would otherwise be free to mangle.
+        env:
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        run: printf 'ADMIN_TOKEN=%s\n' "$ADMIN_TOKEN" > apps/collector/.dev.vars
+
+      - name: Collect
+        run: ./scripts/local-refresh/refresh.sh
+
+      - name: Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: collect-logs-${{ github.run_id }}
+          path: ${{ github.workspace }}/.collect-logs
+          retention-days: 14

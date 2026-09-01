@@ -1,0 +1,11 @@
+{
+  "name": "rebuild-d1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "rebuild": "node rebuild.mjs"
+  },
+  "dependencies": {
+    "aws4fetch": "^1.0.20"
+  }
+}

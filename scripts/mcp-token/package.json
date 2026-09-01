@@ -1,0 +1,8 @@
+{
+  "name": "mcp-token",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "node --version"
+  }
+}

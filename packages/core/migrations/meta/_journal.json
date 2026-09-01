@@ -1,0 +1,48 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1788207739200,
+      "tag": "0000_ordinary_ikaris",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788216667692,
+      "tag": "0002_keyword_difficulty",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1788217642721,
+      "tag": "0003_suggestion_owner",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1788225551393,
+      "tag": "0005_collector_run",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1788228350229,
+      "tag": "0006_asc_app_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1788264795863,
+      "tag": "0008_mcp_credentials",
+      "breakpoints": true
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+*.local
+.DS_Store
+worker-configuration.d.ts
+packages/core/seeds/local/
+wrangler.local.jsonc
+.idea/
+coverage/
+apps/collector/wrangler.localcrawl.jsonc
+apps/web/wrangler.preview.jsonc

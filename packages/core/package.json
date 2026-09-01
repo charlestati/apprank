@@ -1,0 +1,22 @@
+{
+  "name": "@apprank/core",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema/index.ts",
+    "./apple/*": "./src/apple/*.ts",
+    "./normalize/*": "./src/normalize/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc",
+    "generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.0"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.0",
+    "typescript": "^5.9.2"
+  }
+}

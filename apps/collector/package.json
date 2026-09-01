@@ -1,0 +1,27 @@
+{
+  "name": "collector",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
+    "dev": "wrangler dev -c $(test -f wrangler.local.jsonc && echo wrangler.local.jsonc || echo wrangler.jsonc)",
+    "deploy": "wrangler deploy -c $(test -f wrangler.local.jsonc && echo wrangler.local.jsonc || echo wrangler.jsonc)",
+    "migrate:local": "wrangler d1 migrations apply apprank --local -c $(test -f wrangler.local.jsonc && echo wrangler.local.jsonc || echo wrangler.jsonc)",
+    "migrate:remote": "wrangler d1 migrations apply apprank --remote -c $(test -f wrangler.local.jsonc && echo wrangler.local.jsonc || echo wrangler.jsonc)",
+    "seed:local": "wrangler d1 execute apprank --local -c $(test -f wrangler.local.jsonc && echo wrangler.local.jsonc || echo wrangler.jsonc) --file ../../packages/core/seeds/reference.sql",
+    "seed:remote": "wrangler d1 execute apprank --remote -c $(test -f wrangler.local.jsonc && echo wrangler.local.jsonc || echo wrangler.jsonc) --file ../../packages/core/seeds/reference.sql"
+  },
+  "dependencies": {
+    "@apprank/core": "workspace:*",
+    "drizzle-orm": "^0.45.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.20.3",
+    "@vitest/coverage-istanbul": "^4.1.11",
+    "typescript": "^5.9.2",
+    "vitest": "^4.1.11",
+    "wrangler": "^4.120.0"
+  }
+}
