@@ -134,6 +134,17 @@ export async function lookupPullStep(
 
   const napp = await normalizeApp(result);
   const m = napp.metadata;
+
+  // This lookup already existed below, for the metadata-change burst. Doing it
+  // first lets it also skip the insert: app_metadata_version dedupes on
+  // content_hash, but its key is AUTOINCREMENT, so an ignored insert still
+  // costs a write — SQLite touches sqlite_sequence regardless.
+  const known = await env.DB.prepare(
+    "SELECT 1 AS x FROM app_metadata_version WHERE app_id = ? AND content_hash = ?"
+  )
+    .bind(napp.id, m.contentHash)
+    .first();
+
   const stmts = [
     env.DB.prepare(
       `INSERT INTO app (id, bundle_id, current_name, developer_id, developer_name, primary_genre_id, first_seen_at, last_seen_at)
@@ -152,28 +163,32 @@ export async function lookupPullStep(
       now,
       now
     ),
-    env.DB.prepare(
-      `INSERT OR IGNORE INTO app_metadata_version
-         (app_id, captured_at, source, title, subtitle, description_hash, version, price, currency, has_iap,
-          genre_ids, rating_count, rating_avg, screenshot_urls_hash, icon_url, release_notes_hash, content_hash)
-       VALUES (?, ?, 'itunes-lookup', ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(
-      napp.id,
-      now,
-      m.title,
-      m.subtitle,
-      m.descriptionHash,
-      m.version,
-      m.price,
-      m.currency,
-      m.genreIds,
-      m.ratingCount,
-      m.ratingAvg,
-      m.screenshotUrlsHash,
-      m.iconUrl,
-      m.releaseNotesHash,
-      m.contentHash
-    ),
+    ...(known
+      ? []
+      : [
+          env.DB.prepare(
+            `INSERT OR IGNORE INTO app_metadata_version
+             (app_id, captured_at, source, title, subtitle, description_hash, version, price, currency, has_iap,
+              genre_ids, rating_count, rating_avg, screenshot_urls_hash, icon_url, release_notes_hash, content_hash)
+           VALUES (?, ?, 'itunes-lookup', ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`
+          ).bind(
+            napp.id,
+            now,
+            m.title,
+            m.subtitle,
+            m.descriptionHash,
+            m.version,
+            m.price,
+            m.currency,
+            m.genreIds,
+            m.ratingCount,
+            m.ratingAvg,
+            m.screenshotUrlsHash,
+            m.iconUrl,
+            m.releaseNotesHash,
+            m.contentHash
+          ),
+        ]),
     // Per-storefront rating series — drives difficulty, moves daily.
     env.DB.prepare(
       `INSERT INTO rating_snapshot (app_id, storefront_code, observed_date, rating_count, rating_avg)
@@ -183,11 +198,6 @@ export async function lookupPullStep(
   ];
 
   // Metadata change → burst: force daily cadence on all this app's pairs for 14 days.
-  const known = await env.DB.prepare(
-    "SELECT 1 AS x FROM app_metadata_version WHERE app_id = ? AND content_hash = ?"
-  )
-    .bind(napp.id, m.contentHash)
-    .first();
   const isTracked = await env.DB.prepare(
     "SELECT 1 AS x FROM tracked_app WHERE app_id = ?"
   )

@@ -317,3 +317,65 @@ describe("write economy", () => {
     await expect(pickDuePair(env.DB)).resolves.not.toBeNull();
   });
 });
+
+describe("metadata write economy", () => {
+  const pair = {
+    id: 1,
+    interval_hours: 24,
+    keyword_text: "example keyword",
+    locale_code: "fr-FR",
+    storefront_code: "fr",
+    weight: 1,
+  };
+
+  it("writes no new metadata rows when the page is unchanged", async () => {
+    // app_metadata_version dedupes on content_hash, but its key is
+    // AUTOINCREMENT, so an ignored insert still costs a write — SQLite touches
+    // sqlite_sequence regardless. Crawling an unchanged board must not spend a
+    // write per app to store nothing.
+    await insertPair(1);
+    stubFetch(() => Response.json(fakeSearchResponse(12)));
+    await crawlPair(env, pair, 3);
+    const first = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM app_metadata_version"
+    ).first<{ n: number }>();
+    expect(first?.n).toBeGreaterThan(0);
+
+    // A second crawl of the identical page, on a fresh day so the same-day
+    // guard does not short-circuit it.
+    // rank_entry references ranking and Miniflare enforces foreign keys.
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM rank_entry"),
+      env.DB.prepare("DELETE FROM ranking"),
+    ]);
+    stubFetch(() => Response.json(fakeSearchResponse(12)));
+    await crawlPair(env, pair, 3);
+    const second = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM app_metadata_version"
+    ).first<{ n: number }>();
+    expect(second?.n).toBe(first?.n);
+  });
+
+  it("still records a version when the metadata actually changes", async () => {
+    await insertPair(1);
+    stubFetch(() => Response.json(fakeSearchResponse(12)));
+    await crawlPair(env, pair, 3);
+    const before = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM app_metadata_version"
+    ).first<{ n: number }>();
+
+    // rank_entry references ranking and Miniflare enforces foreign keys.
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM rank_entry"),
+      env.DB.prepare("DELETE FROM ranking"),
+    ]);
+    const changed = fakeSearchResponse(12);
+    changed.results[0] = { ...changed.results[0], version: "9.9.9" } as never;
+    stubFetch(() => Response.json(changed));
+    await crawlPair(env, pair, 3);
+    const after = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM app_metadata_version"
+    ).first<{ n: number }>();
+    expect(after?.n).toBe((before?.n ?? 0) + 1);
+  });
+});

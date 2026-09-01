@@ -150,6 +150,26 @@ export async function crawlPair(
   const now = Date.now();
   const stmts: D1PreparedStatement[] = [];
 
+  // app_metadata_version dedupes on content_hash, but INSERT OR IGNORE is not
+  // free on a table with an AUTOINCREMENT key: SQLite touches sqlite_sequence
+  // even when the row is ignored, so D1 charges a write per app per pair per
+  // day for metadata that almost never changes. One read of the hashes we
+  // already hold replaces eleven of those writes, and reads are the resource
+  // this product has to spare.
+  const ids = interesting.map((r) => r.trackId);
+  const known = new Set<string>();
+  if (ids.length > 0) {
+    const rows = await env.DB.prepare(
+      `SELECT app_id, content_hash FROM app_metadata_version
+       WHERE app_id IN (${ids.map(() => "?").join(",")})`
+    )
+      .bind(...ids)
+      .all<{ app_id: number; content_hash: string }>();
+    for (const r of rows.results) {
+      known.add(`${r.app_id}:${r.content_hash}`);
+    }
+  }
+
   for (const result of interesting) {
     const napp = await normalizeApp(result);
     stmts.push(
@@ -179,6 +199,9 @@ export async function crawlPair(
       )
     );
     const m = napp.metadata;
+    if (known.has(`${napp.id}:${m.contentHash}`)) {
+      continue;
+    }
     stmts.push(
       env.DB.prepare(
         `INSERT OR IGNORE INTO app_metadata_version
