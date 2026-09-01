@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 // Issue an MCP credential.
 //
 // Deliberately a script that prints SQL rather than an HTTP endpoint. A
@@ -7,7 +8,9 @@
 // operator configures: they are rows, applied with wrangler.
 //
 // The token is printed once. Only its SHA-256 goes in the database, because
-// D1 is an ordinary queryable table that gets dumped and rebuilt, unlike BASIC_AUTH_ACCOUNTS, which is a Worker secret and can hold plaintext.
+// mcp_credential is an ordinary table: it is queried, dumped by
+// `wrangler d1 export`, and rebuilt by scripts/rebuild-d1. BASIC_AUTH_ACCOUNTS
+// can hold plaintext because a Worker secret is none of those things.
 //
 //   node scripts/mcp-token/issue.mjs --user admin --name laptop
 //   node scripts/mcp-token/issue.mjs --user admin --name bob-ci --days 90 \
