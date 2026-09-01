@@ -249,7 +249,7 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
                       pointing at it to highlight a line is an interaction on
                       something that was already interactive. */}
                   <button
-                    aria-label={`Hide ${row.keyword} from the chart`}
+                    aria-label={fmt(t.hideFromChart, { keyword: row.keyword })}
                     className={
                       focused !== null && focused !== row.pairId
                         ? "legend-chip legend-muted"
@@ -370,8 +370,10 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
                         <button
                           aria-label={
                             styleIndex.has(row.pairId)
-                              ? `Remove ${row.keyword} from the chart`
-                              : `Add ${row.keyword} to the chart`
+                              ? fmt(t.removeFromChart, {
+                                  keyword: row.keyword,
+                                })
+                              : fmt(t.addToChart, { keyword: row.keyword })
                           }
                           aria-pressed={styleIndex.has(row.pairId)}
                           className="swatch-button"
@@ -477,7 +479,7 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
                   {rows.length === 0 ? (
                     <tr>
                       <td className="empty" colSpan={7}>
-                        No keywords match “{filter}”.
+                        {fmt(t.noKeywordMatch, { filter })}
                       </td>
                     </tr>
                   ) : null}

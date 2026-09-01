@@ -228,7 +228,7 @@ describe("Rank series chart", () => {
     );
     expect(container.querySelector(".marker-index")?.textContent).toBe("1");
     expect(container.querySelector(".marker-pin title")?.textContent).toBe(
-      "2026-01-02 · version 3.2 · title, screenshots"
+      "2 Jan 2026 · version 3.2 · title, screenshots"
     );
   });
 

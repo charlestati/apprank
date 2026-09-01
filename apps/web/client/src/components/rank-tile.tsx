@@ -1,6 +1,8 @@
 // The signature element: a word-game letter tile carrying a rank.
 // Band by threshold that matters (top-10 strong, top-50 mid, rest quiet).
 
+import { fmt, useT } from "../i18n";
+
 interface Props {
   rank: number | null;
   onClick?: () => void;
@@ -8,12 +10,13 @@ interface Props {
 }
 
 export function RankTile({ rank, onClick, title }: Props) {
+  const t = useT();
   if (rank === null) {
     return (
       <span
         className="tile-btn tile-none"
-        title={title ? `${title} — not ranked (top 200)` : "not ranked"}
-        aria-label="not ranked"
+        title={title ? fmt(t.notRankedTitled, { title }) : t.notRanked}
+        aria-label={t.notRanked}
       >
         –
       </span>

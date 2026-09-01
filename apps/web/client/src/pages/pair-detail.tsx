@@ -4,7 +4,7 @@ import { useLocation, useParams } from "react-router";
 import { api } from "../api";
 import type { CompetitorPoint, HistoryPoint, TrackedApp } from "../api";
 import { RankSeriesChart } from "../components/rank-series-chart";
-import { useT } from "../i18n";
+import { fmt, useT } from "../i18n";
 
 // One line, so the dash ladder is unused: a solid stroke is the whole legend.
 const SINGLE_SERIES = { color: "var(--ds-chart-1)", dash: "" };
@@ -67,7 +67,8 @@ export function PairDetail({ app }: { app: TrackedApp | null }) {
         change: null,
         changeDaysAgo: null,
         difficulty: null,
-        keyword: location.state?.keyword ?? `Pair ${pairId}`,
+        keyword:
+          location.state?.keyword ?? fmt(t.pairFallback, { id: pairId ?? "" }),
         keywordId: 0,
         pairId: Number(pairId),
         points: history.map((h) => ({
@@ -84,11 +85,11 @@ export function PairDetail({ app }: { app: TrackedApp | null }) {
         worst: null,
       },
     ];
-  }, [history, location.state, pairId]);
+  }, [history, location.state, pairId, t.pairFallback]);
 
   const label = location.state?.keyword
     ? `“${location.state.keyword}” · ${location.state.storefront?.toUpperCase()}`
-    : `Pair ${pairId}`;
+    : fmt(t.pairFallback, { id: pairId ?? "" });
 
   return (
     <>
@@ -136,7 +137,7 @@ export function PairDetail({ app }: { app: TrackedApp | null }) {
             {board.length === 0 && (
               <tr>
                 <td className="empty" colSpan={3}>
-                  No competitor data yet.
+                  {t.noCompetitorData}
                 </td>
               </tr>
             )}

@@ -176,7 +176,7 @@ function Shell() {
           {userId ? <span className="who">{userId}</span> : null}
         </header>
 
-        <nav aria-label="Sections" className="sidebar">
+        <nav aria-label={t.navSections} className="sidebar">
           <p className="nav-heading">{t.appStoreOptimization}</p>
           <NavLink end to="/">
             {t.keywordPerformance}

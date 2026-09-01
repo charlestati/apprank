@@ -18,24 +18,17 @@ export function Suggestions() {
   }, []);
 
   if (rows === null) {
-    return <p className="empty">Loading…</p>;
+    return <p className="empty">{t.loading}</p>;
   }
   return (
     <>
       <header className="page-header">
         <div>
           <h1>{t.suggestions}</h1>
-          <p className="page-sub">
-            Promotions the global sweep proposes. Nothing enters the crawl
-            budget without approval here.
-          </p>
+          <p className="page-sub">{t.suggestionsIntro}</p>
         </div>
       </header>
-      {rows.length === 0 && (
-        <p className="empty">
-          Inbox empty. The global market sweep populates this.
-        </p>
-      )}
+      {rows.length === 0 && <p className="empty">{t.suggestionsEmpty}</p>}
       {rows.map((s) => (
         <div className="card" key={s.id} style={{ marginBottom: 8 }}>
           <strong>{s.type}</strong>

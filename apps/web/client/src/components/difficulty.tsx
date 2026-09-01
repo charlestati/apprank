@@ -3,7 +3,7 @@
 // it and how many of the top ten we actually hold ratings for.
 
 import type { Difficulty as DifficultyValue } from "../api";
-import { useT } from "../i18n";
+import { fmt, useT } from "../i18n";
 
 export function difficultyBand(score: number): string {
   if (score >= 80) {
@@ -47,11 +47,11 @@ export function Difficulty({ value }: { value: DifficultyValue | null }) {
 
   const explanation = [
     `${difficultyBand(value.score)} (${value.score}/100, ${value.formulaVersion})`,
-    `top-3 rating mass ${pct(value.entrenchment)}`,
-    `top-10 rating mass ${pct(value.incumbentStrength)}`,
-    `board stability ${pct(value.stability)}`,
-    `page saturation ${pct(value.saturation)}`,
-    `based on ${value.sampleSize} of the top 10`,
+    fmt(t.difficultyTop3, { pct: pct(value.entrenchment) }),
+    fmt(t.difficultyTop10, { pct: pct(value.incumbentStrength) }),
+    fmt(t.difficultyStability, { pct: pct(value.stability) }),
+    fmt(t.difficultySaturation, { pct: pct(value.saturation) }),
+    fmt(t.difficultySample, { n: value.sampleSize }),
   ].join(" · ");
 
   return (

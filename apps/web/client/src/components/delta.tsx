@@ -1,15 +1,18 @@
 // Rank movement: positive change means the app moved towards rank 1.
 // Direction is carried by an arrow glyph and a label, never by colour alone.
 
+import { useT } from "../i18n";
+
 interface Props {
   change: number | null;
   daysAgo: number | null;
 }
 
 export function Delta({ change, daysAgo }: Props) {
+  const t = useT();
   if (!change) {
     return (
-      <span className="delta delta-flat" title="no change in this window">
+      <span className="delta delta-flat" title={t.noChangeWindow}>
         —
       </span>
     );

@@ -118,7 +118,9 @@ export function Opportunities({
                   </button>
                   <span className="lane-rank">
                     {row.position === null ? "—" : `#${row.position}`}
-                    {row.popularity === null ? "" : ` · pop ${row.popularity}`}
+                    {row.popularity === null
+                      ? ""
+                      : fmt(t.opportunityPop, { n: row.popularity })}
                   </span>
                 </li>
               ))}

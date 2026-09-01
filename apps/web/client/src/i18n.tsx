@@ -141,6 +141,80 @@ const en = {
   storefront: "Storefront",
   unproven: "Unproven",
   worst: "Worst",
+
+  // Data health
+  ascAnomalies: "ASC anomalies",
+  ascAnomaliesNote: "duplicate / skipped report dates",
+  budgetPending: "not computed yet — runs with the daily jobs",
+  budgetReserved: "{n} fetches/day reserved for app pulls.",
+  collapse: "Collapse",
+  healthCoverageNote: "{pct}% of Tier-1 pairs observed ({date})",
+  coverageToday: "Coverage today",
+  crawlBudget: "Crawl budget",
+  crawlPaused: "paused until {time}",
+  crawlRate: "Crawl rate",
+  crawlRateNote: "fetches/min, learned",
+  dailyCompleted: "completed",
+  dailyFailed: "failed",
+  dailyNoRun: "no run recorded yet",
+  dailyQueuedSuffix: " · queued {n}",
+  dailyUnfinished: "started and never finished",
+  errorsLast24h: "Errors, last 24h",
+  expand: "Expand",
+  healthIntro:
+    "Visible gaps beat silent garbage. Anything red here means today's numbers need a second look.",
+  lastDailyJob: "Last daily job",
+  loopNeverTicked: "never ticked — the collector has not run",
+  loopQueued: "{n} queued",
+  loopQueueEmpty: "queue empty",
+  loopSinceTick: "since last tick",
+  overdueNote: "past due by more than one interval",
+  overduePairs: "Overdue pairs",
+  throttleHits: "Throttle hits (24h)",
+  throttleNote: "403/429 from Apple",
+  workLoop: "Work loop",
+
+  // Result page drawer
+  appFallback: "App {id}",
+  close: "Close",
+  drawerFailed: "Could not load the result page.",
+  drawerObserved: "observed {date}",
+  drawerResultCount: "{n} results",
+  drawerSearchResults: "Search results for {keyword}",
+
+  // Reviews
+  reviewsEmpty: "Nothing collected yet — the daily pull fills this in.",
+  reviewsIntro:
+    "Most recent reviews across storefronts. Apple's feed caps at the latest 500 per storefront.",
+  starsLabel: "{n} stars",
+  noCompetitorData: "No competitor data yet.",
+  noKeywordMatch: "No keywords match “{filter}”.",
+  noRankedObservations:
+    "No ranked observations in this window yet. The collector fills this in daily.",
+  suggestionsEmpty: "Inbox empty. The global market sweep populates this.",
+  suggestionsIntro:
+    "Promotions the global sweep proposes. Nothing enters the crawl budget without approval here.",
+
+  // Chart, table and tiles
+  addToChart: "Add {keyword} to the chart",
+  chartNoData: "no data · {errorClass}",
+  chartRank: "rank {n}",
+  chartVersion: " · version {version}",
+  difficultySample: "based on {n} of the top 10",
+  difficultySaturation: "page saturation {pct}",
+  difficultyStability: "board stability {pct}",
+  difficultyTop10: "top-10 rating mass {pct}",
+  difficultyTop3: "top-3 rating mass {pct}",
+  hideFromChart: "Hide {keyword} from the chart",
+  navSections: "Sections",
+  noChangeWindow: "no change in this window",
+  noFieldDiff: "no field diff",
+  notInTop200: "not in top 200",
+  notRanked: "not ranked",
+  notRankedTitled: "{title} — not ranked (top 200)",
+  opportunityPop: " · pop {n}",
+  pairFallback: "Pair {id}",
+  removeFromChart: "Remove {keyword} from the chart",
 } as const;
 
 /** Every locale must supply exactly the English keys — enforced at compile time. */
@@ -265,6 +339,81 @@ const fr: Dictionary = {
   storefront: "Boutique",
   unproven: "Non confirmé",
   worst: "Pire",
+
+  // Data health
+  ascAnomalies: "Anomalies ASC",
+  ascAnomaliesNote: "dates de rapport dupliquées ou manquantes",
+  budgetPending: "pas encore calculé — s'exécute avec les tâches quotidiennes",
+  budgetReserved: "{n} requêtes/jour réservées aux relevés d'app.",
+  collapse: "Réduire",
+  healthCoverageNote: "{pct} % des paires Tier-1 observées ({date})",
+  coverageToday: "Couverture du jour",
+  crawlBudget: "Budget de collecte",
+  crawlPaused: "en pause jusqu'à {time}",
+  crawlRate: "Cadence de collecte",
+  crawlRateNote: "requêtes/min, apprise",
+  dailyCompleted: "terminée",
+  dailyFailed: "échouée",
+  dailyNoRun: "aucune exécution enregistrée",
+  dailyQueuedSuffix: " · {n} en file",
+  dailyUnfinished: "démarrée sans jamais se terminer",
+  errorsLast24h: "Erreurs, dernières 24 h",
+  expand: "Développer",
+  healthIntro:
+    "Mieux vaut un trou visible qu'une donnée fausse. Tout ce qui est en rouge demande de vérifier les chiffres du jour.",
+  lastDailyJob: "Dernière tâche quotidienne",
+  loopNeverTicked: "jamais démarrée — le collecteur n'a pas tourné",
+  loopQueued: "{n} en file",
+  loopQueueEmpty: "file vide",
+  loopSinceTick: "depuis le dernier passage",
+  overdueNote: "en retard de plus d'un intervalle",
+  overduePairs: "Paires en retard",
+  throttleHits: "Limitations (24 h)",
+  throttleNote: "403/429 renvoyés par Apple",
+  workLoop: "Boucle de collecte",
+
+  // Result page drawer
+  appFallback: "App {id}",
+  close: "Fermer",
+  drawerFailed: "Impossible de charger la page de résultats.",
+  drawerObserved: "observé le {date}",
+  drawerResultCount: "{n} résultats",
+  drawerSearchResults: "Résultats de recherche pour {keyword}",
+
+  // Reviews
+  reviewsEmpty:
+    "Rien de collecté pour l'instant — le relevé quotidien s'en charge.",
+  reviewsIntro:
+    "Avis les plus récents, toutes boutiques confondues. Le flux d'Apple s'arrête aux 500 derniers par boutique.",
+  starsLabel: "{n} étoiles",
+  noCompetitorData: "Aucune donnée sur les concurrents pour l'instant.",
+  noKeywordMatch: "Aucun mot-clé ne correspond à « {filter} ».",
+  noRankedObservations:
+    "Aucune observation classée sur cette période. Le collecteur la remplit chaque jour.",
+  suggestionsEmpty: "Boîte vide. Le balayage du marché mondial la remplit.",
+  suggestionsIntro:
+    "Promotions proposées par le balayage mondial. Rien n'entre dans le budget de collecte sans validation ici.",
+
+  // Chart, table and tiles
+  addToChart: "Ajouter {keyword} au graphique",
+  chartNoData: "aucune donnée · {errorClass}",
+  chartRank: "rang {n}",
+  chartVersion: " · version {version}",
+  difficultySample: "d'après {n} des 10 premiers",
+  difficultySaturation: "saturation de la page {pct}",
+  difficultyStability: "stabilité du classement {pct}",
+  difficultyTop10: "poids des notes du top 10 {pct}",
+  difficultyTop3: "poids des notes du top 3 {pct}",
+  hideFromChart: "Masquer {keyword} du graphique",
+  navSections: "Sections",
+  noChangeWindow: "aucun changement sur la période",
+  noFieldDiff: "aucun champ modifié",
+  notInTop200: "hors du top 200",
+  notRanked: "non classé",
+  notRankedTitled: "{title} — non classé (top 200)",
+  opportunityPop: " · pop {n}",
+  pairFallback: "Paire {id}",
+  removeFromChart: "Retirer {keyword} du graphique",
 };
 
 const DICTIONARIES: Record<Lang, Dictionary> = { en, fr };

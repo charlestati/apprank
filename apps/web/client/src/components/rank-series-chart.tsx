@@ -19,6 +19,9 @@
 import { useId, useMemo, useState } from "react";
 
 import type { KeywordRow, MetadataMarker } from "../api";
+import { useFormat } from "../format";
+import { fmt, useT } from "../i18n";
+import type { Dictionary } from "../i18n";
 
 const W = 960;
 const H = 360;
@@ -128,25 +131,35 @@ function spreadLabels(
 }
 
 /** One series' value on the hovered day, in the same words in both readouts. */
-function readoutValue(entry: {
-  state: "ranked" | "unranked" | "failed";
-  position: number | null;
-  errorClass?: string;
-}): string {
+function readoutValue(
+  entry: {
+    state: "ranked" | "unranked" | "failed";
+    position: number | null;
+    errorClass?: string;
+  },
+  t: Dictionary
+): string {
   if (entry.state === "ranked") {
-    return `rank ${entry.position}`;
+    return fmt(t.chartRank, { n: entry.position ?? "" });
   }
+  // The error class is a closed vocabulary the data-health page groups on, so
+  // it stays in its own words rather than being translated per language.
   return entry.state === "unranked"
-    ? "not in top 200"
-    : `no data · ${entry.errorClass}`;
+    ? t.notInTop200
+    : fmt(t.chartNoData, { errorClass: entry.errorClass ?? "" });
 }
 
-function markerTitle(marker: MetadataMarker): string {
+function markerTitle(
+  marker: MetadataMarker,
+  t: Dictionary,
+  day: (iso: string) => string
+): string {
   const what =
-    marker.changed.length > 0 ? marker.changed.join(", ") : "no field diff";
-  return `${marker.date}${
-    marker.version ? ` · version ${marker.version}` : ""
-  } · ${what}`;
+    marker.changed.length > 0 ? marker.changed.join(", ") : t.noFieldDiff;
+  const version = marker.version
+    ? fmt(t.chartVersion, { version: marker.version })
+    : "";
+  return `${day(marker.date)}${version} · ${what}`;
 }
 
 function truncate(text: string): string {
@@ -164,6 +177,8 @@ export function RankSeriesChart({
   onFocus,
   describedBy,
 }: Props) {
+  const t = useT();
+  const f = useFormat();
   const [hover, setHover] = useState<number | null>(null);
   const [hoverSeries, setHoverSeries] = useState<number | null>(null);
   const hatchId = useId();
@@ -251,12 +266,7 @@ export function RankSeriesChart({
   }, [lines, styleOf]);
 
   if (dates.length === 0 || series.length === 0) {
-    return (
-      <p className="empty">
-        No ranked observations in this window yet. The collector fills this in
-        daily.
-      </p>
-    );
+    return <p className="empty">{t.noRankedObservations}</p>;
   }
 
   function onMove(e: React.MouseEvent<SVGSVGElement>) {
@@ -443,7 +453,7 @@ export function RankSeriesChart({
                 y2={PLOT_BOTTOM}
               />
               <circle className="marker-pin" cx={x(i)} cy={PAD.top} r="7">
-                <title>{markerTitle(marker)}</title>
+                <title>{markerTitle(marker, t, f.day)}</title>
               </circle>
               <text
                 className="marker-index"
@@ -554,7 +564,7 @@ export function RankSeriesChart({
         {hoveredDate && readout.length > 0
           ? `${hoveredDate}: ${readout
               .slice(0, READOUT_LIMIT)
-              .map((r) => `${r.row.keyword} ${readoutValue(r)}`)
+              .map((r) => `${r.row.keyword} ${readoutValue(r, t)}`)
               .join("; ")}`
           : ""}
       </div>
@@ -571,7 +581,7 @@ export function RankSeriesChart({
                 style={{ background: styleOf(r.row.pairId).color }}
               />
               <span className="chart-tip-name">{r.row.keyword}</span>
-              <span className="chart-tip-rank">{readoutValue(r)}</span>
+              <span className="chart-tip-rank">{readoutValue(r, t)}</span>
             </div>
           ))}
         </div>

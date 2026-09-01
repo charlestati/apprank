@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { KeywordRow, ResultPage } from "../api";
 import { useFormat } from "../format";
+import { fmt, useT } from "../i18n";
 import { AppIcon } from "./app-icon";
 
 interface Props {
@@ -23,6 +24,7 @@ export function ResultsDrawer({
   onClose,
 }: Props) {
   const f = useFormat();
+  const t = useT();
   const [page, setPage] = useState<ResultPage | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -47,22 +49,29 @@ export function ResultsDrawer({
   }, [onClose]);
 
   return (
-    <aside aria-label={`Search results for ${row.keyword}`} className="drawer">
+    <aside
+      aria-label={fmt(t.drawerSearchResults, { keyword: row.keyword })}
+      className="drawer"
+    >
       <header className="drawer-head">
         <div>
           <h2>“{row.keyword}”</h2>
           <p className="drawer-sub">
             {f.region(storefront)} ·{" "}
-            {page?.date ? `observed ${f.day(page.date)}` : "loading…"}
-            {page ? ` · ${f.number(page.resultCount)} results` : ""}
+            {page?.date
+              ? fmt(t.drawerObserved, { date: f.day(page.date) })
+              : t.loading}
+            {page
+              ? ` · ${fmt(t.drawerResultCount, { n: f.number(page.resultCount) })}`
+              : ""}
           </p>
         </div>
         <button className="link" onClick={onClose} type="button">
-          Close
+          {t.close}
         </button>
       </header>
 
-      {failed ? <p className="empty">Could not load the result page.</p> : null}
+      {failed ? <p className="empty">{t.drawerFailed}</p> : null}
 
       <ol className="result-list">
         {(page?.results ?? []).map((r) => (
@@ -79,7 +88,7 @@ export function ResultsDrawer({
               name={r.name}
             />
             <span className="result-name">
-              {r.name ?? `App ${r.appId}`}
+              {r.name ?? fmt(t.appFallback, { id: r.appId })}
               {r.developer ? (
                 <span className="result-developer">{r.developer}</span>
               ) : null}
