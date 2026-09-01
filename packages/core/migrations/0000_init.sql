@@ -1,14 +1,29 @@
+-- The baseline schema.
+--
+-- This replaced nine incremental migrations, which existed only as the shape
+-- drizzle-kit happens to emit — a cloner never consumed them, because wrangler
+-- applies whatever is in this directory and the end state is all that reaches
+-- a fresh database.
+--
+-- Produced by `wrangler d1 export apprank --remote --no-data`, not by
+-- `drizzle-kit generate`, and the difference matters: this is a dump of the
+-- live database rather than a reconstruction from the schema definition, so it
+-- carries `cr_unique_storefront_wide` — the partial unique index drizzle cannot
+-- express and would silently drop. Verified by applying this file to an empty
+-- database and diffing its own export against production's: identical.
+--
+-- Regenerate the same way if it ever needs rebuilding. Do not regenerate it
+-- from drizzle, which emits fourteen indexes where production has fifteen.
+
 CREATE TABLE `genre` (
 	`id` integer PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
 	`parent_id` integer
 );
---> statement-breakpoint
 CREATE TABLE `locale` (
 	`code` text PRIMARY KEY NOT NULL,
 	`language` text NOT NULL
 );
---> statement-breakpoint
 CREATE TABLE `storefront` (
 	`code` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
@@ -16,7 +31,6 @@ CREATE TABLE `storefront` (
 	`weight` real DEFAULT 1 NOT NULL,
 	`active` integer DEFAULT 1 NOT NULL
 );
---> statement-breakpoint
 CREATE TABLE `storefront_locale` (
 	`storefront_code` text NOT NULL,
 	`locale_code` text NOT NULL,
@@ -25,7 +39,6 @@ CREATE TABLE `storefront_locale` (
 	FOREIGN KEY (`storefront_code`) REFERENCES `storefront`(`code`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`locale_code`) REFERENCES `locale`(`code`) ON UPDATE no action ON DELETE no action
 );
---> statement-breakpoint
 CREATE TABLE `app` (
 	`id` integer PRIMARY KEY NOT NULL,
 	`bundle_id` text,
@@ -36,7 +49,6 @@ CREATE TABLE `app` (
 	`first_seen_at` integer NOT NULL,
 	`last_seen_at` integer NOT NULL
 );
---> statement-breakpoint
 CREATE TABLE `app_localization` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`app_id` integer NOT NULL,
@@ -49,8 +61,6 @@ CREATE TABLE `app_localization` (
 	FOREIGN KEY (`app_id`) REFERENCES `app`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`locale_code`) REFERENCES `locale`(`code`) ON UPDATE no action ON DELETE no action
 );
---> statement-breakpoint
-CREATE UNIQUE INDEX `al_dedupe` ON `app_localization` (`app_id`,`locale_code`,`content_hash`);--> statement-breakpoint
 CREATE TABLE `app_metadata_version` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`app_id` integer NOT NULL,
@@ -72,14 +82,11 @@ CREATE TABLE `app_metadata_version` (
 	`content_hash` text NOT NULL,
 	FOREIGN KEY (`app_id`) REFERENCES `app`(`id`) ON UPDATE no action ON DELETE no action
 );
---> statement-breakpoint
-CREATE UNIQUE INDEX `amv_dedupe` ON `app_metadata_version` (`app_id`,`content_hash`);--> statement-breakpoint
 CREATE TABLE `app_language` (
 	`app_id` integer NOT NULL,
 	`language` text NOT NULL,
 	PRIMARY KEY(`app_id`, `language`)
 );
---> statement-breakpoint
 CREATE TABLE `crawl_pair` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`keyword_id` integer NOT NULL,
@@ -96,17 +103,12 @@ CREATE TABLE `crawl_pair` (
 	FOREIGN KEY (`storefront_code`) REFERENCES `storefront`(`code`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`locale_code`) REFERENCES `locale`(`code`) ON UPDATE no action ON DELETE no action
 );
---> statement-breakpoint
-CREATE UNIQUE INDEX `cp_unique` ON `crawl_pair` (`keyword_id`,`storefront_code`,`locale_code`);--> statement-breakpoint
-CREATE INDEX `cp_due` ON `crawl_pair` (`next_due_at`);--> statement-breakpoint
 CREATE TABLE `keyword` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`text` text NOT NULL,
 	`normalized` text NOT NULL,
 	`language` text NOT NULL
 );
---> statement-breakpoint
-CREATE UNIQUE INDEX `kw_norm` ON `keyword` (`normalized`,`language`);--> statement-breakpoint
 CREATE TABLE `tracked_app` (
 	`user_id` text NOT NULL,
 	`app_id` integer NOT NULL,
@@ -114,7 +116,6 @@ CREATE TABLE `tracked_app` (
 	PRIMARY KEY(`user_id`, `app_id`),
 	FOREIGN KEY (`app_id`) REFERENCES `app`(`id`) ON UPDATE no action ON DELETE no action
 );
---> statement-breakpoint
 CREATE TABLE `tracked_keyword` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`user_id` text NOT NULL,
@@ -124,8 +125,6 @@ CREATE TABLE `tracked_keyword` (
 	FOREIGN KEY (`app_id`) REFERENCES `app`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`keyword_id`) REFERENCES `keyword`(`id`) ON UPDATE no action ON DELETE no action
 );
---> statement-breakpoint
-CREATE UNIQUE INDEX `tk_unique` ON `tracked_keyword` (`user_id`,`app_id`,`keyword_id`);--> statement-breakpoint
 CREATE TABLE `chart_ranking` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`storefront_code` text NOT NULL,
@@ -137,8 +136,6 @@ CREATE TABLE `chart_ranking` (
 	`source` text,
 	`r2_key` text
 );
---> statement-breakpoint
-CREATE UNIQUE INDEX `cr_unique` ON `chart_ranking` (`storefront_code`,`genre_id`,`chart`,`observed_date`);--> statement-breakpoint
 CREATE TABLE `popularity` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`keyword_id` integer NOT NULL,
@@ -152,8 +149,6 @@ CREATE TABLE `popularity` (
 	`fetched_at` integer NOT NULL,
 	FOREIGN KEY (`keyword_id`) REFERENCES `keyword`(`id`) ON UPDATE no action ON DELETE no action
 );
---> statement-breakpoint
-CREATE UNIQUE INDEX `pop_unique` ON `popularity` (`keyword_id`,`storefront_code`,`genre_id`,`week_start`);--> statement-breakpoint
 CREATE TABLE `rank_entry` (
 	`ranking_id` integer NOT NULL,
 	`position` integer NOT NULL,
@@ -162,8 +157,6 @@ CREATE TABLE `rank_entry` (
 	FOREIGN KEY (`ranking_id`) REFERENCES `ranking`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`app_id`) REFERENCES `app`(`id`) ON UPDATE no action ON DELETE no action
 );
---> statement-breakpoint
-CREATE INDEX `re_app` ON `rank_entry` (`app_id`,`ranking_id`);--> statement-breakpoint
 CREATE TABLE `ranking` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`pair_id` integer NOT NULL,
@@ -178,8 +171,6 @@ CREATE TABLE `ranking` (
 	`valid` integer DEFAULT 1 NOT NULL,
 	FOREIGN KEY (`pair_id`) REFERENCES `crawl_pair`(`id`) ON UPDATE no action ON DELETE no action
 );
---> statement-breakpoint
-CREATE UNIQUE INDEX `rk_pair_date` ON `ranking` (`pair_id`,`observed_date`);--> statement-breakpoint
 CREATE TABLE `rating_snapshot` (
 	`app_id` integer NOT NULL,
 	`storefront_code` text NOT NULL,
@@ -188,7 +179,6 @@ CREATE TABLE `rating_snapshot` (
 	`rating_avg` real,
 	PRIMARY KEY(`app_id`, `storefront_code`, `observed_date`)
 );
---> statement-breakpoint
 CREATE TABLE `review` (
 	`id` text PRIMARY KEY NOT NULL,
 	`app_id` integer NOT NULL,
@@ -201,7 +191,6 @@ CREATE TABLE `review` (
 	`reviewed_at` integer,
 	`fetched_at` integer NOT NULL
 );
---> statement-breakpoint
 CREATE TABLE `rollup_monthly_rank` (
 	`pair_id` integer NOT NULL,
 	`app_id` integer NOT NULL,
@@ -212,7 +201,6 @@ CREATE TABLE `rollup_monthly_rank` (
 	`days_observed` integer,
 	PRIMARY KEY(`pair_id`, `app_id`, `month`)
 );
---> statement-breakpoint
 CREATE TABLE `seed_term` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`month` text NOT NULL,
@@ -225,8 +213,6 @@ CREATE TABLE `seed_term` (
 	`label_confidence` real,
 	`matched_app_id` integer
 );
---> statement-breakpoint
-CREATE UNIQUE INDEX `st_unique` ON `seed_term` (`month`,`storefront_code`,`genre_id`,`term`);--> statement-breakpoint
 CREATE TABLE `asc_report_instance` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`report_type` text NOT NULL,
@@ -237,15 +223,12 @@ CREATE TABLE `asc_report_instance` (
 	`checksum` text,
 	`anomaly` text,
 	`fetched_at` integer NOT NULL
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `ari_unique` ON `asc_report_instance` (`report_type`,`granularity`,`processing_date`,`instance_id`);--> statement-breakpoint
+, `app_id` integer NOT NULL);
 CREATE TABLE `collector_state` (
 	`key` text PRIMARY KEY NOT NULL,
 	`value` text NOT NULL,
 	`updated_at` integer
 );
---> statement-breakpoint
 CREATE TABLE `fetch_error` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`fetched_at` integer NOT NULL,
@@ -255,19 +238,83 @@ CREATE TABLE `fetch_error` (
 	`response_ms` integer,
 	`error_class` text,
 	`r2_key` text
-);
---> statement-breakpoint
+, `message` text);
 CREATE TABLE `suggestion` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`type` text NOT NULL,
 	`payload` text NOT NULL,
 	`status` text DEFAULT 'pending' NOT NULL,
 	`created_at` integer NOT NULL
-);
---> statement-breakpoint
+, `user_id` text NOT NULL DEFAULT '');
 CREATE TABLE `user_quota` (
 	`user_id` text PRIMARY KEY NOT NULL,
 	`max_apps` integer,
 	`max_keywords` integer,
 	`max_storefronts_per_app` integer
 );
+CREATE TABLE `keyword_difficulty` (
+	`pair_id` integer NOT NULL,
+	`observed_date` text NOT NULL,
+	`score` integer NOT NULL,
+	`entrenchment` real NOT NULL,
+	`incumbent_strength` real NOT NULL,
+	`stability` real NOT NULL,
+	`saturation` real NOT NULL,
+	`sample_size` integer NOT NULL,
+	`formula_version` text NOT NULL,
+	`computed_at` integer NOT NULL,
+	PRIMARY KEY(`pair_id`, `observed_date`),
+	FOREIGN KEY (`pair_id`) REFERENCES `crawl_pair`(`id`) ON UPDATE no action ON DELETE no action
+);
+CREATE TABLE `collector_run` (
+	`detail` text,
+	`finished_at` integer,
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`job` text NOT NULL,
+	`ok` integer,
+	`started_at` integer NOT NULL,
+	`trigger` text NOT NULL
+);
+CREATE TABLE `mcp_credential` (
+	`id` text PRIMARY KEY NOT NULL,
+	`call_count` integer DEFAULT 0 NOT NULL,
+	`created_at` integer NOT NULL,
+	`expires_at` integer,
+	`last_used_at` integer,
+	`name` text NOT NULL,
+	`revoked_at` integer,
+	`scopes` text DEFAULT '["read:all"]' NOT NULL,
+	`secret_hash` text NOT NULL,
+	`user_id` text NOT NULL,
+	`window_count` integer DEFAULT 0 NOT NULL,
+	`window_start` integer
+);
+CREATE TABLE `mcp_tool_call` (
+	`called_at` integer NOT NULL,
+	`credential_id` text NOT NULL,
+	`duration_ms` integer,
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`outcome` text NOT NULL,
+	`params` text,
+	`row_count` integer,
+	`tool` text NOT NULL,
+	`user_id` text NOT NULL
+);
+DELETE FROM sqlite_sequence;
+CREATE UNIQUE INDEX `al_dedupe` ON `app_localization` (`app_id`,`locale_code`,`content_hash`);
+CREATE UNIQUE INDEX `amv_dedupe` ON `app_metadata_version` (`app_id`,`content_hash`);
+CREATE UNIQUE INDEX `cp_unique` ON `crawl_pair` (`keyword_id`,`storefront_code`,`locale_code`);
+CREATE INDEX `cp_due` ON `crawl_pair` (`next_due_at`);
+CREATE UNIQUE INDEX `kw_norm` ON `keyword` (`normalized`,`language`);
+CREATE UNIQUE INDEX `tk_unique` ON `tracked_keyword` (`user_id`,`app_id`,`keyword_id`);
+CREATE UNIQUE INDEX `cr_unique` ON `chart_ranking` (`storefront_code`,`genre_id`,`chart`,`observed_date`);
+CREATE UNIQUE INDEX `pop_unique` ON `popularity` (`keyword_id`,`storefront_code`,`genre_id`,`week_start`);
+CREATE INDEX `re_app` ON `rank_entry` (`app_id`,`ranking_id`);
+CREATE UNIQUE INDEX `rk_pair_date` ON `ranking` (`pair_id`,`observed_date`);
+CREATE UNIQUE INDEX `st_unique` ON `seed_term` (`month`,`storefront_code`,`genre_id`,`term`);
+CREATE INDEX `cr_started` ON `collector_run` (`started_at`);
+CREATE UNIQUE INDEX `ari_unique` ON `asc_report_instance` (`app_id`,`report_type`,`granularity`,`processing_date`,`instance_id`);
+CREATE UNIQUE INDEX `cr_unique_storefront_wide`
+  ON `chart_ranking` (`storefront_code`, `chart`, `observed_date`)
+  WHERE `genre_id` IS NULL;
+CREATE INDEX `mtc_called` ON `mcp_tool_call` (`called_at`);

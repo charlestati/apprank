@@ -120,7 +120,7 @@ export const chartRanking = sqliteTable(
   },
   (t) => [
     // NOTE: a second, partial unique index exists in migration
-    // 0007_chart_null_genre.sql covering the genre_id IS NULL rows. Drizzle
+    // 0000_init.sql covering the genre_id IS NULL rows. Drizzle
     // cannot express a partial index, so it lives in SQL only — do not
     // "restore" this file from a fresh generate without re-adding it, or the
     // storefront-wide charts silently start duplicating again.

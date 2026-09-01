@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "6d3c63d4-18f3-4aeb-9a8f-05cad2323fad",
+  "id": "8a886f45-674d-453e-af15-e602f44cf764",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "genre": {
@@ -109,12 +109,13 @@
     "storefront_locale": {
       "name": "storefront_locale",
       "columns": {
-        "storefront_code": {
-          "name": "storefront_code",
-          "type": "text",
+        "is_default": {
+          "name": "is_default",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
+          "autoincrement": false,
+          "default": 0
         },
         "locale_code": {
           "name": "locale_code",
@@ -123,31 +124,30 @@
           "notNull": true,
           "autoincrement": false
         },
-        "is_default": {
-          "name": "is_default",
-          "type": "integer",
+        "storefront_code": {
+          "name": "storefront_code",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
-          "default": 0
+          "autoincrement": false
         }
       },
       "indexes": {},
       "foreignKeys": {
-        "storefront_locale_storefront_code_storefront_code_fk": {
-          "name": "storefront_locale_storefront_code_storefront_code_fk",
-          "tableFrom": "storefront_locale",
-          "tableTo": "storefront",
-          "columnsFrom": ["storefront_code"],
-          "columnsTo": ["code"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "storefront_locale_locale_code_locale_code_fk": {
           "name": "storefront_locale_locale_code_locale_code_fk",
           "tableFrom": "storefront_locale",
           "tableTo": "locale",
           "columnsFrom": ["locale_code"],
+          "columnsTo": ["code"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "storefront_locale_storefront_code_storefront_code_fk": {
+          "name": "storefront_locale_storefront_code_storefront_code_fk",
+          "tableFrom": "storefront_locale",
+          "tableTo": "storefront",
+          "columnsFrom": ["storefront_code"],
           "columnsTo": ["code"],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -165,13 +165,6 @@
     "app": {
       "name": "app",
       "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
         "bundle_id": {
           "name": "bundle_id",
           "type": "text",
@@ -200,17 +193,17 @@
           "notNull": false,
           "autoincrement": false
         },
-        "primary_genre_id": {
-          "name": "primary_genre_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "first_seen_at": {
           "name": "first_seen_at",
           "type": "integer",
           "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
           "notNull": true,
           "autoincrement": false
         },
@@ -219,6 +212,13 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "primary_genre_id": {
+          "name": "primary_genre_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         }
       },
@@ -231,19 +231,33 @@
     "app_localization": {
       "name": "app_localization",
       "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
         "app_id": {
           "name": "app_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "captured_at": {
+          "name": "captured_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "content_hash": {
+          "name": "content_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
         },
         "locale_code": {
           "name": "locale_code",
@@ -259,13 +273,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "title": {
-          "name": "title",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "subtitle": {
           "name": "subtitle",
           "type": "text",
@@ -273,15 +280,8 @@
           "notNull": false,
           "autoincrement": false
         },
-        "captured_at": {
-          "name": "captured_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "content_hash": {
-          "name": "content_hash",
+        "title": {
+          "name": "title",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -322,13 +322,6 @@
     "app_metadata_version": {
       "name": "app_metadata_version",
       "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
         "app_id": {
           "name": "app_id",
           "type": "integer",
@@ -343,22 +336,15 @@
           "notNull": true,
           "autoincrement": false
         },
-        "source": {
-          "name": "source",
+        "content_hash": {
+          "name": "content_hash",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "title": {
-          "name": "title",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "subtitle": {
-          "name": "subtitle",
+        "currency": {
+          "name": "currency",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -371,22 +357,8 @@
           "notNull": false,
           "autoincrement": false
         },
-        "version": {
-          "name": "version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "price": {
-          "name": "price",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "currency": {
-          "name": "currency",
+        "genre_ids": {
+          "name": "genre_ids",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -399,16 +371,23 @@
           "notNull": false,
           "autoincrement": false
         },
-        "genre_ids": {
-          "name": "genre_ids",
+        "icon_url": {
+          "name": "icon_url",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "rating_count": {
-          "name": "rating_count",
+        "id": {
+          "name": "id",
           "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "price": {
+          "name": "price",
+          "type": "real",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -420,16 +399,9 @@
           "notNull": false,
           "autoincrement": false
         },
-        "screenshot_urls_hash": {
-          "name": "screenshot_urls_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "icon_url": {
-          "name": "icon_url",
-          "type": "text",
+        "rating_count": {
+          "name": "rating_count",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -441,11 +413,39 @@
           "notNull": false,
           "autoincrement": false
         },
-        "content_hash": {
-          "name": "content_hash",
+        "screenshot_urls_hash": {
+          "name": "screenshot_urls_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "subtitle": {
+          "name": "subtitle",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "version": {
+          "name": "version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         }
       },
@@ -503,12 +503,27 @@
     "crawl_pair": {
       "name": "crawl_pair",
       "columns": {
+        "burst_until": {
+          "name": "burst_until",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "id": {
           "name": "id",
           "type": "integer",
           "primaryKey": true,
           "notNull": true,
           "autoincrement": true
+        },
+        "interval_hours": {
+          "name": "interval_hours",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 24
         },
         "keyword_id": {
           "name": "keyword_id",
@@ -517,15 +532,37 @@
           "notNull": true,
           "autoincrement": false
         },
-        "storefront_code": {
-          "name": "storefront_code",
+        "last_fetched_at": {
+          "name": "last_fetched_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "locale_code": {
+          "name": "locale_code",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "locale_code": {
-          "name": "locale_code",
+        "next_due_at": {
+          "name": "next_due_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ref_count": {
+          "name": "ref_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "storefront_code": {
+          "name": "storefront_code",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -539,36 +576,6 @@
           "autoincrement": false,
           "default": 1
         },
-        "ref_count": {
-          "name": "ref_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "interval_hours": {
-          "name": "interval_hours",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 24
-        },
-        "next_due_at": {
-          "name": "next_due_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "last_fetched_at": {
-          "name": "last_fetched_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "volatility": {
           "name": "volatility",
           "type": "real",
@@ -576,13 +583,6 @@
           "notNull": true,
           "autoincrement": false,
           "default": 0
-        },
-        "burst_until": {
-          "name": "burst_until",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
         }
       },
       "indexes": {
@@ -607,20 +607,20 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "crawl_pair_storefront_code_storefront_code_fk": {
-          "name": "crawl_pair_storefront_code_storefront_code_fk",
-          "tableFrom": "crawl_pair",
-          "tableTo": "storefront",
-          "columnsFrom": ["storefront_code"],
-          "columnsTo": ["code"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "crawl_pair_locale_code_locale_code_fk": {
           "name": "crawl_pair_locale_code_locale_code_fk",
           "tableFrom": "crawl_pair",
           "tableTo": "locale",
           "columnsFrom": ["locale_code"],
+          "columnsTo": ["code"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "crawl_pair_storefront_code_storefront_code_fk": {
+          "name": "crawl_pair_storefront_code_storefront_code_fk",
+          "tableFrom": "crawl_pair",
+          "tableTo": "storefront",
+          "columnsFrom": ["storefront_code"],
           "columnsTo": ["code"],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -640,8 +640,8 @@
           "notNull": true,
           "autoincrement": true
         },
-        "text": {
-          "name": "text",
+        "language": {
+          "name": "language",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -654,8 +654,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "language": {
-          "name": "language",
+        "text": {
+          "name": "text",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -677,13 +677,6 @@
     "tracked_app": {
       "name": "tracked_app",
       "columns": {
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "app_id": {
           "name": "app_id",
           "type": "integer",
@@ -694,6 +687,13 @@
         "created_at": {
           "name": "created_at",
           "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -723,29 +723,8 @@
     "tracked_keyword": {
       "name": "tracked_keyword",
       "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "app_id": {
           "name": "app_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "keyword_id": {
-          "name": "keyword_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -754,6 +733,27 @@
         "created_at": {
           "name": "created_at",
           "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "keyword_id": {
+          "name": "keyword_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -793,15 +793,8 @@
     "chart_ranking": {
       "name": "chart_ranking",
       "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "storefront_code": {
-          "name": "storefront_code",
+        "chart": {
+          "name": "chart",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -814,12 +807,19 @@
           "notNull": false,
           "autoincrement": false
         },
-        "chart": {
-          "name": "chart",
-          "type": "text",
+        "http_status": {
+          "name": "http_status",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
         },
         "observed_date": {
           "name": "observed_date",
@@ -828,16 +828,16 @@
           "notNull": true,
           "autoincrement": false
         },
+        "r2_key": {
+          "name": "r2_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "result_ids": {
           "name": "result_ids",
           "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "http_status": {
-          "name": "http_status",
-          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -849,11 +849,11 @@
           "notNull": false,
           "autoincrement": false
         },
-        "r2_key": {
-          "name": "r2_key",
+        "storefront_code": {
+          "name": "storefront_code",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         }
       },
@@ -866,6 +866,101 @@
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "keyword_difficulty": {
+      "name": "keyword_difficulty",
+      "columns": {
+        "pair_id": {
+          "name": "pair_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "observed_date": {
+          "name": "observed_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "score": {
+          "name": "score",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "entrenchment": {
+          "name": "entrenchment",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "incumbent_strength": {
+          "name": "incumbent_strength",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "stability": {
+          "name": "stability",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "saturation": {
+          "name": "saturation",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sample_size": {
+          "name": "sample_size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "formula_version": {
+          "name": "formula_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "computed_at": {
+          "name": "computed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "keyword_difficulty_pair_id_crawl_pair_id_fk": {
+          "name": "keyword_difficulty_pair_id_crawl_pair_id_fk",
+          "tableFrom": "keyword_difficulty",
+          "tableTo": "crawl_pair",
+          "columnsFrom": ["pair_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "keyword_difficulty_pair_id_observed_date_pk": {
+          "columns": ["pair_id", "observed_date"],
+          "name": "keyword_difficulty_pair_id_observed_date_pk"
+        }
+      },
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
@@ -974,8 +1069,8 @@
     "rank_entry": {
       "name": "rank_entry",
       "columns": {
-        "ranking_id": {
-          "name": "ranking_id",
+        "app_id": {
+          "name": "app_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -988,8 +1083,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "app_id": {
-          "name": "app_id",
+        "ranking_id": {
+          "name": "ranking_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -1004,20 +1099,20 @@
         }
       },
       "foreignKeys": {
-        "rank_entry_ranking_id_ranking_id_fk": {
-          "name": "rank_entry_ranking_id_ranking_id_fk",
-          "tableFrom": "rank_entry",
-          "tableTo": "ranking",
-          "columnsFrom": ["ranking_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "rank_entry_app_id_app_id_fk": {
           "name": "rank_entry_app_id_app_id_fk",
           "tableFrom": "rank_entry",
           "tableTo": "app",
           "columnsFrom": ["app_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "rank_entry_ranking_id_ranking_id_fk": {
+          "name": "rank_entry_ranking_id_ranking_id_fk",
+          "tableFrom": "rank_entry",
+          "tableTo": "ranking",
+          "columnsFrom": ["ranking_id"],
           "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -1035,22 +1130,8 @@
     "ranking": {
       "name": "ranking",
       "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "pair_id": {
-          "name": "pair_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "observed_date": {
-          "name": "observed_date",
+        "collector_version": {
+          "name": "collector_version",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -1068,6 +1149,34 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "observed_date": {
+          "name": "observed_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "pair_id": {
+          "name": "pair_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "r2_key": {
+          "name": "r2_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "response_ms": {
@@ -1089,20 +1198,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
-        },
-        "collector_version": {
-          "name": "collector_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "r2_key": {
-          "name": "r2_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
           "autoincrement": false
         },
         "valid": {
@@ -1146,18 +1241,18 @@
           "notNull": true,
           "autoincrement": false
         },
-        "storefront_code": {
-          "name": "storefront_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "observed_date": {
           "name": "observed_date",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "rating_avg": {
+          "name": "rating_avg",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "rating_count": {
@@ -1167,11 +1262,11 @@
           "notNull": false,
           "autoincrement": false
         },
-        "rating_avg": {
-          "name": "rating_avg",
-          "type": "real",
+        "storefront_code": {
+          "name": "storefront_code",
+          "type": "text",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         }
       },
@@ -1189,13 +1284,6 @@
     "review": {
       "name": "review",
       "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
         "app_id": {
           "name": "app_id",
           "type": "integer",
@@ -1203,29 +1291,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "storefront_code": {
-          "name": "storefront_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "rating": {
-          "name": "rating",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "title": {
-          "name": "title",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "body": {
-          "name": "body",
+        "app_version": {
+          "name": "app_version",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -1238,9 +1305,30 @@
           "notNull": false,
           "autoincrement": false
         },
-        "app_version": {
-          "name": "app_version",
+        "body": {
+          "name": "body",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "fetched_at": {
+          "name": "fetched_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "rating": {
+          "name": "rating",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -1252,11 +1340,18 @@
           "notNull": false,
           "autoincrement": false
         },
-        "fetched_at": {
-          "name": "fetched_at",
-          "type": "integer",
+        "storefront_code": {
+          "name": "storefront_code",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         }
       },
@@ -1269,13 +1364,6 @@
     "rollup_monthly_rank": {
       "name": "rollup_monthly_rank",
       "columns": {
-        "pair_id": {
-          "name": "pair_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "app_id": {
           "name": "app_id",
           "type": "integer",
@@ -1283,11 +1371,11 @@
           "notNull": true,
           "autoincrement": false
         },
-        "month": {
-          "name": "month",
-          "type": "text",
+        "avg_rank": {
+          "name": "avg_rank",
+          "type": "real",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
         "best_rank": {
@@ -1297,9 +1385,9 @@
           "notNull": false,
           "autoincrement": false
         },
-        "avg_rank": {
-          "name": "avg_rank",
-          "type": "real",
+        "days_observed": {
+          "name": "days_observed",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -1311,11 +1399,18 @@
           "notNull": false,
           "autoincrement": false
         },
-        "days_observed": {
-          "name": "days_observed",
+        "month": {
+          "name": "month",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "pair_id": {
+          "name": "pair_id",
           "type": "integer",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         }
       },
@@ -1333,27 +1428,6 @@
     "seed_term": {
       "name": "seed_term",
       "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "month": {
-          "name": "month",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "storefront_code": {
-          "name": "storefront_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "genre_id": {
           "name": "genre_id",
           "type": "integer",
@@ -1361,26 +1435,12 @@
           "notNull": true,
           "autoincrement": false
         },
-        "term": {
-          "name": "term",
-          "type": "text",
-          "primaryKey": false,
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
           "notNull": true,
-          "autoincrement": false
-        },
-        "rank_in_genre": {
-          "name": "rank_in_genre",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "popularity_1_100": {
-          "name": "popularity_1_100",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "autoincrement": true
         },
         "label": {
           "name": "label",
@@ -1403,6 +1463,41 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "month": {
+          "name": "month",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "popularity_1_100": {
+          "name": "popularity_1_100",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "rank_in_genre": {
+          "name": "rank_in_genre",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "storefront_code": {
+          "name": "storefront_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "term": {
+          "name": "term",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
         }
       },
       "indexes": {
@@ -1420,57 +1515,22 @@
     "asc_report_instance": {
       "name": "asc_report_instance",
       "columns": {
-        "id": {
-          "name": "id",
+        "anomaly": {
+          "name": "anomaly",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "app_id": {
+          "name": "app_id",
           "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "report_type": {
-          "name": "report_type",
-          "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
-        },
-        "granularity": {
-          "name": "granularity",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "processing_date": {
-          "name": "processing_date",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "instance_id": {
-          "name": "instance_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "r2_key": {
-          "name": "r2_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
           "autoincrement": false
         },
         "checksum": {
           "name": "checksum",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "anomaly": {
-          "name": "anomaly",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -1482,18 +1542,126 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "granularity": {
+          "name": "granularity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "instance_id": {
+          "name": "instance_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "processing_date": {
+          "name": "processing_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "r2_key": {
+          "name": "r2_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "report_type": {
+          "name": "report_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
         }
       },
       "indexes": {
         "ari_unique": {
           "name": "ari_unique",
           "columns": [
+            "app_id",
             "report_type",
             "granularity",
             "processing_date",
             "instance_id"
           ],
           "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "collector_run": {
+      "name": "collector_run",
+      "columns": {
+        "detail": {
+          "name": "detail",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "job": {
+          "name": "job",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ok": {
+          "name": "ok",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "trigger": {
+          "name": "trigger",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "cr_started": {
+          "name": "cr_started",
+          "columns": ["started_at"],
+          "isUnique": false
         }
       },
       "foreignKeys": {},
@@ -1511,18 +1679,18 @@
           "notNull": true,
           "autoincrement": false
         },
-        "value": {
-          "name": "value",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "updated_at": {
           "name": "updated_at",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
+          "autoincrement": false
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
           "autoincrement": false
         }
       },
@@ -1535,12 +1703,19 @@
     "fetch_error": {
       "name": "fetch_error",
       "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
+        "endpoint": {
+          "name": "endpoint",
+          "type": "text",
+          "primaryKey": false,
           "notNull": true,
-          "autoincrement": true
+          "autoincrement": false
+        },
+        "error_class": {
+          "name": "error_class",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         },
         "fetched_at": {
           "name": "fetched_at",
@@ -1549,8 +1724,185 @@
           "notNull": true,
           "autoincrement": false
         },
-        "endpoint": {
-          "name": "endpoint",
+        "http_status": {
+          "name": "http_status",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "message": {
+          "name": "message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "params": {
+          "name": "params",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "r2_key": {
+          "name": "r2_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "response_ms": {
+          "name": "response_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "mcp_credential": {
+      "name": "mcp_credential",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "call_count": {
+          "name": "call_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_used_at": {
+          "name": "last_used_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "scopes": {
+          "name": "scopes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[\"read:all\"]'"
+        },
+        "secret_hash": {
+          "name": "secret_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "window_count": {
+          "name": "window_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "window_start": {
+          "name": "window_start",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "mcp_tool_call": {
+      "name": "mcp_tool_call",
+      "columns": {
+        "called_at": {
+          "name": "called_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "credential_id": {
+          "name": "credential_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "duration_ms": {
+          "name": "duration_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "outcome": {
+          "name": "outcome",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -1563,36 +1915,35 @@
           "notNull": false,
           "autoincrement": false
         },
-        "http_status": {
-          "name": "http_status",
+        "row_count": {
+          "name": "row_count",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "response_ms": {
-          "name": "response_ms",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "error_class": {
-          "name": "error_class",
+        "tool": {
+          "name": "tool",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         },
-        "r2_key": {
-          "name": "r2_key",
+        "user_id": {
+          "name": "user_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "mtc_called": {
+          "name": "mtc_called",
+          "columns": ["called_at"],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -1601,19 +1952,19 @@
     "suggestion": {
       "name": "suggestion",
       "columns": {
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "id": {
           "name": "id",
           "type": "integer",
           "primaryKey": true,
           "notNull": true,
           "autoincrement": true
-        },
-        "type": {
-          "name": "type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
         },
         "payload": {
           "name": "payload",
@@ -1630,9 +1981,16 @@
           "autoincrement": false,
           "default": "'pending'"
         },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -1647,13 +2005,6 @@
     "user_quota": {
       "name": "user_quota",
       "columns": {
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
         "max_apps": {
           "name": "max_apps",
           "type": "integer",
@@ -1673,6 +2024,13 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
           "autoincrement": false
         }
       },
