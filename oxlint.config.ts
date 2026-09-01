@@ -26,7 +26,7 @@ export default defineConfig({
 		"oxc/no-barrel-file": "off",
 	},
 	// Note: the ultracite vitest preset applies its rules via its own override
-	// block, which wins over top-level overrides here — test-specific
-	// relaxations therefore live as justified file-header disables in the test
+	// block, which wins over top-level overrides here, so test-specific
+	// relaxations live as justified file-header disables in the test
 	// files themselves.
 });

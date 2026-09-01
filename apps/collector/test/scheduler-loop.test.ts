@@ -120,7 +120,7 @@ describe("SchedulerDO work loop", () => {
 
 	it("leaves a backoff park alone instead of waking every watchdog tick", async () => {
 		// The one far-future alarm that is not stale. Pulling it in made the */10
-		// cron wake the loop for the whole pause — two D1 reads and a heartbeat
+		// cron wake the loop for the whole pause: two D1 reads and a heartbeat
 		// write each time, to conclude it was still paused.
 		const name = "paused-park";
 		await reset(name);

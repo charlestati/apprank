@@ -1,7 +1,9 @@
-// `pnpm track` — reconcile the tracked set from one file.
+// `pnpm track`: reconcile the tracked set from one file.
 //
-// Adding an app or a keyword must never be a code change (invariant 5), but the
-// raw SQL for it is four statements with subqueries and easy to get wrong. This
+// Adding an app or a keyword must never be a code change (invariant 5), but
+// the
+// raw SQL for it is four statements with subqueries and easy to get wrong.
+// This
 // reads a gitignored config, works out the difference against what is already
 // in the database, and prints it. Nothing is written without `--apply`.
 //
@@ -86,7 +88,7 @@ for (const w of warnings) {
 }
 
 if (statements.length === 0) {
-	console.log("Already in sync — nothing to write.");
+	console.log("Already in sync, nothing to write.");
 	process.exit(0);
 }
 

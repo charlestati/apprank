@@ -2,8 +2,9 @@
 // justifies it.
 //
 // Two ideas drive this panel. First, an average rank across a portfolio of
-// keywords is a vanity number — what matters is how many terms sit in the zone
-// that earns taps at all. Second, brand searches are demand you already own, so
+// keywords is a vanity number. What matters is how many terms sit in the zone
+// that earns taps at all. Second, brand searches are demand you already own,
+// so
 // counting them alongside generic wins flatters the picture; ASO progress is
 // the generic column.
 

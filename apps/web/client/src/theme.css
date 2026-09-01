@@ -11,7 +11,7 @@
 :root {
 	color-scheme: light;
 
-	/* Surfaces — sunken behind, raised for cards, overlay for popups */
+	/* Surfaces: sunken behind, raised for cards, overlay for popups */
 	--ds-surface: #ffffff;
 	--ds-surface-sunken: #f8f8f8;
 	--ds-surface-raised: #ffffff;
@@ -84,7 +84,7 @@
    * label that would have taken them takes font.body or heading.xsmall and
    * gets the room it needs instead. The base is font.body.large (16px) rather
    * than ADS's 14px default, because this is a reading surface, not a dense
-   * admin console; the 14px step is reserved for genuinely dense contexts —
+   * admin console; the 14px step is reserved for genuinely dense contexts:
    * table cells, chart furniture, secondary metadata. */
 	--ds-font-heading-xlarge: normal var(--ds-weight-bold) 1.75rem/2rem
 		var(--ds-font-sans);
@@ -307,7 +307,7 @@ main {
 	text-decoration: none;
 	color: var(--ds-text-subtle);
 }
-/* Language picker: a quiet control in the top bar — it changes how the page
+/* Language picker: a quiet control in the top bar. It changes how the page
    reads, never what it reports, so it should not compete with the data. */
 .lang-picker select,
 .app-picker select {

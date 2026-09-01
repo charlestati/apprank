@@ -1,7 +1,7 @@
 # Rank collection from GitHub's runners.
 #
 # Apple rate-limits the public iTunes endpoints per IP, and every Cloudflare
-# Worker egresses from a shared pool Apple already rejects — the deployed
+# Worker egresses from a shared pool Apple already rejects, so the deployed
 # collector gets HTTP 429 on every attempt while the identical request succeeds
 # from an ordinary connection. This runs the *same* collector code from a
 # GitHub runner, so the observations carry the same normaliser, provenance and

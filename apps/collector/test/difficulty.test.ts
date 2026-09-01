@@ -270,7 +270,8 @@ describe(recomputeDifficulty, () => {
 
 	it("keeps a tracked app's own rating count out of nowhere", async () => {
 		// The tracked app sits on its own result page; its ratings count like any
-		// other incumbent's, which is correct — it is part of the competition.
+		// other incumbent's, which is correct, because it is part of the
+		// competition.
 		await seedApp(TRACKED, 70);
 		await seedApp(100, 900_000);
 		await seedRanking(1, isoDay(1), [

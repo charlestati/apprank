@@ -50,7 +50,7 @@ describe(tracked, () => {
 		expect(row?.detail).toContain("apple said no");
 	});
 
-	it("leaves the row unfinished when the job never returns — the alarm case", async () => {
+	it("leaves the row unfinished when the job never returns, the alarm case", async () => {
 		// A crash between start and finish is exactly what observation tables
 		// cannot show, so an open row has to be the visible signal.
 		await startRun(env.DB, "daily", "cron");

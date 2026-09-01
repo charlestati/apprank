@@ -1,6 +1,6 @@
 // The full result page behind one observation. We keep 200 track ids per
 // crawl, so this is the deep view: rank 47 today is what tells you when a
-// climb started. Apps we have never met show as ids — honest, not dropped.
+// climb started. Apps we have never met show as ids: honest, not dropped.
 
 import { useEffect, useState } from "react";
 

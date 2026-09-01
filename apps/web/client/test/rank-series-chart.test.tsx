@@ -86,7 +86,7 @@ describe("Rank series chart", () => {
 		);
 		const mark = container.querySelector(".unranked-mark title");
 		expect(mark?.textContent).toContain("outside the top 200");
-		// A day we never collected has no mark at all — absence stays absence.
+		// A day we never collected has no mark at all: absence stays absence.
 		expect(container.querySelectorAll(".unranked-mark")).toHaveLength(1);
 	});
 

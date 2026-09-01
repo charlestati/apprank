@@ -6,18 +6,18 @@
 #
 #   1. No observation was stored from a throttled or failed fetch. Apple
 #      answers a rate limit with an *empty result array*, so a 403/429 that
-#      reached `ranking` would read as "the app is not ranking" — the exact
+#      reached `ranking` would read as "the app is not ranking", the exact
 #      silent-garbage failure invariant 3 forbids.
 #   2. Every ranking carries its provenance (status, collector version, count).
 #   3. Every ranking has its indexed rank_entry rows, or the top-10 index and
 #      the stored result list disagree.
 #   4. R2 holds the normalised record for every ranking written today, because
 #      R2 is the source of truth and `rebuild-d1` reads it, not D1.
-#   5. Nothing is overdue by more than a day — a pair that stops being picked
+#   5. Nothing is overdue by more than a day. A pair that stops being picked
 #      loses history permanently and silently.
 set -uo pipefail
 
-# launchd starts jobs with a minimal PATH — not the interactive shell's — so
+# launchd starts jobs with a minimal PATH, not the interactive shell's, so
 # `npx` is absent and every wrangler call fails with "command not found".
 # Resolve the toolchain explicitly rather than depending on inherited env.
 for candidate in "$HOME/.vite-plus/bin" /opt/homebrew/bin /usr/local/bin; do
@@ -73,19 +73,19 @@ abandoned=$(get abandoned)
 note "rankings today: $today / $pairs active pairs"
 [ "$bad" -eq 0 ]    || { note "FAIL $bad ranking(s) stored from a non-200 or invalid fetch"; fail=1; }
 [ "$noprov" -eq 0 ] || { note "FAIL $noprov ranking(s) missing provenance"; fail=1; }
-[ "$empty" -eq 0 ]  || { note "FAIL $empty ranking(s) with zero results — a throttle stored as an observation"; fail=1; }
+[ "$empty" -eq 0 ]  || { note "FAIL $empty ranking(s) with zero results, a throttle stored as an observation"; fail=1; }
 [ "$noent" -eq 0 ]  || { note "FAIL $noent ranking(s) with no rank_entry rows"; fail=1; }
 [ "$overdue" -eq 0 ] || { note "WARN $overdue pair(s) overdue by more than a day"; }
 [ "$err1h" -eq 0 ]  || note "note: $err1h fetch_error row(s) in the last hour"
 
 # The app-level feeds. These sat at zero for a day because they ran only on
-# Cloudflare, throttled, and gave up — and nothing here noticed, because the
+# Cloudflare, throttled, and gave up, and nothing here noticed, because the
 # checks above only ever looked at `ranking`. A feed that is silently empty is
 # the same class of failure as an observation that is silently wrong.
 note "today: ratings=$ratings charts=$charts · reviews (all time)=$reviews"
 [ "$empty_ratings" -eq 0 ] || { note "FAIL $empty_ratings rating_snapshot row(s) with no rating at all"; fail=1; }
 [ "$empty_charts" -eq 0 ]  || { note "FAIL $empty_charts chart_ranking row(s) with an empty result list"; fail=1; }
-[ "$abandoned" -eq 0 ] || note "WARN $abandoned batch(es) abandoned in the last 24h — a feed gave up for the day"
+[ "$abandoned" -eq 0 ] || note "WARN $abandoned batch(es) abandoned in the last 24h, a feed gave up for the day"
 [ "$ratings" -gt 0 ] || note "WARN no rating_snapshot for today yet"
 [ "$charts" -gt 0 ]  || note "WARN no chart_ranking for today yet"
 

@@ -22,11 +22,13 @@ export const storefront = sqliteTable("storefront", {
 
 export const locale = sqliteTable("locale", {
 	code: text("code").primaryKey(), // App Store Connect localization codes: 'fr-FR', 'en-GB', ...
-	language: text("language").notNull(), // 'fr', 'en' — the language dimension
+	language: text("language").notNull(), // 'fr', 'en': the language dimension
 });
 
-// Which locales each storefront's search index covers (Apple's cross-localization
-// table from the ASC "App Store localizations" reference). A keyword is tracked
+// Which locales each storefront's search index covers (Apple's
+// cross-localization
+// table from the ASC "App Store localizations" reference). A keyword is
+// tracked
 // against a (storefront, locale) pair, never a storefront alone.
 export const storefrontLocale = sqliteTable(
 	"storefront_locale",

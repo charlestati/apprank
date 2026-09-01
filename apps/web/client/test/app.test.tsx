@@ -16,7 +16,7 @@ describe("App shell", () => {
 	// The shell fires two requests on mount and mounts its child page when the
 	// first resolves, so requests can still be in flight when a test ends.
 	// Unmount, then leave an inert stub in place rather than restoring the real
-	// fetch — a restored fetch would reach the network.
+	// fetch, since a restored fetch would reach the network.
 	afterEach(() => {
 		cleanup();
 		stubFetch({ "*": [] });

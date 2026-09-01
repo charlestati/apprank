@@ -163,7 +163,7 @@ describe("the wall", () => {
 	});
 
 	it("keeps each account to its own apps", async () => {
-		// The tracked app belongs to 'admin', which is operator — not alice.
+		// The tracked app belongs to 'admin', which is operator, not alice.
 		const res = await worker.fetch(
 			apiRequest("/apps", {
 				headers: { Authorization: header("alice", "second-account-secret") },

@@ -102,7 +102,7 @@ describe("row caps", () => {
 			walled()
 		);
 		// Schema validation rejects it before dispatch, so the reply is a
-		// validation error rather than a tool result — which is the point: the cap
+		// validation error rather than a tool result, which is the point. The cap
 		// is part of the contract the client is handed, not a silent trim.
 		const body = await jsonRpcBody<{
 			result?: { content?: { text: string }[]; isError?: boolean };

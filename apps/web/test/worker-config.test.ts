@@ -27,7 +27,7 @@ describe("the assets configuration", () => {
 	it("sends every request through the Worker before the assets binding", () => {
 		// This is the whole reason `not_found_handling: single-page-application`
 		// cannot reach /mcp or /api. Turn it off and the SPA fallback answers them
-		// with index.html — the API and the MCP endpoint both break, and the wall
+		// with index.html, the API and the MCP endpoint both break, and the wall
 		// that gates the HTML disappears with them.
 		expect(assets.run_worker_first).toBeTruthy();
 	});

@@ -45,7 +45,7 @@ export function bearer(header: string | null): string | null {
 
 /**
  * `configured: false` means no ADMIN_TOKEN secret is set. The route then does
- * not exist at all — an unconfigured collector must never be remotely
+ * not exist at all: an unconfigured collector must never be remotely
  * triggerable, so this fails closed exactly like the web Worker's wall.
  */
 export async function authorize(

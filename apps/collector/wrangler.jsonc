@@ -3,7 +3,7 @@
 	"name": "apprank-collector",
 	"main": "src/index.ts",
 	"compatibility_date": "2026-08-01",
-	// COLLECTION_MODE defaults to "all" — collect everything. Set it to
+	// COLLECTION_MODE defaults to "all", meaning collect everything. Set it to
 	// "credentialed" (App Store Connect and Apple Ads only) on a deployment whose
 	// egress Apple's public iTunes endpoints reject, which is every Cloudflare
 	// Worker: the 429s are not free, each one feeds the daily tally that halves

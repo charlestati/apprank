@@ -61,7 +61,7 @@ export interface ResultPage {
 
 /**
  * Every app Apple returned for one observation, in order. We hold 200 track
- * ids per observation but only name the ones we have met — an unknown id is
+ * ids per observation but only name the ones we have met. An unknown id is
  * returned as an id rather than dropped, because dropping it would silently
  * change the positions of everything below it.
  */

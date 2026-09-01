@@ -203,7 +203,7 @@ describe("scheduled handler", () => {
 describe("collection mode", () => {
 	it("queues no public-endpoint work on a credentialed-only deployment", async () => {
 		// Cloudflare's egress is rejected by Apple's public endpoints, so queueing
-		// lookups, reviews and charts there produces nothing but throttles — and
+		// lookups, reviews and charts there produces nothing but throttles, and
 		// each one feeds the daily tally that halves the learned rate.
 		await env.DB.batch([
 			env.DB.prepare(

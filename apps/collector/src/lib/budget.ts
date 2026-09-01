@@ -4,7 +4,7 @@
 // The governing rule is **flex frequency, never coverage**. Dropping a pair
 // destroys its history permanently; checking it every other day keeps the
 // series alive at lower resolution. So when demand outgrows the discovered
-// Apple rate, intervals stretch — the tracked set never shrinks.
+// Apple rate, intervals stretch, and the tracked set never shrinks.
 
 /** Interval ladder in days. Nothing is ever checked less often than the last. */
 export const INTERVAL_LADDER_DAYS = [1, 2, 3, 7] as const;

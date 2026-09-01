@@ -242,7 +242,7 @@ describe("Apple Ads client", () => {
 
 	it("accepts an unwrapped ACL payload too", async () => {
 		// Apple's own SDK models the response as { acls: [...] }; the live API
-		// wraps it in `result`. Tolerate every shape rather than guess — reading
+		// wraps it in `result`. Tolerate every shape rather than guess: reading
 		// the wrong wrapper yields an empty list, which looks exactly like a
 		// permissions problem and is not one.
 		const { pem } = await generateP8Pem();

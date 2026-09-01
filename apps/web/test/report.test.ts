@@ -222,7 +222,7 @@ describe("GET /apps/:appId/report", () => {
 			{ count: 1, date: isoDay(2), errorClass: "throttled" },
 		]);
 		// The key carries the storefront and locale, so the other pair on the same
-		// storefront stays clean — a throttle is never charged to a keyword that
+		// storefront stays clean: a throttle is never charged to a keyword that
 		// did not suffer it.
 		expect(rowB?.fetchErrors).toStrictEqual([]);
 	});

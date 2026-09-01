@@ -2,8 +2,10 @@
 //
 // Apple rate-limits the public iTunes endpoints per IP, and every Cloudflare
 // Worker egresses from a shared pool Apple already rejects. The deployed
-// collector therefore cannot crawl ranks, look up metadata, or pull reviews and
-// charts — it gets 429 on every attempt. Those attempts were not free: each one
+// collector therefore cannot crawl ranks, look up metadata, or pull reviews
+// and
+// charts, because it gets 429 on every attempt. Those attempts were not free:
+// each one
 // feeds `windowErrorCount`, which is what halves the learned rate, so a
 // known-broken path was steadily corrupting the signal that decides how often
 // every pair gets checked.

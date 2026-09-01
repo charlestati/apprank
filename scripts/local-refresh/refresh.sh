@@ -13,7 +13,7 @@
 # throttle.
 set -uo pipefail
 
-# launchd starts jobs with a minimal PATH — not the interactive shell's — so
+# launchd starts jobs with a minimal PATH, not the interactive shell's, so
 # `npx` is absent and every wrangler call fails with "command not found".
 # Resolve the toolchain explicitly rather than depending on inherited env.
 for candidate in "$HOME/.vite-plus/bin" /opt/homebrew/bin /usr/local/bin; do
@@ -45,7 +45,7 @@ say() {
 
 # Strip the keyword out of a response body before it is logged. This log ships
 # as a CI artifact, and on a public repository both artifacts and job logs are
-# readable by anyone with the run URL — the tracked keyword set is the
+# readable by anyone with the run URL, and the tracked keyword set is the
 # operator's ASO strategy and has no business being published with it. Applied
 # to every body logged whole, not only the ones known to carry the field today.
 redact() {
@@ -60,7 +60,7 @@ TOKEN="$(sed -n 's/^ADMIN_TOKEN=//p' .dev.vars | head -1)"
 
 # A previous cycle that died leaves the port held; refuse rather than fight it.
 if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
-  say "SKIP port $PORT already in use — a cycle is still running"
+  say "SKIP port $PORT already in use, a cycle is still running"
   exit 0
 fi
 
@@ -115,11 +115,11 @@ for _ in $(seq 1 "$MAX_UNITS"); do
     *'"empty":true'*) say "drained after $crawled pair(s)"; break ;;
     *'"throttled":true'*)
       throttled=1
-      say "THROTTLED — stopping this cycle: $(redact "$r")"
+      say "THROTTLED, stopping this cycle: $(redact "$r")"
       break ;;
     *'"empty":false'*)
       crawled=$((crawled + 1))
-      # The pair id, never the keyword (see redact) — an id means nothing
+      # The pair id, never the keyword (see redact), because an id means nothing
       # without the database.
       say "crawled pair $(printf '%s' "$r" | sed -n 's/.*"pairId":\([0-9]*\).*/\1/p')"
       sleep "$SPACING" ;;
@@ -136,7 +136,7 @@ for _ in $(seq 1 "$MAX_UNITS"); do
   esac
 done
 
-# App-level pulls — metadata lookup, ratings, reviews, charts, compaction, ASC.
+# App-level pulls: metadata lookup, ratings, reviews, charts, compaction, ASC.
 #
 # These are enqueued by the 03:00 cron into *production's* Durable Object and
 # then die there: they hit the same public iTunes endpoints as the crawler, from
@@ -172,7 +172,7 @@ for _ in $(seq 1 "$MAX_STEPS"); do
       sleep "$SPACING" ;;
     *)
       # A step that records a fetch_error still returns and still advances the
-      # queue, so one bad unit must not end the drain — only a run of them.
+      # queue, so one bad unit must not end the drain, only a run of them.
       steps=$((steps + 1)); step_fails=$((step_fails + 1))
       say "step (recorded an error): $r"
       [ "$step_fails" -ge 4 ] && { say "stopping drain after $step_fails failing steps"; break; }

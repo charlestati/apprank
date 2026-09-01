@@ -1,4 +1,4 @@
--- Tier 1 tracking seed — TEMPLATE. Copy to seeds/local/ (gitignored), replace
+-- Tier 1 tracking seed, a TEMPLATE. Copy to seeds/local/ (gitignored), replace
 -- every placeholder, then apply from apps/collector with:
 --   npx wrangler d1 execute apprank --remote --file ../../packages/core/seeds/local/<your-file>.sql
 --

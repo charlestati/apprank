@@ -144,7 +144,7 @@ describe("GET /api/health/data", () => {
          VALUES (?1, 'APP_STORE_DOWNLOADS', 'DAILY', '2026-01-01', NULL, 0)`
 			).bind(APP_ID),
 			// Another operator's app: same report type and date, and an anomaly of
-			// its own. It must not appear in this caller's health page — first-party
+			// its own. It must not appear in this caller's health page: first-party
 			// analytics is the one part of the collector's output that is not shared.
 			env.DB.prepare(
 				`INSERT INTO asc_report_instance (app_id, report_type, granularity, processing_date, anomaly, fetched_at)

@@ -1,6 +1,6 @@
 // HTTP Basic authentication against a fixed set of accounts.
 //
-// Accounts live in the BASIC_AUTH_ACCOUNTS secret as JSON — never in the
+// Accounts live in the BASIC_AUTH_ACCOUNTS secret as JSON, never in the
 // repository, which is public:
 //
 //   [
@@ -8,7 +8,8 @@
 //     { "username": "alice",   "password": "…", "userId": "alice" }
 //   ]
 //
-// `userId` is what the ownership checks compare against (`tracked_app.user_id`),
+// `userId` is what the ownership checks compare against
+// (`tracked_app.user_id`),
 // so it is the durable identity: change a password freely, but changing a
 // userId re-points that person at a different set of tracked apps. It defaults
 // to the username.

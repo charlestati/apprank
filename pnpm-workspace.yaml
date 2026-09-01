@@ -6,7 +6,7 @@ packages:
 allowBuilds:
   # Pulled in transitively by `agents` (via its Babel plugins). Its
   # postinstall only prints a funding notice and nothing here imports it,
-  # so it is denied rather than approved — an unapproved build script
+  # so it is denied rather than approved, because an unapproved build script
   # fails every pnpm command, including `pnpm generate`.
   core-js-pure: false
   esbuild: true

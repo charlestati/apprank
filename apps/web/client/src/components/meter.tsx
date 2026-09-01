@@ -1,8 +1,9 @@
 /* oxlint-disable jsx-a11y/prefer-tag-over-role -- role="img" gives the bar a
    single accessible name; an <img> tag cannot render a CSS-drawn meter. */
 
-// Inline magnitude bar with its value beside it — the table's densest signal.
-// The number is always present, so the bar is decoration, not the only channel.
+// Inline magnitude bar with its value beside it, the table's densest signal.
+// The number is always present, so the bar is decoration, not the only
+// channel.
 
 interface Props {
 	value: number | null;

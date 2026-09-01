@@ -1,16 +1,18 @@
 // How much of a window we actually observed, and what went wrong in the rest.
 //
-// This exists because a rate-limited week and a ranking collapse look identical
+// This exists because a rate-limited week and a ranking collapse look
+// identical
 // in a series of positions. Apple's throttle returns HTTP 403 with an empty
 // results array, which the collector records as a `fetch_error` rather than as
-// "not ranking" — but a consumer reading only the observations still sees a
+// "not ranking", but a consumer reading only the observations still sees a
 // hole and will happily narrate it as a decline. So every answer carries the
 // shape of its own holes.
 //
 // Expected observations are computed from the pair's own cadence, not from the
 // calendar. `crawl_pair.interval_hours` is stretched by the daily budget when
 // demand exceeds the learned Apple rate, so a pair on a 7-day rung has six-day
-// gaps by design. Counting those as missing days would report the whole tail of
+// gaps by design. Counting those as missing days would report the whole tail
+// of
 // the tracked set as degraded and make the signal useless.
 
 const DAY_MS = 86_400_000;

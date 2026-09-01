@@ -271,7 +271,7 @@ describe("GET /api/pairs/:pairId/history", () => {
 
 	it("falls back to the default window on a junk days value", async () => {
 		// Number("abc") is NaN, and NaN survives Math.min/Math.max unchanged, so an
-		// unguarded clamp reached sinceDate() and threw RangeError — a 500 for what
+		// unguarded clamp reached sinceDate() and threw RangeError, a 500 for what
 		// is only a malformed query string.
 		await seedCatalog();
 		await seedKeywords();
