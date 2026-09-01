@@ -1,7 +1,8 @@
 // Metadata change events for a tracked app.
 //
-// `app_metadata_version` holds one row per *change*, not per sighting — the
-// dedupe index is on the content hash — so this table is already the event log.
+// `app_metadata_version` holds one row per change*, not per sighting, since
+// the dedupe index is on the content hash, so this table is already the event
+// log.
 // A rank move is only interpretable against the release that might have caused
 // it, which is why these are the anchors the rank chart draws markers on.
 
@@ -45,7 +46,8 @@ export async function metadataChanges(
 	limit: number
 ): Promise<MetadataChange[]> {
 	// One extra row before the window, so the oldest change in range can still be
-	// diffed against what preceded it rather than reported as "everything changed".
+	// diffed against what preceded it rather than reported as "everything
+	// changed".
 	const rows = await db
 		.prepare(
 			`SELECT captured_at, version, title, subtitle, price, has_iap, icon_url,

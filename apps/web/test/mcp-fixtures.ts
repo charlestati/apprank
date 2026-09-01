@@ -107,12 +107,13 @@ export async function toolPayload(
 }
 
 /**
- * Drive the MCP endpoint with a real ExecutionContext and settle everything the
+ * Drive the MCP endpoint with a real ExecutionContext and settle everything
+ * the
  * handler deferred, so the audit row is on disk before a test asserts on it.
  *
  * The body is drained first, and that ordering is load-bearing: a streamed
  * (SSE) reply produces the tool result lazily as the consumer reads it, so the
- * tool has not run — and has not logged — until the stream is consumed.
+ * tool has not run, and has not logged, until the stream is consumed.
  * Waiting on the ExecutionContext before reading would wait for nothing.
  */
 export async function fetchMcp(

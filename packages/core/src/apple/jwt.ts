@@ -1,5 +1,5 @@
-// ES256 JWT signing via WebCrypto — shared by Apple Ads, App Store Connect,
-// and Sign in with Apple. Runs natively in workerd; no Node crypto needed.
+// ES256 JWT signing via WebCrypto, shared by Apple Ads, App Store Connect, and
+// Sign in with Apple. Runs natively in workerd; no Node crypto needed.
 
 function base64url(data: Uint8Array | string): string {
 	const bytes =
@@ -47,7 +47,8 @@ export async function signJwt(
 		key,
 		new TextEncoder().encode(signingInput)
 	);
-	// WebCrypto returns the raw 64-byte (r,s) signature — exactly the JWS ES256 format.
+	// WebCrypto returns the raw 64-byte (r,s) signature, exactly the JWS ES256
+	// format.
 	return `${signingInput}.${base64url(new Uint8Array(sig))}`;
 }
 

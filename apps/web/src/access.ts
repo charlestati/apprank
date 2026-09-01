@@ -4,13 +4,13 @@
 //
 //   1. Is this a signed-in operator at all?  (the session gate)
 //   2. Does *this* operator track the app or keyword being asked about?
-//      (ownership — without it, any signed-in user could read another's data
+//      (ownership; without it, any signed-in user could read another's data
 //      by walking ids, since app and pair ids are guessable integers)
 //
 // Ranking observations are deliberately shared: `crawl_pair` is the union of
 // what everyone tracks, so two operators watching the same keyword produce one
 // crawl. Ownership therefore gates *access to a pair's data*, not the data
-// itself — you may read a pair when you track that keyword.
+// itself: you may read a pair when you track that keyword.
 //
 // The checks take a database and a user id rather than a request context, so
 // that a second transport (anything that is not an HTTP route) enforces the

@@ -1,7 +1,7 @@
 // Public iTunes/App Store endpoints. Unauthenticated, IP-rate-limited
 // (~20/min documented; effective budget discovered empirically by the
 // scheduler). Critical failure mode: throttling returns HTTP 403 with an empty
-// results array — a 403 must NEVER be persisted as an observation.
+// results array, so a 403 must NEVER be persisted as an observation.
 
 export interface ITunesResult {
 	trackId: number;
@@ -75,7 +75,7 @@ export function reviewsRssUrl(
 	return `https://itunes.apple.com/${storefront}/rss/customerreviews/page=${page}/sortby=mostrecent/id=${appId}/json`;
 }
 
-/** Legacy iTunes RSS charts — the only public source with genre + grossing. */
+/** Legacy iTunes RSS charts: the only public source with genre and grossing. */
 export function chartRssUrl(
 	storefront: string,
 	chart: "free" | "paid" | "grossing",

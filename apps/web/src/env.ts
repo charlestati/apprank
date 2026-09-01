@@ -14,7 +14,7 @@ export interface Env {
 	ALLOW_UNAUTHENTICATED?: string;
 
 	/**
-	 * Secret. JSON array of { username, password, userId? } — see
+	 * Secret. JSON array of { username, password, userId? }, described in
 	 * `src/basic-auth.ts`. Never commit it: this repository is public.
 	 */
 	BASIC_AUTH_ACCOUNTS?: string;
@@ -28,7 +28,8 @@ export interface Env {
 	 *
 	 * Off by default because publishing an agent endpoint is a decision, not a
 	 * side effect of deploying someone else's repository. It buys no bundle
-	 * back — `agents` is imported statically, so `nodejs_compat` and the ~766
+	 * back, because `agents` is imported statically, so `nodejs_compat` and the
+	 * ~766
 	 * KiB stay either way; what it removes is the endpoint, not the dependency.
 	 */
 	MCP_ENABLED?: string;

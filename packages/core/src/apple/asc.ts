@@ -1,4 +1,4 @@
-// App Store Connect API client — Analytics Reports retrieval.
+// App Store Connect API client for Analytics Reports retrieval.
 // Five-step flow: report request → reports → instances → segments → download.
 
 import { importP8, signJwt, nowEpochSeconds } from "./jwt";
@@ -82,7 +82,7 @@ export class AscClient {
 		};
 	}
 
-	/** GET with pagination follow; segments occasionally 404/500 — caller retries. */
+	/** GET with pagination follow; segments occasionally 404/500, so the caller retries. */
 	async #getAll<A>(url: string): Promise<AscResource<A>[]> {
 		const out: AscResource<A>[] = [];
 		let next: string | undefined = url;

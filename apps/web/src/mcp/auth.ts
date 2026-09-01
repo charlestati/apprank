@@ -1,7 +1,7 @@
 // The MCP transport's credential gate.
 //
 // This runs *before* the MCP handler is constructed, so an unauthenticated
-// request never reaches tool code — not even a misregistered tool. The gate is
+// request never reaches tool code, not even a misregistered tool. The gate is
 // the only thing that produces a `Principal`, and a tool cannot be called
 // without one, so "every tool call resolves to a known principal" is a
 // property of the wiring rather than a rule each tool has to remember.
@@ -9,7 +9,7 @@
 // Deliberately separate from HTTP Basic. A token issued here is useless
 // against `/api/*`, because that gate only reads `Basic ` headers; a browser
 // account is useless here, because this one only reads `Bearer `. Two
-// credential types, two gates, independently revocable — which is what stops a
+// credential types, two gates, independently revocable, which is what stops a
 // long-lived agent token from becoming a skeleton key for the whole origin.
 
 import { digest, timingSafeEqual } from "../lib/crypto";
@@ -99,7 +99,8 @@ export async function hashSecret(secret: string): Promise<string> {
  *
  * One statement, because the write is owed anyway: `last_used_at` is what
  * makes a forgotten credential findable, so the budget rides along on it
- * rather than costing a second round trip. `RETURNING` gives the post-increment
+ * rather than costing a second round trip. `RETURNING` gives the
+ * post-increment
  * count without a follow-up read.
  */
 async function chargeCall(

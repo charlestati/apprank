@@ -1,11 +1,12 @@
 // Tool-call audit and the shared shape every tool answers in.
 //
 // Every call is recorded with who asked, what they asked, how many rows came
-// back and how long it took — the questions worth being able to answer after a
+// back and how long it took: the questions worth being able to answer after a
 // leak, none of which the observation tables can answer on their own.
 //
 // The wrapper is also where scope and ownership failures are turned into a
-// reply rather than a stack trace: a tool that throws would surface an internal
+// reply rather than a stack trace: a tool that throws would surface an
+// internal
 // message to the model, and a tool that swallowed the failure would look like
 // an empty result. Neither is honest.
 
@@ -95,7 +96,7 @@ function reply(payload: unknown, isError = false) {
  * Wrap a tool body with scope enforcement, timing, audit and error shaping.
  *
  * A `NotFoundError` answers with the same message whether the resource is
- * absent or simply someone else's — the HTTP API answers 404 rather than 403
+ * absent or simply someone else's. The HTTP API answers 404 rather than 403
  * for the same reason, since confirming that an id exists is itself
  * information about another operator's account.
  */
