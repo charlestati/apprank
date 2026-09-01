@@ -22,6 +22,18 @@ export interface Env {
   DEV_USER_ID?: string;
 
   /**
+   * Opt-in switch for the MCP transport. Anything but "true" and the endpoint
+   * does not exist: the route 404s and the Basic-auth exemption is withdrawn,
+   * so an anonymous request meets the wall rather than the bearer gate.
+   *
+   * Off by default because publishing an agent endpoint is a decision, not a
+   * side effect of deploying someone else's repository. It buys no bundle
+   * back — `agents` is imported statically, so `nodejs_compat` and the ~766
+   * KiB stay either way; what it removes is the endpoint, not the dependency.
+   */
+  MCP_ENABLED?: string;
+
+  /**
    * Optional burst brake in front of the MCP gate, keyed per credential.
    *
    * Optional on purpose. The authoritative limit is the daily budget on

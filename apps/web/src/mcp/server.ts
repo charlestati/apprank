@@ -41,6 +41,16 @@ import {
 
 export const MCP_ROUTE = "/mcp";
 
+/**
+ * The transport is opt-in. Both callers in `index.ts` — the Basic-auth
+ * exemption and the route itself — ask this same question, because an
+ * exemption that outlived its route would leave `/mcp` reachable without any
+ * gate at all.
+ */
+export function mcpEnabled(env: Env): boolean {
+  return env.MCP_ENABLED === "true";
+}
+
 const SERVER_INFO = { name: "apprank", version: "1.0.0" };
 
 /** ISO calendar day, the grain every observation is stored at. */

@@ -4,7 +4,7 @@ import { callerOwnsApp, callerOwnsPair, notFound } from "./access";
 import type { Vars } from "./access";
 import { authenticate, challenge, parseAccounts } from "./basic-auth";
 import type { Env } from "./env";
-import { MCP_ROUTE, handleMcp } from "./mcp/server";
+import { MCP_ROUTE, handleMcp, mcpEnabled } from "./mcp/server";
 import {
   appKeywords,
   appLocalizations,
@@ -279,7 +279,10 @@ app.use("*", async (c, next) => {
   // the MCP tools, which is exactly the scope crossing the two credential types
   // exist to prevent. The bearer gate runs in the route handler below and
   // rejects an anonymous request before any tool code is constructed.
-  if (pathname === MCP_ROUTE) {
+  //
+  // Withdrawn when the transport is switched off: with no bearer gate waiting
+  // downstream, an exemption would be a hole rather than a handover.
+  if (pathname === MCP_ROUTE && mcpEnabled(c.env)) {
     return next();
   }
 
@@ -317,7 +320,14 @@ app.use("*", async (c, next) => {
 // gate. `run_worker_first` is true, so the assets binding never sees this path
 // first and `not_found_handling` cannot claim it; `test/mcp-auth.test.ts`
 // asserts that setting so the guarantee is enforced rather than remembered.
-app.all(MCP_ROUTE, (c) => {
+app.all(MCP_ROUTE, async (c) => {
+  // Opt-in: a deployment that never asked for an agent endpoint does not get
+  // one. This is reached only by an authenticated caller, because the Basic
+  // exemption above is withdrawn in the same breath.
+  if (!mcpEnabled(c.env)) {
+    return c.notFound();
+  }
+
   // `c.executionCtx` throws when the Worker is invoked without one. The audit
   // write is the only thing that wants it, and losing the deferral must never
   // cost the request — so fall back to awaiting the write inline rather than
@@ -330,10 +340,9 @@ app.all(MCP_ROUTE, (c) => {
       pending.push(promise);
     }
   };
-  return handleMcp(c.req.raw, c.env, { waitUntil }).then(async (res) => {
-    await Promise.allSettled(pending);
-    return res;
-  });
+  const res = await handleMcp(c.req.raw, c.env, { waitUntil });
+  await Promise.allSettled(pending);
+  return res;
 });
 
 app.route("/api", api);

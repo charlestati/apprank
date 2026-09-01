@@ -34,7 +34,9 @@ Two Workers (`apprank-collector`, `apprank-web`), one D1 database (`apprank`), o
 
 `/mcp` on the web Worker serves the same data over MCP: stateless streamable HTTP via `createMcpHandler` from `agents/mcp/server`. Not `McpAgent` — that is the legacy path and needs a Durable Object this Worker has none of, which would add state `scripts/rebuild-d1` could not reconstruct.
 
-Four things hold it together, and none of them is optional:
+The transport itself _is_ optional: `MCP_ENABLED` must be `"true"` or `/mcp` does not exist. `mcpEnabled()` in `mcp/server.ts` is the single predicate, and both callers in `index.ts` ask it — the route and the Basic-auth exemption. They have to move together: the exemption exists only to hand an anonymous request to the bearer gate, so leaving it in place with the route switched off would turn the one path that skips Basic into a path that skips authentication entirely. `test/mcp-auth.test.ts` asserts both halves.
+
+Four things hold it together, and none of them is optional once it is on:
 
 - **The gate runs before the handler is built.** `handleMcp` authenticates, then constructs the server with the resolved principal closed over. Tool code is unreachable without a principal, so a misregistered tool is still not callable by a stranger, and no tool has to handle "who is this?" returning nothing.
 - **MCP credentials are a separate table and a separate gate.** `mcp_credential` holds only the SHA-256 of the secret — unlike `BASIC_AUTH_ACCOUNTS`, which is a Worker secret and may hold plaintext; this is an ordinary D1 table that gets queried and dumped. The Basic middleware exempts `/mcp` deliberately: falling through would let a browser account drive the tools, which is the exact scope crossing the two credential types exist to prevent. `ALLOW_UNAUTHENTICATED` does **not** open MCP, because a dev flag that publishes an agent endpoint is a trap.

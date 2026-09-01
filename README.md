@@ -96,6 +96,7 @@ Nothing personal lives in the repository. Every credential is a Worker secret, a
 | `ADMIN_TOKEN` | collector Worker, `.dev.vars`, GitHub | Gates `POST /admin/run?job=…`, the collector's only public route. Not a debug convenience — every collection run drives the collector through it, so no token means no collection |
 | `ASC_ISSUER_ID`, `ASC_KEY_ID`, `ASC_PRIVATE_KEY` | collector Worker | App Store Connect analytics. Optional; the daily job skips them quietly when absent |
 | `ADS_CLIENT_ID`, `ADS_TEAM_ID`, `ADS_KEY_ID`, `ADS_PRIVATE_KEY` | collector Worker | Apple Ads search-term popularity — the only official source of search volume. Optional in the same way |
+| `MCP_ENABLED` | web `wrangler.local.jsonc` (a var, not a secret) | Off unless set to `true`. The MCP endpoint at `/mcp` is opt-in: without it the route 404s and nothing is published |
 | `COLLECTION_MODE` | collector `wrangler.local.jsonc` (a var, not a secret) | `all` by default. Set it to `credentialed` on a deployment whose egress Apple rejects, which is every Cloudflare Worker |
 
 Add or replace any secret with:
@@ -219,6 +220,8 @@ Two known limits of Basic auth, both deliberate trades: there is no sign-out sho
 ## Querying it from Claude Code (MCP)
 
 The same data the dashboard shows is available to Claude Code over MCP, at `/mcp` on the same Worker — streamable HTTP, no separate deployment.
+
+**It is off by default.** Set `MCP_ENABLED` to `"true"` in the web Worker's vars to turn it on; until then `/mcp` 404s and no agent endpoint exists. Publishing one should be a choice, not something that happens because you deployed someone else's repository. Switching it off does not shrink the bundle — the `agents` SDK is imported statically and `nodejs_compat` is required either way.
 
 It is never anonymous. The endpoint has its own credential type, stored in the `mcp_credential` table and checked before any tool code is constructed. A credential is scoped to MCP alone: it will not open the web API, and a browser account will not open MCP.
 

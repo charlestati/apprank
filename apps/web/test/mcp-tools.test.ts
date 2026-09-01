@@ -28,7 +28,11 @@ import {
 } from "./mcp-fixtures";
 
 function walled() {
-  return { ...env, ALLOW_UNAUTHENTICATED: "true" } as never;
+  return {
+    ...env,
+    ALLOW_UNAUTHENTICATED: "true",
+    MCP_ENABLED: "true",
+  } as never;
 }
 
 async function token(): Promise<string> {

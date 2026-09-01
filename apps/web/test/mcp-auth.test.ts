@@ -37,6 +37,7 @@ function walled(extra: Record<string, unknown> = {}) {
   return {
     ...env,
     ALLOW_UNAUTHENTICATED: "true",
+    MCP_ENABLED: "true",
     ...extra,
   } as never;
 }
@@ -51,6 +52,43 @@ beforeEach(async () => {
   await seedCatalog();
   await seedTrackedApp();
   await seedKeywords();
+});
+
+describe("the MCP transport switch", () => {
+  it("does not serve the endpoint unless it is switched on", async () => {
+    const { token } = await issueCredential({ userId: USER_ID });
+    const res = await fetchMcp(
+      mcpRequest(rpc("tools/list"), token),
+      walled({ MCP_ENABLED: undefined })
+    );
+    // 404, not 401: a credential that would work on an enabled deployment
+    // must not be told that this one merely has the feature turned off.
+    expect(res.status).toBe(404);
+    const logged = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM mcp_tool_call"
+    ).first<{ n: number }>();
+    expect(logged?.n).toBe(0);
+  });
+
+  it("withdraws the Basic exemption along with the route", async () => {
+    // The exemption exists only to hand anonymous requests to the bearer gate.
+    // With the transport off there is no gate downstream, so the wall has to
+    // take the request back — otherwise switching MCP off would open the one
+    // path that skips authentication entirely.
+    const accounts = JSON.stringify([
+      { password: "pw", userId: USER_ID, username: "charles" },
+    ]);
+    const res = await fetchMcp(
+      mcpRequest(rpc("tools/list")),
+      walled({
+        ALLOW_UNAUTHENTICATED: undefined,
+        BASIC_AUTH_ACCOUNTS: accounts,
+        MCP_ENABLED: undefined,
+      })
+    );
+    expect(res.status).toBe(401);
+    expect(res.headers.get("WWW-Authenticate")).toContain("Basic");
+  });
 });
 
 describe("the MCP transport boundary", () => {
