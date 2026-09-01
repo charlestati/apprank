@@ -91,4 +91,4 @@ Node 24+, pnpm 11+. `CLAUDE.md` is the working context for coding agents.
 
 ## License
 
-MIT
+[Apache 2.0](LICENSE)

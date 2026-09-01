@@ -1,6 +1,7 @@
 {
   "name": "apprank",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "scripts": {
     "types": "pnpm --filter collector --filter web types",
