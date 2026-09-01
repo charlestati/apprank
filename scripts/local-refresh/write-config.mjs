@@ -42,6 +42,9 @@ for (const binding of config.r2_buckets ?? []) {
   binding.remote = true;
 }
 delete config.triggers;
+// The whole reason this config exists is to reach the endpoints the deployment
+// cannot, so it always collects everything regardless of what the template says.
+config.vars = { ...config.vars, COLLECTION_MODE: "all" };
 
 const out = path.join(collector, "wrangler.localcrawl.jsonc");
 writeFileSync(

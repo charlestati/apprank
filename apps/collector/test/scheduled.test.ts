@@ -197,3 +197,49 @@ describe("scheduled handler", () => {
     await expect(alarmAt()).resolves.toBeNull();
   });
 });
+
+describe("collection mode", () => {
+  it("queues no public-endpoint work on a credentialed-only deployment", async () => {
+    // Cloudflare's egress is rejected by Apple's public endpoints, so queueing
+    // lookups, reviews and charts there produces nothing but throttles — and
+    // each one feeds the daily tally that halves the learned rate.
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO app (id, current_name, first_seen_at, last_seen_at) VALUES (?, 'Tracked App', 0, 0)"
+      ).bind(APP_ID),
+      env.DB.prepare(
+        "INSERT INTO tracked_app (user_id, app_id, created_at) VALUES ('admin', ?, 0)"
+      ).bind(APP_ID),
+      env.DB.prepare(
+        "INSERT INTO app_language (app_id, language) VALUES (?, 'fr')"
+      ).bind(APP_ID),
+    ]);
+    await runCron("0 3 * * *", { COLLECTION_MODE: "credentialed" });
+    const queued = await drainQueue();
+    const types = queued.map((t) => t.type);
+    expect(types).not.toContain("lookup_pull");
+    expect(types).not.toContain("review_pull");
+    expect(types).not.toContain("chart_pull");
+    // Compaction is local work and must still run.
+    expect(types).toContain("compact");
+  });
+
+  it("still queues them when the deployment can reach Apple", async () => {
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO app (id, current_name, first_seen_at, last_seen_at) VALUES (?, 'Tracked App', 0, 0)"
+      ).bind(APP_ID),
+      env.DB.prepare(
+        "INSERT INTO tracked_app (user_id, app_id, created_at) VALUES ('admin', ?, 0)"
+      ).bind(APP_ID),
+      env.DB.prepare(
+        "INSERT INTO app_language (app_id, language) VALUES (?, 'fr')"
+      ).bind(APP_ID),
+    ]);
+    await runCron("0 3 * * *", { COLLECTION_MODE: "all" });
+    const queued = await drainQueue();
+    const types = queued.map((t) => t.type);
+    expect(types).toContain("lookup_pull");
+    expect(types).toContain("chart_pull");
+  });
+});

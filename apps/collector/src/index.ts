@@ -2,6 +2,7 @@ import type { Env } from "./env";
 import { authorize } from "./lib/admin";
 import { resolveAdsCategory } from "./lib/ads-genres";
 import type { GenreRow } from "./lib/ads-genres";
+import { collectsPublicEndpoints } from "./lib/mode";
 import { loadPacing, savePacing, maybeRaise } from "./lib/pacing";
 import { tracked } from "./lib/runs";
 import { getStateJson } from "./lib/state";
@@ -119,7 +120,9 @@ async function runDailyJobs(env: Env): Promise<{
   }
 
   // Tracked-app pulls: metadata lookup (per storefront × its default indexed
-  // locale for our language), reviews, charts.
+  // locale for our language), reviews, charts. All three hit the public iTunes
+  // endpoints, so a deployment that cannot reach them skips queueing work whose
+  // only outcome is a throttle and an abandoned batch.
   // The storefront set follows each app's content language (language ≠ storefront).
   const targets = await env.DB.prepare(
     `SELECT ta.app_id, sl.storefront_code AS code, MIN(sl.locale_code) AS locale_code
@@ -131,7 +134,7 @@ async function runDailyJobs(env: Env): Promise<{
      GROUP BY ta.app_id, sl.storefront_code`
   ).all<{ app_id: number; code: string; locale_code: string }>();
 
-  if (targets.results.length > 0) {
+  if (targets.results.length > 0 && collectsPublicEndpoints(env)) {
     const lookups: LookupUnit[] = [];
     const reviews: ReviewUnit[] = [];
     const storefrontSet = new Set<string>();

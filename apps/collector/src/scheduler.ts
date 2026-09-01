@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 
 import type { Env } from "./env";
+import { collectsPublicEndpoints } from "./lib/mode";
 import {
   loadPacing,
   savePacing,
@@ -242,6 +243,12 @@ export class SchedulerDO extends DurableObject<Env> {
     if (queue.length > 0) {
       return true;
     }
+    // A due pair is only work if this deployment can actually fetch it.
+    // Otherwise the watchdog re-arms the alarm every ten minutes for pairs it
+    // will never collect.
+    if (!collectsPublicEndpoints(this.env)) {
+      return false;
+    }
     const due = await pickDuePair(this.env.DB);
     return due !== null;
   }
@@ -287,11 +294,14 @@ export class SchedulerDO extends DurableObject<Env> {
       queue.push(...followUps);
       await this.ctx.storage.put("queue", queue);
     } else {
-      // No queued tasks: one Tier-1 keyword crawl if a pair is due.
+      // No queued tasks: one Tier-1 keyword crawl if a pair is due — and only
+      // where the public endpoints are reachable at all.
       const windowStartHour =
         (await getStateJson<number>(this.env.DB, "tier1_window_start_hour")) ??
         3;
-      const pair = await pickDuePair(this.env.DB);
+      const pair = collectsPublicEndpoints(this.env)
+        ? await pickDuePair(this.env.DB)
+        : null;
       if (pair) {
         didWork = true;
         try {

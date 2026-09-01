@@ -3,6 +3,13 @@
   "name": "apprank-collector",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-01",
+  // COLLECTION_MODE defaults to "all" — collect everything. Set it to
+  // "credentialed" (App Store Connect and Apple Ads only) on a deployment whose
+  // egress Apple's public iTunes endpoints reject, which is every Cloudflare
+  // Worker: the 429s are not free, each one feeds the daily tally that halves
+  // the learned rate. This operator sets it in the gitignored
+  // wrangler.local.jsonc; rank crawls run from a borrowed IP instead
+  // (scripts/local-refresh, .github/workflows/collect.yml).
   "triggers": {
     // Watchdog: re-arms the SchedulerDO alarm if it was lost (rare DO eviction).
     // Daily: 03:00 UTC dispatches ASC poll / Ads pull / compaction / prune.

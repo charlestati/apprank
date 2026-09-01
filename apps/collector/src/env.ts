@@ -6,6 +6,12 @@ export interface Env {
   SCHEDULER: DurableObjectNamespace<SchedulerDO>;
 
   // Vars
+  /**
+   * "all" (default) or "credentialed". The deployment runs "credentialed"
+   * because Cloudflare's egress is blocked by Apple's public endpoints; the
+   * CI runner runs "all". See lib/mode.ts.
+   */
+  COLLECTION_MODE?: string;
 
   // Secrets (wrangler secret put …)
   ASC_ISSUER_ID: string;
