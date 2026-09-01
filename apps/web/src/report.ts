@@ -1,4 +1,4 @@
-// The keyword-performance report: one query set powering the whole page —
+// The keyword-performance report: one query set powering the whole page:
 // summary tiles, the multi-series rank chart, and the keyword table.
 //
 // Rank semantics throughout: 1 is best, `null` means "observed, but not in the
@@ -81,9 +81,9 @@ export interface KeywordRow {
 	popularity: number | null;
 	/**
 	 * Whether Apple actually published a volume for this term.
-	 *  - "measured"  — `popularity` is a real number
-	 *  - "absent"    — we queried; the term is outside Apple's top-500 list
-	 *  - "unqueried" — no popularity pull has covered this keyword yet
+	 *  - "measured": `popularity` is a real number
+	 *  - "absent": we queried; the term is outside Apple's top-500 list
+	 *  - "unqueried": no popularity pull has covered this keyword yet
 	 * Absent and unqueried both mean "no volume evidence", never "no volume".
 	 */
 	popularityStatus: PopularityStatus;
@@ -126,7 +126,7 @@ export interface ReportStats {
 export interface Report {
 	storefront: string;
 	days: number;
-	/** The days that carry an observation — sparse, and never an axis. */
+	/** The days that carry an observation. Sparse, and never an axis. */
 	dates: string[];
 	/**
 	 * The requested window, inclusive.
@@ -140,13 +140,15 @@ export interface Report {
 	stats: ReportStats;
 	/** Decision-shaped counts: what to defend, what to push, what to drop. */
 	insights: OpportunitySummary;
-	/** Metadata releases in the window — the anchors a rank move is read against. */
+	/** Metadata releases in the window: the anchors a rank move is read against. */
 	metadataChanges: MetadataMarker[];
 	rows: KeywordRow[];
 }
 
-// Four is the readable ceiling for categorical series; past it the palette runs
-// out of hues that survive a colour-vision check side by side. More can still be
+// Four is the readable ceiling for categorical series; past it the palette
+// runs
+// out of hues that survive a colour-vision check side by side. More can still
+// be
 // switched on from the table, where the reader is choosing them deliberately.
 const CHART_SERIES_LIMIT = 4;
 
@@ -179,7 +181,7 @@ function fetchObservations(env: Env, q: ReportQuery, since: string) {
  *
  * A failure deliberately writes no observation row, so the only link back to
  * the pair is `fetch_error.params`, which the crawl task fills with
- * "keyword|storefront|locale" — the same key `queries/coverage.ts` joins on.
+ * "keyword|storefront|locale", the same key `queries/coverage.ts` joins on.
  */
 function fetchErrors(env: Env, q: ReportQuery, since: string) {
 	return env.DB.prepare(
@@ -210,9 +212,10 @@ function fetchErrors(env: Env, q: ReportQuery, since: string) {
  * rows that record an *absence*.
  *
  * Apple publishes only the top ~500 terms per country × top-level genre, so a
- * tracked keyword is routinely missing from the list — for this app, 22 of 25
+ * tracked keyword is routinely missing from the list. For this app, 22 of 25
  * are. `present = 0` is the collector saying "we asked, Apple had nothing",
- * which is not the same fact as "nobody searches this", and neither is the same
+ * which is not the same fact as "nobody searches this", and neither is the
+ * same
  * as never having pulled popularity at all. Filtering the absences out here
  * collapsed all three into one null.
  */
@@ -234,7 +237,7 @@ function fetchPopularity(env: Env, q: ReportQuery) {
 
 /**
  * The apps holding the top five slots on each keyword's latest observation,
- * with their icons — the newest metadata version we hold for each.
+ * with their icons, from the newest metadata version we hold for each.
  */
 function fetchTopResults(env: Env, q: ReportQuery) {
 	return env.DB.prepare(
@@ -498,7 +501,8 @@ export async function buildReport(env: Env, q: ReportQuery): Promise<Report> {
 		row.verdict = classify(row);
 	}
 
-	// Ranked keywords first, best rank at the top; unranked keep alphabetical order.
+	// Ranked keywords first, best rank at the top; unranked keep alphabetical
+	// order.
 	const sorted = rows.toSorted((a, b) => {
 		const ra = a.position ?? Number.POSITIVE_INFINITY;
 		const rb = b.position ?? Number.POSITIVE_INFINITY;

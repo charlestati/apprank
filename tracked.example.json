@@ -1,9 +1,8 @@
 {
 	"_readme": [
-		"Copy to tracked.local.json (gitignored), then: pnpm track  →  pnpm track --apply",
+		"Copy to tracked.local.json, then: pnpm track  →  pnpm track --apply",
 		"The top-level key is the userId. It MUST match the userId in the",
-		"BASIC_AUTH_ACCOUNTS secret, or that person signs in and sees nothing:",
-		"a resource you do not own answers 404, not an error.",
+		"BASIC_AUTH_ACCOUNTS secret, or that person signs in and sees nothing.",
 		"storefronts x keywords is your whole daily fetch and write volume.",
 		"Removing a keyword retires it and keeps its history; it is never deleted."
 	],

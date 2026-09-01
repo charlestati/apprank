@@ -24,10 +24,10 @@ import {
 import type { Task } from "./tasks/types";
 
 /**
- * SchedulerDO — the single work loop for all collection.
+ * SchedulerDO: the single work loop for all collection.
  *
  * One alarm at a time (a DO invariant). Each alarm() tick does exactly one
- * bounded unit of work — one task step, or one Tier-1 keyword crawl — then
+ * bounded unit of work, one task step or one Tier-1 keyword crawl, then
  * reschedules itself at the learned Apple-polite rate. When there is neither
  * queued work nor a due pair, no alarm is set; the watchdog cron re-arms
  * within 10 minutes of work becoming due.
@@ -36,7 +36,7 @@ import type { Task } from "./tasks/types";
  * app-level pulls) runs before the keyword crawl; Tier-2 sweep tasks (M6)
  * will only be enqueued when the Tier-1 window is idle.
  *
- * Alarm contract: at-least-once, auto-retry ×6 with backoff on throw — every
+ * Alarm contract: at-least-once, auto-retry ×6 with backoff on throw, so every
  * step is idempotent, and we deliberately never call deleteAlarm().
  */
 export class SchedulerDO extends DurableObject<Env> {
@@ -52,13 +52,13 @@ export class SchedulerDO extends DurableObject<Env> {
 
 	/**
 	 * Re-arm the alarm if work is pending (watchdog path). Also pulls in an
-	 * alarm parked in the far future — otherwise a stale long-park (old deploy,
+	 * alarm parked in the far future. Otherwise a stale long-park (old deploy,
 	 * post-pause) would block newly due work until it fires.
 	 *
 	 * A backoff park is the one far-future alarm that is *not* stale. Dragging it
 	 * forward made the ten-minute watchdog cron wake the loop six times an hour
 	 * for the whole pause, each wake spending two D1 reads and a write only to
-	 * conclude it is still paused — up to four hours of that per incident, on a
+	 * conclude it is still paused, up to four hours of that per incident, on a
 	 * free-tier budget. So the pull-in asks whether the park matches the pause it
 	 * would be serving, and leaves that one alone. Pacing is read only on the
 	 * far-future branch, which is rare; the common path is unchanged.
@@ -105,7 +105,7 @@ export class SchedulerDO extends DurableObject<Env> {
 	}
 
 	/**
-	 * Run one task step immediately and report what happened — the manual
+	 * Run one task step immediately and report what happened. The manual
 	 * trigger's engine.
 	 *
 	 * It deliberately ignores `pauseUntil`. That pause is a backoff against
@@ -120,7 +120,7 @@ export class SchedulerDO extends DurableObject<Env> {
 	 *
 	 * `ok` reflects what the step *recorded*, not merely whether it threw. Task
 	 * steps deliberately swallow a failed unit into `fetch_error` so one bad
-	 * unit cannot wedge the queue — right for the unattended loop, useless for a
+	 * unit cannot wedge the queue: right for the unattended loop, useless for a
 	 * human checking a credential. So we diff `fetch_error` across the call and
 	 * hand back whatever appeared.
 	 */
@@ -165,7 +165,7 @@ export class SchedulerDO extends DurableObject<Env> {
 	/**
 	 * Pop the next queued task and run it immediately. Multi-stage jobs (ASC in
 	 * particular) return follow-ups rather than looping, so verifying one end to
-	 * end means advancing the queue by hand — otherwise the follow-ups sit
+	 * end means advancing the queue by hand, or the follow-ups sit
 	 * behind whatever pause the iTunes crawler is serving.
 	 */
 	async stepNow(): Promise<
@@ -196,8 +196,8 @@ export class SchedulerDO extends DurableObject<Env> {
 	 * shares the same egress, so the deployed collector can be throttled to a
 	 * standstill while the same request succeeds from an ordinary connection.
 	 * Driving this from `wrangler dev` with remote D1/R2 bindings runs the real
-	 * collector code — same normaliser, same provenance, same idempotent
-	 * writes — from a machine Apple will answer, so the history it produces is
+	 * collector code, with the same normaliser, provenance and idempotent
+	 * writes, from a machine Apple will answer, so the history it produces is
 	 * indistinguishable from the scheduler's own.
 	 *
 	 * Pace it from the caller. Nothing here relaxes invariant 4.
@@ -258,7 +258,7 @@ export class SchedulerDO extends DurableObject<Env> {
 		const now = Date.now();
 		if (pacing.pauseUntil > now) {
 			// Backing off after throttling: park until the pause ends. Still a live
-			// tick — a paused loop and a dead one look identical without this.
+			// tick: a paused loop and a dead one look identical without this.
 			const parked = (await this.ctx.storage.get<Task[]>("queue")) ?? [];
 			await recordHeartbeat(this.env.DB, {
 				at: now,
@@ -294,7 +294,7 @@ export class SchedulerDO extends DurableObject<Env> {
 			queue.push(...followUps);
 			await this.ctx.storage.put("queue", queue);
 		} else {
-			// No queued tasks: one Tier-1 keyword crawl if a pair is due — and only
+			// No queued tasks: one Tier-1 keyword crawl if a pair is due, and only
 			// where the public endpoints are reachable at all.
 			const windowStartHour =
 				(await getStateJson<number>(this.env.DB, "tier1_window_start_hour")) ??
@@ -347,7 +347,7 @@ export class SchedulerDO extends DurableObject<Env> {
 					: tickMs(fresh);
 			await this.ctx.storage.setAlarm(Date.now() + delay);
 		}
-		// else: drained — the watchdog re-arms when new work appears.
+		// else: drained. The watchdog re-arms when new work appears.
 	}
 
 	async #run(

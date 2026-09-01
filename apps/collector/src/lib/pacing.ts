@@ -3,13 +3,13 @@
 //
 // Two brakes, deliberately separate:
 //
-//   pause — per incident. Any 403/429 parks the loop, growing 30m → 1h → 2h →
-//           4h across repeats within a day. This is what actually stops us
-//           pushing on a bucket that is already full.
-//   rate  — per day. Only moves when a day's throttle count exceeds what a
-//           shared egress IP produces on its own, because most of that bucket
-//           is consumed by other Workers on the same address; halving our own
-//           share on one stray 429 costs coverage and relieves nothing.
+//   pause: per incident. Any 403/429 parks the loop, growing 30m → 1h → 2h →
+//          4h across repeats within a day. This is what actually stops us
+//          pushing on a bucket that is already full.
+//   rate:  per day. Only moves when a day's throttle count exceeds what a
+//          shared egress IP produces on its own, because most of that bucket
+//          is consumed by other Workers on the same address; halving our own
+//          share on one stray 429 costs coverage and relieves nothing.
 //
 // Start 4/min, ×1.1 per day that stayed within tolerance (ceiling 6/min),
 // ×0.5 on a day that did not (floor 1/min). Persisted in D1 so redeploys keep
@@ -69,8 +69,9 @@ export function tickMs(p: PacingState): number {
 
 export function onThrottle(p: PacingState, now = Date.now()): PacingState {
 	// Apple's limit is per shared egress IP ("Rate limit has been exceeded for:
-	// itunes-apple-com|general|<ip>") — mostly consumed by others on the same
-	// address. Egress IPs vary per isolate, so spread retries out: pauses grow
+	// itunes-apple-com|general|<ip>"), and it is mostly consumed by others on
+	// the same address. Egress IPs vary per isolate, so spread retries out:
+	// pauses grow
 	// with consecutive throttles (30m, 1h, 2h, 4h cap).
 	const count = p.windowErrorCount + 1;
 
@@ -89,7 +90,7 @@ export function onThrottle(p: PacingState, now = Date.now()): PacingState {
 		...p,
 		lastErrorAt: now,
 		pauseUntil: now + Math.round(pauseMinutes * 60_000),
-		// Halve once, on the throttle that takes the day past tolerance — not on
+		// Halve once, on the throttle that takes the day past tolerance, not on
 		// every throttle after it. Applying it repeatedly made the rate a one-way
 		// ratchet again (4 → 2 → 1 in three hits), which is the exact behaviour
 		// the two-brake split was introduced to remove: the pause is the
@@ -105,7 +106,7 @@ export function onThrottle(p: PacingState, now = Date.now()): PacingState {
 /**
  * A throttle seen by a manually triggered fetch (`/admin/run`).
  *
- * Recorded, because it happened — but kept out of the day's tally and off the
+ * Recorded, because it happened, but kept out of the day's tally and off the
  * pause ladder. The admin path already ignores `pauseUntil` on the way in, on
  * the grounds that it is a diagnostic and not the work loop; letting its
  * throttles steer the learned rate would make the measurement change the thing
@@ -122,8 +123,8 @@ export function onAdminThrottle(p: PacingState, now = Date.now()): PacingState {
  * Recovery is judged on the closed day, not on a throttle-free 24h. Apple
  * throttles this IP most days, so a "clean 24h" condition never held and the
  * rate was a one-way ratchet: every stray 429 halved it and nothing ever put
- * it back. Sitting at the floor is not a safe default — it silently shrinks
- * the budget that decides how often each pair is checked.
+ * it back. Sitting at the floor is not a safe default: it silently shrinks the
+ * budget that decides how often each pair is checked.
  */
 export function maybeRaise(p: PacingState, today: string): PacingState {
 	if (p.lastRollDay === today) {
