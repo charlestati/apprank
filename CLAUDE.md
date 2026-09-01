@@ -87,6 +87,8 @@ pnpm deploy        # collector then web
 
 The file is the authoring surface, not the source of truth — that stays in rows, because three things depend on it. `crawl_pair` is reference-counted, so two users tracking the same keyword in the same storefront share one row and one fetch a day. Ownership lives on `tracked_keyword.user_id`, which is what makes another operator's data a 404. And removing a keyword **retires** its pairs (`ref_count = 0`) rather than deleting them, because history cannot be backfilled and a deleted day is the same as an uncollected one.
 
+`language` does three jobs at once — it stamps every keyword in the entry, records `app_language`, and picks each storefront's locale — so **one entry cannot mix languages**. To track Spanish terms in the Spanish store beside French ones, list the same `appId` twice with different `language` values; `app_language` ends up with both rows, which is right for a bilingual listing. `tracked.example.json` shows it. Keys beginning with an underscore are notes and are skipped, so that annotated example can be copied as-is.
+
 The dashboard still renders `apps[0]` and has no app switcher, so a second app is collected and reachable over the API but invisible in the UI. That is a client gap, not a data one.
 
 The planner is pure and tested (`pnpm test:scripts`); the two rules worth not breaking are that an unchanged config emits **no** statements — D1 charges for a conflicting upsert even when it changes nothing — and that a storefront missing from the reference data produces a warning rather than a guessed locale.

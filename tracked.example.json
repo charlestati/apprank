@@ -1,14 +1,36 @@
 {
+  "_readme": [
+    "Copy to tracked.local.json (gitignored), then: pnpm track  →  pnpm track --apply",
+    "The top-level key is the userId. It MUST match the userId in the",
+    "BASIC_AUTH_ACCOUNTS secret, or that person signs in and sees nothing:",
+    "a resource you do not own answers 404, not an error.",
+    "storefronts x keywords is your whole daily fetch and write volume.",
+    "Removing a keyword retires it and keeps its history; it is never deleted."
+  ],
   "charles": {
     "apps": [
       {
         "appId": 123456789,
         "name": "Your App",
         "language": "fr",
-        "storefronts": ["fr", "ca"],
+        "storefronts": ["fr", "ca", "be"],
         "keywords": ["jeu de lettres", "mots croisés"]
       },
       {
+        "_comment": [
+          "Same appId, second language. `language` stamps the keywords AND picks",
+          "the locale per storefront, so one entry cannot mix languages. List the",
+          "app again to track Spanish terms in the Spanish store — app_language",
+          "ends up with both rows, which is exactly right for a bilingual listing."
+        ],
+        "appId": 123456789,
+        "name": "Your App",
+        "language": "es",
+        "storefronts": ["es"],
+        "keywords": ["juego de palabras"]
+      },
+      {
+        "_comment": "A second, unrelated app under the same person.",
         "appId": 987654321,
         "name": "Your Second App",
         "language": "en",

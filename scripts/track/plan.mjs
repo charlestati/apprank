@@ -41,6 +41,22 @@ export function localeFor(storefront, language, storefrontLocales) {
   return rows.find((r) => r.is_default === 1)?.locale_code ?? null;
 }
 
+/**
+ * Pairs nobody asks for any more. They are retired, never deleted: the row and
+ * every observation hanging off it outlive the decision to stop tracking, so
+ * putting the keyword back restores its history rather than starting over.
+ */
+function retireUnwanted(activePair, wantedPairs, summary) {
+  const out = [];
+  for (const [key, pair] of activePair) {
+    if (!wantedPairs.has(key) && pair.ref_count > 0) {
+      out.push(`UPDATE crawl_pair SET ref_count = 0 WHERE id = ${pair.id};`);
+      summary.pairsRetired += 1;
+    }
+  }
+  return out;
+}
+
 function sqlString(value) {
   return `'${String(value).replaceAll("'", "''")}'`;
 }
@@ -73,6 +89,12 @@ export function planChanges(config, state) {
   const wantedPairs = new Map();
 
   for (const [userId, entry] of Object.entries(config)) {
+    // Keys beginning with an underscore are notes for whoever edits the file,
+    // not operators. The shipped example leans on this, and treating one as a
+    // user crashes on the first missing field.
+    if (userId.startsWith("_")) {
+      continue;
+    }
     // A bare object is the single-app shorthand; the canonical form is a list.
     const apps = Array.isArray(entry.apps) ? entry.apps : [entry];
     for (const app of apps) {
@@ -189,14 +211,7 @@ export function planChanges(config, state) {
     }
   }
 
-  for (const [key, pair] of activePair) {
-    if (!wantedPairs.has(key) && pair.ref_count > 0) {
-      statements.push(
-        `UPDATE crawl_pair SET ref_count = 0 WHERE id = ${pair.id};`
-      );
-      summary.pairsRetired += 1;
-    }
-  }
+  statements.push(...retireUnwanted(activePair, wantedPairs, summary));
 
   return { statements, summary, warnings };
 }

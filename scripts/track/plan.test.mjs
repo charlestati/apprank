@@ -292,3 +292,70 @@ test("two apps sharing a keyword still share one crawl pair", () => {
   assert.equal(summary.pairsActivated, 1);
   assert.equal(summary.tracksAdded, 2);
 });
+
+test("ignores underscore keys so the annotated example can be copied", () => {
+  const { summary } = planChanges(
+    {
+      _readme: ["a note to the reader, not an operator"],
+      charles: {
+        apps: [
+          {
+            appId: 1,
+            name: "A",
+            language: "fr",
+            storefronts: ["fr"],
+            keywords: ["x"],
+          },
+        ],
+      },
+    },
+    EMPTY
+  );
+  assert.equal(summary.apps, 1);
+});
+
+test("tracks two languages for one app as two entries", () => {
+  // `language` stamps the keyword and picks the locale, so one entry cannot
+  // mix languages. Listing the app twice is the supported way to track, say,
+  // Spanish terms in the Spanish store alongside French ones.
+  const locales = [
+    {
+      storefront_code: "fr",
+      locale_code: "fr-FR",
+      is_default: 1,
+      language: "fr",
+    },
+    {
+      storefront_code: "es",
+      locale_code: "es-ES",
+      is_default: 1,
+      language: "es",
+    },
+  ];
+  const { statements, summary } = planChanges(
+    {
+      charles: {
+        apps: [
+          {
+            appId: 1,
+            name: "A",
+            language: "fr",
+            storefronts: ["fr", "es"],
+            keywords: ["jeu"],
+          },
+          {
+            appId: 1,
+            name: "A",
+            language: "es",
+            storefronts: ["es"],
+            keywords: ["juego"],
+          },
+        ],
+      },
+    },
+    { ...EMPTY, storefrontLocales: locales }
+  );
+  assert.equal(summary.pairsActivated, 3);
+  const langs = statements.filter((s) => s.includes("app_language"));
+  assert.equal(langs.length, 2);
+});
