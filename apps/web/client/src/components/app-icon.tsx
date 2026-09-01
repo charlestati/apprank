@@ -6,28 +6,28 @@
 import { useState } from "react";
 
 interface Props {
-  name: string | null;
-  iconUrl: string | null;
-  className?: string;
+	name: string | null;
+	iconUrl: string | null;
+	className?: string;
 }
 
 export function AppIcon({ name, iconUrl, className }: Props) {
-  const [broken, setBroken] = useState(false);
-  const classes = className ? `app-icon ${className}` : "app-icon";
+	const [broken, setBroken] = useState(false);
+	const classes = className ? `app-icon ${className}` : "app-icon";
 
-  if (!iconUrl || broken) {
-    return (
-      <span className={`${classes} icon-fallback`}>
-        {(name ?? "?").slice(0, 1)}
-      </span>
-    );
-  }
-  return (
-    <img
-      alt=""
-      className={classes}
-      onError={() => setBroken(true)}
-      src={iconUrl}
-    />
-  );
+	if (!iconUrl || broken) {
+		return (
+			<span className={`${classes} icon-fallback`}>
+				{(name ?? "?").slice(0, 1)}
+			</span>
+		);
+	}
+	return (
+		<img
+			alt=""
+			className={classes}
+			onError={() => setBroken(true)}
+			src={iconUrl}
+		/>
+	);
 }

@@ -8,9 +8,9 @@
 // property that must hold is that a wrong secret costs the same as a right one.
 
 export async function digest(value: string): Promise<Uint8Array> {
-  return new Uint8Array(
-    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))
-  );
+	return new Uint8Array(
+		await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))
+	);
 }
 
 /**
@@ -20,13 +20,13 @@ export async function digest(value: string): Promise<Uint8Array> {
  */
 // oxlint-disable-next-line no-bitwise -- constant-time compare, see above
 export function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
-  let diff = 0;
-  for (const [i, byte] of a.entries()) {
-    // oxlint-disable-next-line no-bitwise -- constant-time compare
-    diff |= byte ^ (b[i] as number);
-  }
-  return diff === 0;
+	if (a.length !== b.length) {
+		return false;
+	}
+	let diff = 0;
+	for (const [i, byte] of a.entries()) {
+		// oxlint-disable-next-line no-bitwise -- constant-time compare
+		diff |= byte ^ (b[i] as number);
+	}
+	return diff === 0;
 }

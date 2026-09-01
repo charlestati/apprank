@@ -7,9 +7,9 @@ import "./theme.css";
 
 const root = document.querySelector("#root");
 if (root) {
-  createRoot(root).render(
-    <StrictMode>
-      <App />
-    </StrictMode>
-  );
+	createRoot(root).render(
+		<StrictMode>
+			<App />
+		</StrictMode>
+	);
 }

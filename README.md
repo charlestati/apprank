@@ -9,16 +9,16 @@ You describe what to track in one file:
 
 ```json
 {
-  "admin": {
-    "apps": [
-      {
-        "appId": 123456789,
-        "language": "en",
-        "storefronts": ["us", "gb", "ca"],
-        "keywords": ["habit tracker", "daily planner"]
-      }
-    ]
-  }
+	"admin": {
+		"apps": [
+			{
+				"appId": 123456789,
+				"language": "en",
+				"storefronts": ["us", "gb", "ca"],
+				"keywords": ["habit tracker", "daily planner"]
+			}
+		]
+	}
 }
 ```
 

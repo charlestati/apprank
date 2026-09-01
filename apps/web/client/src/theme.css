@@ -9,76 +9,76 @@
  */
 
 :root {
-  color-scheme: light;
+	color-scheme: light;
 
-  /* Surfaces — sunken behind, raised for cards, overlay for popups */
-  --ds-surface: #ffffff;
-  --ds-surface-sunken: #f8f8f8;
-  --ds-surface-raised: #ffffff;
-  --ds-surface-overlay: #ffffff;
-  --ds-surface-hovered: #f0f1f2;
-  --ds-surface-pressed: #dddee1;
+	/* Surfaces — sunken behind, raised for cards, overlay for popups */
+	--ds-surface: #ffffff;
+	--ds-surface-sunken: #f8f8f8;
+	--ds-surface-raised: #ffffff;
+	--ds-surface-overlay: #ffffff;
+	--ds-surface-hovered: #f0f1f2;
+	--ds-surface-pressed: #dddee1;
 
-  /* Borders */
-  --ds-border: #0b120e24;
-  --ds-border-bold: #7d818a;
-  --ds-border-input: #8c8f97;
-  --ds-border-focused: #4688ec;
-  --ds-border-selected: #1868db;
+	/* Borders */
+	--ds-border: #0b120e24;
+	--ds-border-bold: #7d818a;
+	--ds-border-input: #8c8f97;
+	--ds-border-focused: #4688ec;
+	--ds-border-selected: #1868db;
 
-  /* Text */
-  --ds-text: #292a2e;
-  --ds-text-subtle: #505258;
-  --ds-text-subtlest: #6b6e76;
-  --ds-text-inverse: #ffffff;
-  --ds-link: #1868db;
-  --ds-link-pressed: #1558bc;
+	/* Text */
+	--ds-text: #292a2e;
+	--ds-text-subtle: #505258;
+	--ds-text-subtlest: #6b6e76;
+	--ds-text-inverse: #ffffff;
+	--ds-link: #1868db;
+	--ds-link-pressed: #1558bc;
 
-  /* Neutral interaction overlays (rows, nav items) */
-  --ds-neutral-subtle-hovered: #0515240f;
-  --ds-neutral-subtle-pressed: #0b120e24;
-  --ds-background-neutral: #0515240f;
+	/* Neutral interaction overlays (rows, nav items) */
+	--ds-neutral-subtle-hovered: #0515240f;
+	--ds-neutral-subtle-pressed: #0b120e24;
+	--ds-background-neutral: #0515240f;
 
-  /* Selected */
-  --ds-background-selected: #e9f2fe;
-  --ds-text-selected: #1868db;
+	/* Selected */
+	--ds-background-selected: #e9f2fe;
+	--ds-text-selected: #1868db;
 
-  /* Status */
-  --ds-bg-success: #effdd6;
-  --ds-text-success: #4c6b1f;
-  --ds-bg-danger: #ffeceb;
-  --ds-text-danger: #ae2e24;
-  --ds-bg-warning: #fff5db;
-  --ds-text-warning: #9e4c00;
-  --ds-bg-information: #e9f2fe;
-  --ds-text-information: #1558bc;
+	/* Status */
+	--ds-bg-success: #effdd6;
+	--ds-text-success: #4c6b1f;
+	--ds-bg-danger: #ffeceb;
+	--ds-text-danger: #ae2e24;
+	--ds-bg-warning: #fff5db;
+	--ds-text-warning: #9e4c00;
+	--ds-bg-information: #e9f2fe;
+	--ds-text-information: #1558bc;
 
-  /* Categorical chart series, used in numeric order and never cycled */
-  --ds-chart-1: #357de8;
-  --ds-chart-2: #82b536;
-  --ds-chart-3: #bf63f3;
-  --ds-chart-4: #f68909;
-  --ds-chart-5: #1558bc;
-  --ds-chart-6: #964ac0;
-  --ds-chart-7: #42b2d7;
-  --ds-chart-8: #bd5b00;
-  --ds-chart-success: #82b536;
-  --ds-chart-danger: #e2483d;
-  --ds-chart-neutral: #8c8f97;
+	/* Categorical chart series, used in numeric order and never cycled */
+	--ds-chart-1: #357de8;
+	--ds-chart-2: #82b536;
+	--ds-chart-3: #bf63f3;
+	--ds-chart-4: #f68909;
+	--ds-chart-5: #1558bc;
+	--ds-chart-6: #964ac0;
+	--ds-chart-7: #42b2d7;
+	--ds-chart-8: #bd5b00;
+	--ds-chart-success: #82b536;
+	--ds-chart-danger: #e2483d;
+	--ds-chart-neutral: #8c8f97;
 
-  --ds-shadow-raised: 0 1px 1px #1e1f2140, 0 0 1px #1e1f214f;
-  --ds-shadow-overlay: 0 8px 12px #1e1f2126, 0 0 1px #1e1f214f;
+	--ds-shadow-raised: 0 1px 1px #1e1f2140, 0 0 1px #1e1f214f;
+	--ds-shadow-overlay: 0 8px 12px #1e1f2126, 0 0 1px #1e1f214f;
 
-  /* Type */
-  --ds-font-sans:
-    "Atlassian Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", Ubuntu, "Helvetica Neue", sans-serif;
-  --ds-font-mono:
-    "Atlassian Mono", ui-monospace, Menlo, "Segoe UI Mono", "Ubuntu Mono",
-    monospace;
-  --ds-weight-bold: 653;
+	/* Type */
+	--ds-font-sans:
+		"Atlassian Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont,
+		"Segoe UI", Ubuntu, "Helvetica Neue", sans-serif;
+	--ds-font-mono:
+		"Atlassian Mono", ui-monospace, Menlo, "Segoe UI Mono", "Ubuntu Mono",
+		monospace;
+	--ds-weight-bold: 653;
 
-  /* Typography, as the `font` shorthand @atlaskit/tokens emits. Two steps of
+	/* Typography, as the `font` shorthand @atlaskit/tokens emits. Two steps of
    * the ADS scale are deliberately unused: font.body.small (12px) and
    * font.heading.xxsmall (12px) fall below this product's 14px floor, so a
    * label that would have taken them takes font.body or heading.xsmall and
@@ -86,894 +86,894 @@
    * than ADS's 14px default, because this is a reading surface, not a dense
    * admin console; the 14px step is reserved for genuinely dense contexts —
    * table cells, chart furniture, secondary metadata. */
-  --ds-font-heading-xlarge: normal var(--ds-weight-bold) 1.75rem/2rem
-    var(--ds-font-sans);
-  --ds-font-heading-large: normal var(--ds-weight-bold) 1.5rem/1.75rem
-    var(--ds-font-sans);
-  --ds-font-heading-medium: normal var(--ds-weight-bold) 1.25rem/1.5rem
-    var(--ds-font-sans);
-  --ds-font-heading-small: normal var(--ds-weight-bold) 1rem/1.25rem
-    var(--ds-font-sans);
-  --ds-font-heading-xsmall: normal var(--ds-weight-bold) 0.875rem/1.25rem
-    var(--ds-font-sans);
-  --ds-font-body-large: normal 400 1rem/1.5rem var(--ds-font-sans);
-  --ds-font-body: normal 400 0.875rem/1.25rem var(--ds-font-sans);
+	--ds-font-heading-xlarge: normal var(--ds-weight-bold) 1.75rem/2rem
+		var(--ds-font-sans);
+	--ds-font-heading-large: normal var(--ds-weight-bold) 1.5rem/1.75rem
+		var(--ds-font-sans);
+	--ds-font-heading-medium: normal var(--ds-weight-bold) 1.25rem/1.5rem
+		var(--ds-font-sans);
+	--ds-font-heading-small: normal var(--ds-weight-bold) 1rem/1.25rem
+		var(--ds-font-sans);
+	--ds-font-heading-xsmall: normal var(--ds-weight-bold) 0.875rem/1.25rem
+		var(--ds-font-sans);
+	--ds-font-body-large: normal 400 1rem/1.5rem var(--ds-font-sans);
+	--ds-font-body: normal 400 0.875rem/1.25rem var(--ds-font-sans);
 
-  /* Space */
-  --ds-space-025: 2px;
-  --ds-space-050: 4px;
-  --ds-space-075: 6px;
-  --ds-space-100: 8px;
-  --ds-space-150: 12px;
-  --ds-space-200: 16px;
-  --ds-space-250: 20px;
-  --ds-space-300: 24px;
-  --ds-space-400: 32px;
+	/* Space */
+	--ds-space-025: 2px;
+	--ds-space-050: 4px;
+	--ds-space-075: 6px;
+	--ds-space-100: 8px;
+	--ds-space-150: 12px;
+	--ds-space-200: 16px;
+	--ds-space-250: 20px;
+	--ds-space-300: 24px;
+	--ds-space-400: 32px;
 
-  /* Radius */
-  --ds-radius-xsmall: 2px;
-  --ds-radius-small: 4px;
-  --ds-radius-medium: 6px;
-  --ds-radius-large: 8px;
-  --ds-radius-full: 9999px;
+	/* Radius */
+	--ds-radius-xsmall: 2px;
+	--ds-radius-small: 4px;
+	--ds-radius-medium: 6px;
+	--ds-radius-large: 8px;
+	--ds-radius-full: 9999px;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
+	:root:not([data-theme="light"]) {
+		color-scheme: dark;
 
-    --ds-surface: #1f1f21;
-    --ds-surface-sunken: #18191a;
-    --ds-surface-raised: #242528;
-    --ds-surface-overlay: #2b2c2f;
-    --ds-surface-hovered: #242528;
-    --ds-surface-pressed: #2b2c2f;
+		--ds-surface: #1f1f21;
+		--ds-surface-sunken: #18191a;
+		--ds-surface-raised: #242528;
+		--ds-surface-overlay: #2b2c2f;
+		--ds-surface-hovered: #242528;
+		--ds-surface-pressed: #2b2c2f;
 
-    --ds-border: #e3e4f21f;
-    --ds-border-bold: #7e8188;
-    --ds-border-input: #7e8188;
-    --ds-border-focused: #8fb8f6;
-    --ds-border-selected: #669df1;
+		--ds-border: #e3e4f21f;
+		--ds-border-bold: #7e8188;
+		--ds-border-input: #7e8188;
+		--ds-border-focused: #8fb8f6;
+		--ds-border-selected: #669df1;
 
-    --ds-text: #cecfd2;
-    --ds-text-subtle: #a9abaf;
-    --ds-text-subtlest: #96999e;
-    --ds-text-inverse: #1f1f21;
-    --ds-link: #669df1;
-    --ds-link-pressed: #8fb8f6;
+		--ds-text: #cecfd2;
+		--ds-text-subtle: #a9abaf;
+		--ds-text-subtlest: #96999e;
+		--ds-text-inverse: #1f1f21;
+		--ds-link: #669df1;
+		--ds-link-pressed: #8fb8f6;
 
-    --ds-neutral-subtle-hovered: #ceced912;
-    --ds-neutral-subtle-pressed: #e3e4f21f;
-    --ds-background-neutral: #ceced912;
+		--ds-neutral-subtle-hovered: #ceced912;
+		--ds-neutral-subtle-pressed: #e3e4f21f;
+		--ds-background-neutral: #ceced912;
 
-    --ds-background-selected: #1c2b42;
-    --ds-text-selected: #669df1;
+		--ds-background-selected: #1c2b42;
+		--ds-text-selected: #669df1;
 
-    --ds-bg-success: #28311b;
-    --ds-text-success: #b3df72;
-    --ds-bg-danger: #42221f;
-    --ds-text-danger: #fd9891;
-    --ds-bg-warning: #3a2c1f;
-    --ds-text-warning: #fbc828;
-    --ds-bg-information: #1c2b42;
-    --ds-text-information: #8fb8f6;
+		--ds-bg-success: #28311b;
+		--ds-text-success: #b3df72;
+		--ds-bg-danger: #42221f;
+		--ds-text-danger: #fd9891;
+		--ds-bg-warning: #3a2c1f;
+		--ds-text-warning: #fbc828;
+		--ds-bg-information: #1c2b42;
+		--ds-text-information: #8fb8f6;
 
-    --ds-chart-1: #4688ec;
-    --ds-chart-2: #94c748;
-    --ds-chart-3: #c97cf4;
-    --ds-chart-4: #fca700;
-    --ds-chart-5: #1558bc;
-    --ds-chart-6: #964ac0;
-    --ds-chart-7: #42b2d7;
-    --ds-chart-8: #e06c00;
-    --ds-chart-success: #94c748;
-    --ds-chart-danger: #f15b50;
-    --ds-chart-neutral: #96999e;
+		--ds-chart-1: #4688ec;
+		--ds-chart-2: #94c748;
+		--ds-chart-3: #c97cf4;
+		--ds-chart-4: #fca700;
+		--ds-chart-5: #1558bc;
+		--ds-chart-6: #964ac0;
+		--ds-chart-7: #42b2d7;
+		--ds-chart-8: #e06c00;
+		--ds-chart-success: #94c748;
+		--ds-chart-danger: #f15b50;
+		--ds-chart-neutral: #96999e;
 
-    --ds-shadow-raised:
-      0 0 0 1px #00000000, 0 1px 1px #01040480, 0 0 1px #01040480;
-    --ds-shadow-overlay:
-      0 0 0 1px #bdbdbd1f, 0 8px 12px #0104045c, 0 0 1px 1px #01040480;
-  }
+		--ds-shadow-raised:
+			0 0 0 1px #00000000, 0 1px 1px #01040480, 0 0 1px #01040480;
+		--ds-shadow-overlay:
+			0 0 0 1px #bdbdbd1f, 0 8px 12px #0104045c, 0 0 1px 1px #01040480;
+	}
 }
 
 * {
-  box-sizing: border-box;
+	box-sizing: border-box;
 }
 
 body {
-  margin: 0;
-  background: var(--ds-surface-sunken);
-  color: var(--ds-text);
-  font: var(--ds-font-body-large);
+	margin: 0;
+	background: var(--ds-surface-sunken);
+	color: var(--ds-text);
+	font: var(--ds-font-body-large);
 }
 
 :focus-visible {
-  outline: 2px solid var(--ds-border-focused);
-  outline-offset: 2px;
+	outline: 2px solid var(--ds-border-focused);
+	outline-offset: 2px;
 }
 :focus:not(:focus-visible) {
-  outline: none;
+	outline: none;
 }
 
 .sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
 }
 
 /* ── Shell ─────────────────────────────────────────────────────────────── */
 
 .shell {
-  display: grid;
-  grid-template-columns: 240px 1fr;
-  grid-template-rows: auto 1fr;
-  min-height: 100vh;
+	display: grid;
+	grid-template-columns: 240px 1fr;
+	grid-template-rows: auto 1fr;
+	min-height: 100vh;
 }
 
 .topbar {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  gap: var(--ds-space-200);
-  padding: var(--ds-space-100) var(--ds-space-300);
-  background: var(--ds-surface);
-  border-bottom: 1px solid var(--ds-border);
+	grid-column: 1 / -1;
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-200);
+	padding: var(--ds-space-100) var(--ds-space-300);
+	background: var(--ds-surface);
+	border-bottom: 1px solid var(--ds-border);
 }
 
 .spacer {
-  flex: 1;
+	flex: 1;
 }
 
 .app-name {
-  color: var(--ds-text-subtle);
+	color: var(--ds-text-subtle);
 }
 
 /* Letter tiles: the word game the tool was built for, used once. */
 .wordmark {
-  display: flex;
-  gap: var(--ds-space-025);
-  text-decoration: none;
+	display: flex;
+	gap: var(--ds-space-025);
+	text-decoration: none;
 }
 .wordmark span {
-  width: 18px;
-  height: 18px;
-  display: grid;
-  place-items: center;
-  background: var(--ds-text);
-  color: var(--ds-text-inverse);
-  border-radius: var(--ds-radius-xsmall);
-  font: var(--ds-font-heading-xsmall);
-  font-weight: var(--ds-weight-bold);
+	width: 18px;
+	height: 18px;
+	display: grid;
+	place-items: center;
+	background: var(--ds-text);
+	color: var(--ds-text-inverse);
+	border-radius: var(--ds-radius-xsmall);
+	font: var(--ds-font-heading-xsmall);
+	font-weight: var(--ds-weight-bold);
 }
 .wordmark span:nth-child(4) {
-  background: var(--ds-border-selected);
-  color: #ffffff;
+	background: var(--ds-border-selected);
+	color: #ffffff;
 }
 
 .sidebar {
-  padding: var(--ds-space-200) var(--ds-space-150);
-  background: var(--ds-surface);
-  border-right: 1px solid var(--ds-border);
-  display: flex;
-  flex-direction: column;
-  gap: var(--ds-space-025);
+	padding: var(--ds-space-200) var(--ds-space-150);
+	background: var(--ds-surface);
+	border-right: 1px solid var(--ds-border);
+	display: flex;
+	flex-direction: column;
+	gap: var(--ds-space-025);
 }
 
 .nav-heading {
-  margin: var(--ds-space-200) 0 var(--ds-space-050);
-  padding: 0 var(--ds-space-100);
-  color: var(--ds-text-subtlest);
-  font: var(--ds-font-heading-xsmall);
-  line-height: 16px;
-  font-weight: var(--ds-weight-bold);
+	margin: var(--ds-space-200) 0 var(--ds-space-050);
+	padding: 0 var(--ds-space-100);
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-heading-xsmall);
+	line-height: 16px;
+	font-weight: var(--ds-weight-bold);
 }
 .nav-heading:first-child {
-  margin-top: 0;
+	margin-top: 0;
 }
 
 .sidebar a {
-  padding: var(--ds-space-075) var(--ds-space-100);
-  border-radius: var(--ds-radius-medium);
-  border-left: 2px solid transparent;
-  color: var(--ds-text-subtle);
-  text-decoration: none;
+	padding: var(--ds-space-075) var(--ds-space-100);
+	border-radius: var(--ds-radius-medium);
+	border-left: 2px solid transparent;
+	color: var(--ds-text-subtle);
+	text-decoration: none;
 }
 .sidebar a:hover {
-  background: var(--ds-neutral-subtle-hovered);
+	background: var(--ds-neutral-subtle-hovered);
 }
 .sidebar a:active {
-  background: var(--ds-neutral-subtle-pressed);
+	background: var(--ds-neutral-subtle-pressed);
 }
 .sidebar a.active {
-  background: var(--ds-background-selected);
-  border-left-color: var(--ds-border-selected);
-  color: var(--ds-text-selected);
-  font-weight: 600;
+	background: var(--ds-background-selected);
+	border-left-color: var(--ds-border-selected);
+	color: var(--ds-text-selected);
+	font-weight: 600;
 }
 
 main {
-  padding: var(--ds-space-300);
-  min-width: 0;
+	padding: var(--ds-space-300);
+	min-width: 0;
 }
 
 .status-link {
-  display: flex;
-  align-items: center;
-  gap: var(--ds-space-100);
-  text-decoration: none;
-  color: var(--ds-text-subtle);
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-100);
+	text-decoration: none;
+	color: var(--ds-text-subtle);
 }
 /* Language picker: a quiet control in the top bar — it changes how the page
    reads, never what it reports, so it should not compete with the data. */
 .lang-picker select,
 .app-picker select {
-  appearance: none;
-  background: transparent;
-  border: 1px solid var(--ds-border);
-  border-radius: var(--ds-radius-small);
-  color: var(--ds-text-subtle);
-  cursor: pointer;
-  font: inherit;
-  font: var(--ds-font-body);
-  padding: 2px 8px;
+	appearance: none;
+	background: transparent;
+	border: 1px solid var(--ds-border);
+	border-radius: var(--ds-radius-small);
+	color: var(--ds-text-subtle);
+	cursor: pointer;
+	font: inherit;
+	font: var(--ds-font-body);
+	padding: 2px 8px;
 }
 .lang-picker select:hover,
 .app-picker select:hover {
-  background: var(--ds-background-neutral);
-  color: var(--ds-text);
+	background: var(--ds-background-neutral);
+	color: var(--ds-text);
 }
 .lang-picker select:focus-visible,
 .app-picker select:focus-visible {
-  outline: 2px solid var(--ds-border-focused);
-  outline-offset: 1px;
+	outline: 2px solid var(--ds-border-focused);
+	outline-offset: 1px;
 }
 
 /* Must follow the shared rule above: same specificity, so order decides.
    The app name is the page's subject, not a preference like the language. */
 .app-picker select {
-  color: var(--ds-text);
-  font-weight: 500;
+	color: var(--ds-text);
+	font-weight: 500;
 }
 
 .who {
-  color: var(--ds-text-subtlest);
-  font: var(--ds-font-body);
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
 }
 .status-count {
-  font: var(--ds-font-body);
-  font-variant-numeric: tabular-nums;
+	font: var(--ds-font-body);
+	font-variant-numeric: tabular-nums;
 }
 
 .lozenge {
-  display: inline-block;
-  padding: var(--ds-space-025) var(--ds-space-100);
-  border-radius: var(--ds-radius-small);
-  /* Not uppercased: at 14px the tracking that makes small caps legible starts
+	display: inline-block;
+	padding: var(--ds-space-025) var(--ds-space-100);
+	border-radius: var(--ds-radius-small);
+	/* Not uppercased: at 14px the tracking that makes small caps legible starts
      to read as shouting, and these are status words, not labels. */
-  font: var(--ds-font-body);
-  font-weight: var(--ds-weight-bold);
+	font: var(--ds-font-body);
+	font-weight: var(--ds-weight-bold);
 }
 .lozenge-success {
-  background: var(--ds-bg-success);
-  color: var(--ds-text-success);
+	background: var(--ds-bg-success);
+	color: var(--ds-text-success);
 }
 .lozenge-inprogress {
-  background: var(--ds-bg-information);
-  color: var(--ds-text-information);
+	background: var(--ds-bg-information);
+	color: var(--ds-text-information);
 }
 .lozenge-removed {
-  background: var(--ds-bg-danger);
-  color: var(--ds-text-danger);
+	background: var(--ds-bg-danger);
+	color: var(--ds-text-danger);
 }
 
 /* ── Page furniture ────────────────────────────────────────────────────── */
 
 .page-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--ds-space-200);
-  margin-bottom: var(--ds-space-250);
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--ds-space-200);
+	margin-bottom: var(--ds-space-250);
 }
 
 h1 {
-  margin: 0;
-  font: var(--ds-font-heading-large);
-  line-height: 28px;
-  font-weight: var(--ds-weight-bold);
+	margin: 0;
+	font: var(--ds-font-heading-large);
+	line-height: 28px;
+	font-weight: var(--ds-weight-bold);
 }
 
 .page-sub {
-  margin: var(--ds-space-050) 0 0;
-  color: var(--ds-text-subtle);
+	margin: var(--ds-space-050) 0 0;
+	color: var(--ds-text-subtle);
 }
 
 .section-title {
-  margin: 0 0 var(--ds-space-150);
-  font: var(--ds-font-heading-small);
-  line-height: 20px;
-  font-weight: var(--ds-weight-bold);
+	margin: 0 0 var(--ds-space-150);
+	font: var(--ds-font-heading-small);
+	line-height: 20px;
+	font-weight: var(--ds-weight-bold);
 }
 
 .empty {
-  color: var(--ds-text-subtlest);
-  padding: var(--ds-space-200) 0;
+	color: var(--ds-text-subtlest);
+	padding: var(--ds-space-200) 0;
 }
 
 .subtle {
-  color: var(--ds-text-subtle);
+	color: var(--ds-text-subtle);
 }
 
 .card {
-  background: var(--ds-surface-raised);
-  border: 1px solid var(--ds-border);
-  border-radius: var(--ds-radius-large);
-  box-shadow: var(--ds-shadow-raised);
-  margin-bottom: var(--ds-space-250);
+	background: var(--ds-surface-raised);
+	border: 1px solid var(--ds-border);
+	border-radius: var(--ds-radius-large);
+	box-shadow: var(--ds-shadow-raised);
+	margin-bottom: var(--ds-space-250);
 }
 
 .chart-card {
-  padding: var(--ds-space-200);
+	padding: var(--ds-space-200);
 }
 
 /* ── Filter bar ────────────────────────────────────────────────────────── */
 
 .filter-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--ds-space-300);
-  padding: var(--ds-space-150) var(--ds-space-200);
-  margin-bottom: var(--ds-space-250);
-  background: var(--ds-surface-raised);
-  border: 1px solid var(--ds-border);
-  border-radius: var(--ds-radius-large);
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	gap: var(--ds-space-300);
+	padding: var(--ds-space-150) var(--ds-space-200);
+	margin-bottom: var(--ds-space-250);
+	background: var(--ds-surface-raised);
+	border: 1px solid var(--ds-border);
+	border-radius: var(--ds-radius-large);
 }
 
 .field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ds-space-050);
+	display: flex;
+	flex-direction: column;
+	gap: var(--ds-space-050);
 }
 
 .field-label {
-  color: var(--ds-text-subtle);
-  font: var(--ds-font-heading-xsmall);
+	color: var(--ds-text-subtle);
+	font: var(--ds-font-heading-xsmall);
 }
 
 .field select,
 .search {
-  /* ADS medium control: 40px tall. The old 32px was sized around 14px text and
+	/* ADS medium control: 40px tall. The old 32px was sized around 14px text and
      clips the descenders of the 16px body step. */
-  height: 40px;
-  padding: 0 var(--ds-space-150);
-  border: 1px solid var(--ds-border-input);
-  border-radius: var(--ds-radius-medium);
-  background: var(--ds-surface);
-  color: var(--ds-text);
-  font: inherit;
+	height: 40px;
+	padding: 0 var(--ds-space-150);
+	border: 1px solid var(--ds-border-input);
+	border-radius: var(--ds-radius-medium);
+	background: var(--ds-surface);
+	color: var(--ds-text);
+	font: inherit;
 }
 .field select:hover,
 .search:hover {
-  background: var(--ds-surface-hovered);
+	background: var(--ds-surface-hovered);
 }
 
 .segmented {
-  display: inline-flex;
-  border: 1px solid var(--ds-border-input);
-  border-radius: var(--ds-radius-medium);
-  overflow: hidden;
+	display: inline-flex;
+	border: 1px solid var(--ds-border-input);
+	border-radius: var(--ds-radius-medium);
+	overflow: hidden;
 }
 .seg {
-  height: 38px;
-  padding: 0 var(--ds-space-200);
-  border: 0;
-  background: var(--ds-surface);
-  color: var(--ds-text-subtle);
-  cursor: pointer;
+	height: 38px;
+	padding: 0 var(--ds-space-200);
+	border: 0;
+	background: var(--ds-surface);
+	color: var(--ds-text-subtle);
+	cursor: pointer;
 }
 .seg + .seg {
-  border-left: 1px solid var(--ds-border);
+	border-left: 1px solid var(--ds-border);
 }
 .seg:hover {
-  background: var(--ds-neutral-subtle-hovered);
+	background: var(--ds-neutral-subtle-hovered);
 }
 .seg-on {
-  background: var(--ds-background-selected);
-  color: var(--ds-text-selected);
-  font-weight: 600;
+	background: var(--ds-background-selected);
+	color: var(--ds-text-selected);
+	font-weight: 600;
 }
 
 /* ── Summary tiles ─────────────────────────────────────────────────────── */
 
 .tiles {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: var(--ds-space-200);
-  margin-bottom: var(--ds-space-250);
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+	gap: var(--ds-space-200);
+	margin-bottom: var(--ds-space-250);
 }
 
 .tile {
-  padding: var(--ds-space-200);
-  background: var(--ds-surface-raised);
-  border: 1px solid var(--ds-border);
-  border-radius: var(--ds-radius-large);
-  box-shadow: var(--ds-shadow-raised);
+	padding: var(--ds-space-200);
+	background: var(--ds-surface-raised);
+	border: 1px solid var(--ds-border);
+	border-radius: var(--ds-radius-large);
+	box-shadow: var(--ds-shadow-raised);
 }
 
 /* Sentence case throughout. Uppercase plus tracking is what small labels need
    to stay legible at 11px; at 14–16px it only adds visual weight, and a tile
    title should not compete with the number it introduces. */
 .tile-title {
-  margin: 0 0 var(--ds-space-150);
-  color: var(--ds-text);
-  font: var(--ds-font-heading-small);
+	margin: 0 0 var(--ds-space-150);
+	color: var(--ds-text);
+	font: var(--ds-font-heading-small);
 }
 
 .tile-body {
-  display: flex;
-  align-items: center;
-  gap: var(--ds-space-300);
-  flex-wrap: wrap;
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-300);
+	flex-wrap: wrap;
 }
 
 .tile-note {
-  margin-top: var(--ds-space-050);
-  color: var(--ds-text-subtlest);
-  font: var(--ds-font-body);
+	margin-top: var(--ds-space-050);
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
 }
 
 .stat-hero {
-  display: flex;
-  align-items: baseline;
-  gap: var(--ds-space-100);
+	display: flex;
+	align-items: baseline;
+	gap: var(--ds-space-100);
 }
 
 .stat-value {
-  font: var(--ds-font-heading-xlarge);
-  line-height: 32px;
-  font-weight: var(--ds-weight-bold);
-  font-variant-numeric: tabular-nums;
+	font: var(--ds-font-heading-xlarge);
+	line-height: 32px;
+	font-weight: var(--ds-weight-bold);
+	font-variant-numeric: tabular-nums;
 }
 
 .stat-bad {
-  color: var(--ds-text-danger);
+	color: var(--ds-text-danger);
 }
 .stat-warn {
-  color: var(--ds-text-warning);
+	color: var(--ds-text-warning);
 }
 
 .stat-of {
-  color: var(--ds-text-subtlest);
-  font: var(--ds-font-body);
-  font-weight: 400;
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
+	font-weight: 400;
 }
 
 .stat-pair {
-  display: flex;
-  gap: var(--ds-space-250);
-  margin: 0;
+	display: flex;
+	gap: var(--ds-space-250);
+	margin: 0;
 }
 .stat-pair dt {
-  color: var(--ds-text-subtle);
-  font: var(--ds-font-body);
+	color: var(--ds-text-subtle);
+	font: var(--ds-font-body);
 }
 .stat-pair dd {
-  margin: var(--ds-space-025) 0 0;
-  font: var(--ds-font-heading-small);
-  font-weight: var(--ds-weight-bold);
-  font-variant-numeric: tabular-nums;
+	margin: var(--ds-space-025) 0 0;
+	font: var(--ds-font-heading-small);
+	font-weight: var(--ds-weight-bold);
+	font-variant-numeric: tabular-nums;
 }
 
 .dist {
-  display: flex;
-  align-items: flex-end;
-  gap: var(--ds-space-200);
-  height: 84px;
+	display: flex;
+	align-items: flex-end;
+	gap: var(--ds-space-200);
+	height: 84px;
 }
 .dist-col {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-end;
-  height: 100%;
-  gap: var(--ds-space-050);
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	align-items: center;
+	justify-content: flex-end;
+	height: 100%;
+	gap: var(--ds-space-050);
 }
 .dist-count {
-  font: var(--ds-font-heading-small);
-  font-weight: var(--ds-weight-bold);
-  font-variant-numeric: tabular-nums;
+	font: var(--ds-font-heading-small);
+	font-weight: var(--ds-weight-bold);
+	font-variant-numeric: tabular-nums;
 }
 .dist-bar {
-  width: 100%;
-  background: var(--ds-chart-1);
-  border-radius: var(--ds-radius-xsmall);
+	width: 100%;
+	background: var(--ds-chart-1);
+	border-radius: var(--ds-radius-xsmall);
 }
 .dist-label {
-  color: var(--ds-text-subtlest);
-  font: var(--ds-font-body);
-  white-space: nowrap;
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
+	white-space: nowrap;
 }
 
 .movement {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ds-space-150);
+	display: flex;
+	flex-direction: column;
+	gap: var(--ds-space-150);
 }
 .movement-stats {
-  display: flex;
-  gap: var(--ds-space-250);
+	display: flex;
+	gap: var(--ds-space-250);
 }
 .movement-stats > div {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ds-space-025);
+	display: flex;
+	flex-direction: column;
+	gap: var(--ds-space-025);
 }
 .movement-label {
-  color: var(--ds-text-subtlest);
-  font: var(--ds-font-body);
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
 }
 .movement-bar {
-  display: flex;
-  height: 6px;
-  border-radius: var(--ds-radius-full);
-  overflow: hidden;
-  background: var(--ds-background-neutral);
+	display: flex;
+	height: 6px;
+	border-radius: var(--ds-radius-full);
+	overflow: hidden;
+	background: var(--ds-background-neutral);
 }
 .movement-seg {
-  height: 100%;
+	height: 100%;
 }
 .movement-up {
-  background: var(--ds-chart-success);
+	background: var(--ds-chart-success);
 }
 .movement-down {
-  background: var(--ds-chart-danger);
+	background: var(--ds-chart-danger);
 }
 .movement-flat {
-  background: var(--ds-chart-neutral);
+	background: var(--ds-chart-neutral);
 }
 
 /* ── Opportunities ─────────────────────────────────────────────────────── */
 
 .insights {
-  padding: var(--ds-space-200);
+	padding: var(--ds-space-200);
 }
 .insights-head {
-  margin-bottom: var(--ds-space-200);
+	margin-bottom: var(--ds-space-200);
 }
 .insights-sub {
-  margin: var(--ds-space-050) 0 0;
-  color: var(--ds-text-subtle);
+	margin: var(--ds-space-050) 0 0;
+	color: var(--ds-text-subtle);
 }
 .lanes {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: var(--ds-space-200);
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	gap: var(--ds-space-200);
 }
 .lane {
-  padding: var(--ds-space-150);
-  border-radius: var(--ds-radius-medium);
-  border-left: 3px solid var(--ds-border-bold);
-  background: var(--ds-background-neutral);
+	padding: var(--ds-space-150);
+	border-radius: var(--ds-radius-medium);
+	border-left: 3px solid var(--ds-border-bold);
+	background: var(--ds-background-neutral);
 }
 .lane-good {
-  border-left-color: var(--ds-chart-success);
+	border-left-color: var(--ds-chart-success);
 }
 .lane-focus {
-  border-left-color: var(--ds-chart-1);
+	border-left-color: var(--ds-chart-1);
 }
 .lane-warn {
-  border-left-color: var(--ds-chart-4);
+	border-left-color: var(--ds-chart-4);
 }
 .lane-muted {
-  border-left-color: var(--ds-chart-neutral);
+	border-left-color: var(--ds-chart-neutral);
 }
 .lane-count {
-  font: var(--ds-font-heading-large);
-  line-height: 28px;
-  font-weight: var(--ds-weight-bold);
-  font-variant-numeric: tabular-nums;
+	font: var(--ds-font-heading-large);
+	line-height: 28px;
+	font-weight: var(--ds-weight-bold);
+	font-variant-numeric: tabular-nums;
 }
 .lane-label {
-  font-weight: 600;
+	font-weight: 600;
 }
 .lane-hint {
-  margin: var(--ds-space-050) 0 var(--ds-space-100);
-  color: var(--ds-text-subtlest);
-  font: var(--ds-font-body);
+	margin: var(--ds-space-050) 0 var(--ds-space-100);
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
 }
 .lane-examples {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--ds-space-050);
-  font: var(--ds-font-body);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: var(--ds-space-050);
+	font: var(--ds-font-body);
 }
 .lane-examples li {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--ds-space-100);
+	display: flex;
+	justify-content: space-between;
+	gap: var(--ds-space-100);
 }
 .lane-rank {
-  color: var(--ds-text-subtlest);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+	color: var(--ds-text-subtlest);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
 }
 
 .unproven {
-  margin-left: var(--ds-space-025);
-  color: var(--ds-text-subtlest);
+	margin-left: var(--ds-space-025);
+	color: var(--ds-text-subtlest);
 }
 .contested {
-  margin-left: var(--ds-space-050);
-  color: var(--ds-text-warning);
+	margin-left: var(--ds-space-050);
+	color: var(--ds-text-warning);
 }
 
 .marker-line {
-  stroke: var(--ds-text-subtlest);
-  stroke-width: 1;
-  stroke-dasharray: 2 4;
+	stroke: var(--ds-text-subtlest);
+	stroke-width: 1;
+	stroke-dasharray: 2 4;
 }
 .marker-pin {
-  fill: var(--ds-surface-raised);
-  stroke: var(--ds-text-subtlest);
-  stroke-width: 1;
+	fill: var(--ds-surface-raised);
+	stroke: var(--ds-text-subtlest);
+	stroke-width: 1;
 }
 .marker-index {
-  fill: var(--ds-text-subtle);
-  font: var(--ds-font-body);
+	fill: var(--ds-text-subtle);
+	font: var(--ds-font-body);
 }
 /* The key that turns a numbered pin into a release. */
 .marker-key {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--ds-space-100) var(--ds-space-200);
-  margin: var(--ds-space-100) 0 0;
-  padding: 0;
-  list-style: none;
-  color: var(--ds-text-subtlest);
-  font: var(--ds-font-body);
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--ds-space-100) var(--ds-space-200);
+	margin: var(--ds-space-100) 0 0;
+	padding: 0;
+	list-style: none;
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
 }
 .marker-key li {
-  display: flex;
-  align-items: center;
-  gap: var(--ds-space-075);
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-075);
 }
 .marker-key-index {
-  display: grid;
-  place-items: center;
-  width: 16px;
-  height: 16px;
-  flex: none;
-  border: 1px solid var(--ds-border-bold);
-  border-radius: var(--ds-radius-full);
-  color: var(--ds-text-subtle);
+	display: grid;
+	place-items: center;
+	width: 16px;
+	height: 16px;
+	flex: none;
+	border: 1px solid var(--ds-border-bold);
+	border-radius: var(--ds-radius-full);
+	color: var(--ds-text-subtle);
 }
 
 .chart-figure {
-  margin: 0;
+	margin: 0;
 }
 .chart-figure figcaption {
-  margin-top: var(--ds-space-100);
-  color: var(--ds-text-subtlest);
-  font: var(--ds-font-body);
+	margin-top: var(--ds-space-100);
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
 }
 
 /* ── Chart ─────────────────────────────────────────────────────────────── */
 
 .chart {
-  position: relative;
+	position: relative;
 }
 .chart svg {
-  display: block;
-  width: 100%;
-  height: auto;
+	display: block;
+	width: 100%;
+	height: auto;
 }
 .grid-line {
-  stroke: var(--ds-border);
-  stroke-width: 1;
+	stroke: var(--ds-border);
+	stroke-width: 1;
 }
 .axis-label {
-  fill: var(--ds-text-subtlest);
-  font: var(--ds-font-body);
+	fill: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
 }
 .crosshair {
-  stroke: var(--ds-border-bold);
-  stroke-width: 1;
-  stroke-dasharray: 3 3;
+	stroke: var(--ds-border-bold);
+	stroke-width: 1;
+	stroke-dasharray: 3 3;
 }
 .series-line {
-  fill: none;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+	fill: none;
+	stroke-width: 2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
 }
 .series-dot {
-  stroke: var(--ds-surface-raised);
-  stroke-width: 1.5;
+	stroke: var(--ds-surface-raised);
+	stroke-width: 1.5;
 }
 /* Everything the reader is not pointing at recedes to grey. Contrast is what
    carries the story; eight equally loud lines carry none of it. */
 .series-muted .series-line {
-  stroke-width: 1.5;
-  opacity: 0.4;
+	stroke-width: 1.5;
+	opacity: 0.4;
 }
 .series-label {
-  font: var(--ds-font-body);
+	font: var(--ds-font-body);
 }
 .series-label-muted {
-  opacity: 0.6;
+	opacity: 0.6;
 }
 
 /* The two rails below the plot floor: observed-but-outside-the-top-200, and
    the days the fetch failed. Both are states, not absences, and neither may
    be drawn as a rank. */
 .rail-line {
-  stroke: var(--ds-border);
-  stroke-width: 1;
-  stroke-dasharray: 2 4;
+	stroke: var(--ds-border);
+	stroke-width: 1;
+	stroke-dasharray: 2 4;
 }
 .unranked-mark {
-  stroke: var(--ds-surface-raised);
-  stroke-width: 1;
+	stroke: var(--ds-surface-raised);
+	stroke-width: 1;
 }
 .hatch-line {
-  stroke: var(--ds-chart-danger);
-  stroke-width: 2;
+	stroke: var(--ds-chart-danger);
+	stroke-width: 2;
 }
 .error-mark {
-  opacity: 0.75;
+	opacity: 0.75;
 }
 
 .series-glyph {
-  width: 20px;
-  height: 8px;
-  flex: none;
+	width: 20px;
+	height: 8px;
+	flex: none;
 }
 
 .chart-tip {
-  position: absolute;
-  top: 0;
-  transform: translate(-50%, -8px);
-  pointer-events: none;
-  padding: var(--ds-space-100);
-  background: var(--ds-surface-overlay);
-  border: 1px solid var(--ds-border);
-  border-radius: var(--ds-radius-small);
-  box-shadow: var(--ds-shadow-overlay);
-  font: var(--ds-font-body);
-  white-space: nowrap;
+	position: absolute;
+	top: 0;
+	transform: translate(-50%, -8px);
+	pointer-events: none;
+	padding: var(--ds-space-100);
+	background: var(--ds-surface-overlay);
+	border: 1px solid var(--ds-border);
+	border-radius: var(--ds-radius-small);
+	box-shadow: var(--ds-shadow-overlay);
+	font: var(--ds-font-body);
+	white-space: nowrap;
 }
 .chart-tip-date {
-  margin-bottom: var(--ds-space-050);
-  color: var(--ds-text-subtlest);
+	margin-bottom: var(--ds-space-050);
+	color: var(--ds-text-subtlest);
 }
 .chart-tip-row {
-  display: flex;
-  align-items: center;
-  gap: var(--ds-space-075);
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-075);
 }
 .chart-tip-rank {
-  margin-left: auto;
-  font-variant-numeric: tabular-nums;
-  font-weight: var(--ds-weight-bold);
+	margin-left: auto;
+	font-variant-numeric: tabular-nums;
+	font-weight: var(--ds-weight-bold);
 }
 
 .legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--ds-space-200);
-  margin: var(--ds-space-150) 0 0;
-  padding: 0;
-  list-style: none;
-  color: var(--ds-text-subtle);
-  font: var(--ds-font-body);
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--ds-space-200);
+	margin: var(--ds-space-150) 0 0;
+	padding: 0;
+	list-style: none;
+	color: var(--ds-text-subtle);
+	font: var(--ds-font-body);
 }
 .legend li {
-  display: flex;
-  align-items: center;
-  gap: var(--ds-space-075);
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-075);
 }
 .legend-chip {
-  display: flex;
-  align-items: center;
-  gap: var(--ds-space-075);
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-075);
+	padding: 0;
+	border: 0;
+	background: none;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
 }
 .legend-muted {
-  opacity: 0.5;
+	opacity: 0.5;
 }
 
 .swatch {
-  width: 8px;
-  height: 8px;
-  flex: none;
-  border: 1px solid transparent;
-  border-radius: var(--ds-radius-full);
+	width: 8px;
+	height: 8px;
+	flex: none;
+	border: 1px solid transparent;
+	border-radius: var(--ds-radius-full);
 }
 
 /* ── Table ─────────────────────────────────────────────────────────────── */
 
 .table-card {
-  padding: 0;
-  overflow: hidden;
+	padding: 0;
+	overflow: hidden;
 }
 
 .table-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--ds-space-200);
-  padding: var(--ds-space-150) var(--ds-space-200);
-  border-bottom: 1px solid var(--ds-border);
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--ds-space-200);
+	padding: var(--ds-space-150) var(--ds-space-200);
+	border-bottom: 1px solid var(--ds-border);
 }
 .search {
-  min-width: 240px;
+	min-width: 240px;
 }
 .toolbar-meta {
-  color: var(--ds-text-subtlest);
-  font: var(--ds-font-body);
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
 }
 
 .table-scroll {
-  overflow-x: auto;
+	overflow-x: auto;
 }
 
 table.grid {
-  width: 100%;
-  border-collapse: collapse;
+	width: 100%;
+	border-collapse: collapse;
 }
 
 table.grid th {
-  padding: var(--ds-space-100) var(--ds-space-150);
-  text-align: left;
-  color: var(--ds-text-subtle);
-  /* Sentence case, not uppercase: 14px small caps needed the letter-spacing to stay
+	padding: var(--ds-space-100) var(--ds-space-150);
+	text-align: left;
+	color: var(--ds-text-subtle);
+	/* Sentence case, not uppercase: 14px small caps needed the letter-spacing to stay
      legible, and at this size that tracking only makes the header noisier than
      the data underneath it. */
-  font: var(--ds-font-heading-xsmall);
-  background: var(--ds-surface-raised);
-  border-bottom: 1px solid var(--ds-border);
-  position: sticky;
-  top: 0;
+	font: var(--ds-font-heading-xsmall);
+	background: var(--ds-surface-raised);
+	border-bottom: 1px solid var(--ds-border);
+	position: sticky;
+	top: 0;
 }
 
 .group-row th {
-  color: var(--ds-text-subtle);
-  border-bottom: 1px solid var(--ds-border);
-  background: var(--ds-surface-sunken);
-  position: static;
+	color: var(--ds-text-subtle);
+	border-bottom: 1px solid var(--ds-border);
+	background: var(--ds-surface-sunken);
+	position: static;
 }
 .group-row th + th {
-  border-left: 1px solid var(--ds-border);
+	border-left: 1px solid var(--ds-border);
 }
 
 table.grid td {
-  /* The one place the 14px step is the right answer rather than a concession:
+	/* The one place the 14px step is the right answer rather than a concession:
      a rank table is scanned column-wise, and 16px rows push the comparison a
      keyword wants off the fold. */
-  font: var(--ds-font-body);
-  height: 48px;
-  padding: var(--ds-space-100) var(--ds-space-150);
-  border-bottom: 1px solid var(--ds-border);
-  vertical-align: middle;
-  white-space: nowrap;
+	font: var(--ds-font-body);
+	height: 48px;
+	padding: var(--ds-space-100) var(--ds-space-150);
+	border-bottom: 1px solid var(--ds-border);
+	vertical-align: middle;
+	white-space: nowrap;
 }
 
 table.grid tbody tr:hover {
-  background: var(--ds-neutral-subtle-hovered);
+	background: var(--ds-neutral-subtle-hovered);
 }
 
 /* Error log.
@@ -983,273 +983,273 @@ table.grid tbody tr:hover {
    column widths keep the readable fields anchored; the message truncates to
    one line and expands on click. */
 .error-log {
-  max-width: 100%;
-  overflow-x: auto;
+	max-width: 100%;
+	overflow-x: auto;
 }
 
 .error-log table.grid {
-  table-layout: fixed;
+	table-layout: fixed;
 }
 
 .error-log td {
-  height: auto;
-  min-height: 44px;
-  padding-top: var(--ds-space-100);
-  padding-bottom: var(--ds-space-100);
-  white-space: normal;
-  vertical-align: top;
+	height: auto;
+	min-height: 44px;
+	padding-top: var(--ds-space-100);
+	padding-bottom: var(--ds-space-100);
+	white-space: normal;
+	vertical-align: top;
 }
 
 .error-log .col-when {
-  width: 104px;
-  color: var(--ds-text-subtle);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+	width: 104px;
+	color: var(--ds-text-subtle);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
 }
 
 .error-log .col-class {
-  width: 190px;
-  font-weight: var(--ds-weight-medium);
-  overflow-wrap: anywhere;
+	width: 190px;
+	font-weight: var(--ds-weight-medium);
+	overflow-wrap: anywhere;
 }
 
 .error-log .col-count {
-  width: 72px;
-  font-variant-numeric: tabular-nums;
+	width: 72px;
+	font-variant-numeric: tabular-nums;
 }
 
 .error-detail {
-  display: block;
-  width: 100%;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--ds-text-subtle);
-  /* Monospace at the body step: error payloads are read, not glanced at. */
-  font: var(--ds-font-body);
-  font-family: var(--ds-font-mono);
-  text-align: left;
-  cursor: pointer;
-  /* Collapsed: one line, clipped. */
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+	display: block;
+	width: 100%;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: var(--ds-text-subtle);
+	/* Monospace at the body step: error payloads are read, not glanced at. */
+	font: var(--ds-font-body);
+	font-family: var(--ds-font-mono);
+	text-align: left;
+	cursor: pointer;
+	/* Collapsed: one line, clipped. */
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
 }
 
 .error-detail:hover {
-  color: var(--ds-text);
+	color: var(--ds-text);
 }
 
 .error-detail.open {
-  max-height: 220px;
-  overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
+	max-height: 220px;
+	overflow: auto;
+	white-space: pre-wrap;
+	word-break: break-word;
 }
 
 .muted {
-  color: var(--ds-text-subtlest);
+	color: var(--ds-text-subtlest);
 }
 
 .row-self {
-  background: var(--ds-background-selected);
+	background: var(--ds-background-selected);
 }
 
 /* The row and its line highlight together, so the mapping between the two
    never has to be worked out from colour. */
 .row-focused {
-  background: var(--ds-neutral-subtle-hovered);
+	background: var(--ds-neutral-subtle-hovered);
 }
 
 .num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
+	text-align: right;
+	font-variant-numeric: tabular-nums;
 }
 
 .kw {
-  display: flex;
-  align-items: center;
-  gap: var(--ds-space-100);
-  white-space: nowrap;
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-100);
+	white-space: nowrap;
 }
 
 .link {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--ds-link);
-  font: inherit;
-  cursor: pointer;
-  text-align: left;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: var(--ds-link);
+	font: inherit;
+	cursor: pointer;
+	text-align: left;
 }
 .link:hover {
-  text-decoration: underline;
+	text-decoration: underline;
 }
 .link:active {
-  color: var(--ds-link-pressed);
+	color: var(--ds-link-pressed);
 }
 
 /* Rank badge: banded by the thresholds that matter, number always readable. */
 .rank {
-  display: inline-block;
-  min-width: 34px;
-  padding: var(--ds-space-025) var(--ds-space-075);
-  border-radius: var(--ds-radius-small);
-  font-weight: var(--ds-weight-bold);
-  font-variant-numeric: tabular-nums;
-  text-align: center;
+	display: inline-block;
+	min-width: 34px;
+	padding: var(--ds-space-025) var(--ds-space-075);
+	border-radius: var(--ds-radius-small);
+	font-weight: var(--ds-weight-bold);
+	font-variant-numeric: tabular-nums;
+	text-align: center;
 }
 .rank-top {
-  background: var(--ds-bg-information);
-  color: var(--ds-text-information);
+	background: var(--ds-bg-information);
+	color: var(--ds-text-information);
 }
 .rank-mid {
-  background: var(--ds-background-neutral);
-  color: var(--ds-text);
+	background: var(--ds-background-neutral);
+	color: var(--ds-text);
 }
 .rank-low {
-  color: var(--ds-text-subtle);
+	color: var(--ds-text-subtle);
 }
 .rank-none {
-  color: var(--ds-text-subtlest);
+	color: var(--ds-text-subtlest);
 }
 
 .delta {
-  display: inline-flex;
-  align-items: baseline;
-  gap: var(--ds-space-050);
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
+	display: inline-flex;
+	align-items: baseline;
+	gap: var(--ds-space-050);
+	font-variant-numeric: tabular-nums;
+	font-weight: 600;
 }
 .delta-age {
-  color: var(--ds-text-subtlest);
-  font: var(--ds-font-body);
-  font-weight: 400;
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
+	font-weight: 400;
 }
 .delta-up {
-  color: var(--ds-text-success);
+	color: var(--ds-text-success);
 }
 .delta-down {
-  color: var(--ds-text-danger);
+	color: var(--ds-text-danger);
 }
 .delta-flat {
-  color: var(--ds-text-subtlest);
-  font-weight: 400;
+	color: var(--ds-text-subtlest);
+	font-weight: 400;
 }
 
 .meter {
-  display: flex;
-  align-items: center;
-  gap: var(--ds-space-100);
-  min-width: 140px;
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-100);
+	min-width: 140px;
 }
 .meter-track {
-  flex: 1;
-  height: 6px;
-  border-radius: var(--ds-radius-full);
-  background: var(--ds-background-neutral);
-  overflow: hidden;
+	flex: 1;
+	height: 6px;
+	border-radius: var(--ds-radius-full);
+	background: var(--ds-background-neutral);
+	overflow: hidden;
 }
 .meter-fill {
-  display: block;
-  height: 100%;
-  background: var(--ds-chart-1);
+	display: block;
+	height: 100%;
+	background: var(--ds-chart-1);
 }
 .meter-value {
-  width: 28px;
-  /* The `font` shorthand resets font-variant, so it must come first or the
+	width: 28px;
+	/* The `font` shorthand resets font-variant, so it must come first or the
      tabular figures are silently lost and the column jitters. */
-  font: var(--ds-font-body);
-  font-variant-numeric: tabular-nums;
-  color: var(--ds-text-subtle);
-  text-align: right;
+	font: var(--ds-font-body);
+	font-variant-numeric: tabular-nums;
+	color: var(--ds-text-subtle);
+	text-align: right;
 }
 
 /* One line per row: the table stays scannable even when a keyword is
    contested by long app names. */
 .results {
-  display: flex;
-  gap: var(--ds-space-050);
-  max-width: 320px;
-  overflow: hidden;
+	display: flex;
+	gap: var(--ds-space-050);
+	max-width: 320px;
+	overflow: hidden;
 }
 /* Result-page apps: icon-first, like the store itself. */
 .result-app {
-  display: inline-flex;
-  flex: none;
+	display: inline-flex;
+	flex: none;
 }
 .app-icon,
 .result-icon {
-  width: 22px;
-  height: 22px;
-  border-radius: var(--ds-radius-small);
-  border: 1px solid var(--ds-border);
-  object-fit: cover;
+	width: 22px;
+	height: 22px;
+	border-radius: var(--ds-radius-small);
+	border: 1px solid var(--ds-border);
+	object-fit: cover;
 }
 .icon-fallback {
-  display: inline-grid;
-  place-items: center;
-  background: var(--ds-background-neutral);
-  color: var(--ds-text-subtle);
-  font: var(--ds-font-body);
-  font-weight: var(--ds-weight-bold);
-  text-transform: uppercase;
+	display: inline-grid;
+	place-items: center;
+	background: var(--ds-background-neutral);
+	color: var(--ds-text-subtle);
+	font: var(--ds-font-body);
+	font-weight: var(--ds-weight-bold);
+	text-transform: uppercase;
 }
 .results-link {
-  margin-left: var(--ds-space-050);
-  font: var(--ds-font-body);
+	margin-left: var(--ds-space-050);
+	font: var(--ds-font-body);
 }
 
 /* Difficulty bands carry a texture as well as a hue, so the band survives a
    colour-vision check and a greyscale print. The score sits beside the bar in
    every case; the fill is the second reading, never the only one. */
 .meter-hard {
-  background:
-    repeating-linear-gradient(-45deg, #00000059 0 2px, transparent 2px 5px),
-    var(--ds-chart-danger);
+	background:
+		repeating-linear-gradient(-45deg, #00000059 0 2px, transparent 2px 5px),
+		var(--ds-chart-danger);
 }
 .meter-moderate {
-  background:
-    repeating-linear-gradient(-45deg, #00000038 0 1px, transparent 1px 6px),
-    var(--ds-chart-4);
+	background:
+		repeating-linear-gradient(-45deg, #00000038 0 1px, transparent 1px 6px),
+		var(--ds-chart-4);
 }
 .meter-easy {
-  background: var(--ds-chart-success);
+	background: var(--ds-chart-success);
 }
 
 .toolbar-field select {
-  height: 32px;
-  padding: 0 var(--ds-space-100);
-  border: 1px solid var(--ds-border-input);
-  border-radius: var(--ds-radius-medium);
-  background: var(--ds-surface);
-  color: var(--ds-text);
-  font: inherit;
+	height: 32px;
+	padding: 0 var(--ds-space-100);
+	border: 1px solid var(--ds-border-input);
+	border-radius: var(--ds-radius-medium);
+	background: var(--ds-surface);
+	color: var(--ds-text);
+	font: inherit;
 }
 
 .button {
-  display: inline-flex;
-  align-items: center;
-  height: 32px;
-  padding: 0 var(--ds-space-150);
-  border: 1px solid var(--ds-border-input);
-  border-radius: var(--ds-radius-medium);
-  background: var(--ds-surface);
-  color: var(--ds-text);
-  text-decoration: none;
+	display: inline-flex;
+	align-items: center;
+	height: 32px;
+	padding: 0 var(--ds-space-150);
+	border: 1px solid var(--ds-border-input);
+	border-radius: var(--ds-radius-medium);
+	background: var(--ds-surface);
+	color: var(--ds-text);
+	text-decoration: none;
 }
 .button:hover {
-  background: var(--ds-neutral-subtle-hovered);
+	background: var(--ds-neutral-subtle-hovered);
 }
 
 .swatch-button {
-  display: inline-flex;
-  align-items: center;
-  padding: 0;
-  border: 0;
-  background: none;
-  cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	padding: 0;
+	border: 0;
+	background: none;
+	cursor: pointer;
 }
 
 /* ── Sign in ───────────────────────────────────────────────────────────── */
@@ -1257,109 +1257,109 @@ table.grid tbody tr:hover {
 /* ── Result drawer ─────────────────────────────────────────────────────── */
 
 .drawer {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: min(420px, 100vw);
-  z-index: 10;
-  display: flex;
-  flex-direction: column;
-  padding: var(--ds-space-200);
-  background: var(--ds-surface-overlay);
-  border-left: 1px solid var(--ds-border);
-  box-shadow: var(--ds-shadow-overlay);
-  overflow-y: auto;
+	position: fixed;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	width: min(420px, 100vw);
+	z-index: 10;
+	display: flex;
+	flex-direction: column;
+	padding: var(--ds-space-200);
+	background: var(--ds-surface-overlay);
+	border-left: 1px solid var(--ds-border);
+	box-shadow: var(--ds-shadow-overlay);
+	overflow-y: auto;
 }
 .drawer-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--ds-space-200);
-  margin-bottom: var(--ds-space-200);
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--ds-space-200);
+	margin-bottom: var(--ds-space-200);
 }
 .drawer-head h2 {
-  margin: 0;
-  font: var(--ds-font-heading-medium);
-  line-height: 20px;
-  font-weight: var(--ds-weight-bold);
+	margin: 0;
+	font: var(--ds-font-heading-medium);
+	line-height: 20px;
+	font-weight: var(--ds-weight-bold);
 }
 .drawer-sub {
-  margin: var(--ds-space-025) 0 0;
-  color: var(--ds-text-subtlest);
-  font: var(--ds-font-body);
+	margin: var(--ds-space-025) 0 0;
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
 }
 .result-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
+	margin: 0;
+	padding: 0;
+	list-style: none;
 }
 .result-row {
-  display: flex;
-  align-items: center;
-  gap: var(--ds-space-100);
-  padding: var(--ds-space-075) var(--ds-space-050);
-  border-bottom: 1px solid var(--ds-border);
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-100);
+	padding: var(--ds-space-075) var(--ds-space-050);
+	border-bottom: 1px solid var(--ds-border);
 }
 .result-position {
-  width: 28px;
-  font: var(--ds-font-body);
-  font-variant-numeric: tabular-nums;
-  color: var(--ds-text-subtlest);
-  text-align: right;
+	width: 28px;
+	font: var(--ds-font-body);
+	font-variant-numeric: tabular-nums;
+	color: var(--ds-text-subtlest);
+	text-align: right;
 }
 .result-name {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
 }
 .result-developer {
-  color: var(--ds-text-subtlest);
-  font: var(--ds-font-body);
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
 }
 
 /* ── Reviews ───────────────────────────────────────────────────────────── */
 
 .review {
-  padding: var(--ds-space-200);
+	padding: var(--ds-space-200);
 }
 .review h3 {
-  margin: 0 0 var(--ds-space-025);
-  font: var(--ds-font-heading-small);
-  line-height: 20px;
-  font-weight: var(--ds-weight-bold);
+	margin: 0 0 var(--ds-space-025);
+	font: var(--ds-font-heading-small);
+	line-height: 20px;
+	font-weight: var(--ds-weight-bold);
 }
 .review .meta {
-  color: var(--ds-text-subtlest);
-  font: var(--ds-font-body);
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
 }
 .stars {
-  color: var(--ds-chart-4);
-  letter-spacing: 1px;
+	color: var(--ds-chart-4);
+	letter-spacing: 1px;
 }
 
 @media (max-width: 900px) {
-  .shell {
-    grid-template-columns: 1fr;
-  }
-  .sidebar {
-    flex-direction: row;
-    flex-wrap: wrap;
-    border-right: 0;
-    border-bottom: 1px solid var(--ds-border);
-  }
-  .nav-heading {
-    display: none;
-  }
-  main {
-    padding: var(--ds-space-200);
-  }
+	.shell {
+		grid-template-columns: 1fr;
+	}
+	.sidebar {
+		flex-direction: row;
+		flex-wrap: wrap;
+		border-right: 0;
+		border-bottom: 1px solid var(--ds-border);
+	}
+	.nav-heading {
+		display: none;
+	}
+	main {
+		padding: var(--ds-space-200);
+	}
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .sidebar a,
-  .seg,
-  table.grid tbody tr {
-    transition: background-color 100ms ease;
-  }
+	.sidebar a,
+	.seg,
+	table.grid tbody tr {
+		transition: background-color 100ms ease;
+	}
 }

@@ -22,24 +22,24 @@ import type { Context } from "hono";
 import type { Env } from "./env";
 
 export interface Vars {
-  userId: string;
+	userId: string;
 }
 
 export type AppContext = Context<{ Bindings: Env; Variables: Vars }>;
 
 /** Does this operator track this app? */
 export async function ownsApp(
-  db: D1Database,
-  userId: string,
-  appId: number
+	db: D1Database,
+	userId: string,
+	appId: number
 ): Promise<boolean> {
-  const row = await db
-    .prepare(
-      "SELECT 1 AS ok FROM tracked_app WHERE user_id = ?1 AND app_id = ?2"
-    )
-    .bind(userId, appId)
-    .first();
-  return row !== null;
+	const row = await db
+		.prepare(
+			"SELECT 1 AS ok FROM tracked_app WHERE user_id = ?1 AND app_id = ?2"
+		)
+		.bind(userId, appId)
+		.first();
+	return row !== null;
 }
 
 /**
@@ -48,31 +48,31 @@ export async function ownsApp(
  * than on the pair row itself.
  */
 export async function ownsPair(
-  db: D1Database,
-  userId: string,
-  pairId: number
+	db: D1Database,
+	userId: string,
+	pairId: number
 ): Promise<boolean> {
-  const row = await db
-    .prepare(
-      `SELECT 1 AS ok
+	const row = await db
+		.prepare(
+			`SELECT 1 AS ok
      FROM crawl_pair cp
      JOIN tracked_keyword tk ON tk.keyword_id = cp.keyword_id
      WHERE cp.id = ?1 AND tk.user_id = ?2`
-    )
-    .bind(pairId, userId)
-    .first();
-  return row !== null;
+		)
+		.bind(pairId, userId)
+		.first();
+	return row !== null;
 }
 
 export function callerOwnsApp(c: AppContext, appId: number): Promise<boolean> {
-  return ownsApp(c.env.DB, c.get("userId"), appId);
+	return ownsApp(c.env.DB, c.get("userId"), appId);
 }
 
 export function callerOwnsPair(
-  c: AppContext,
-  pairId: number
+	c: AppContext,
+	pairId: number
 ): Promise<boolean> {
-  return ownsPair(c.env.DB, c.get("userId"), pairId);
+	return ownsPair(c.env.DB, c.get("userId"), pairId);
 }
 
 /**
@@ -81,5 +81,5 @@ export function callerOwnsPair(
  * account.
  */
 export function notFound(c: AppContext) {
-  return c.json({ error: "not found" }, 404);
+	return c.json({ error: "not found" }, 404);
 }

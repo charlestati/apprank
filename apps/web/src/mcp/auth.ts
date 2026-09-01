@@ -28,70 +28,70 @@ export const DAILY_CALL_BUDGET = 2000;
 const DAY_MS = 86_400_000;
 
 export interface Principal {
-  credentialId: string;
-  name: string;
-  userId: string;
-  scopes: string[];
-  callsRemainingToday: number;
-  expiresAt: number | null;
+	credentialId: string;
+	name: string;
+	userId: string;
+	scopes: string[];
+	callsRemainingToday: number;
+	expiresAt: number | null;
 }
 
 export type AuthFailure =
-  | "missing"
-  | "malformed"
-  | "unknown"
-  | "revoked"
-  | "expired"
-  | "rate_limited";
+	| "missing"
+	| "malformed"
+	| "unknown"
+	| "revoked"
+	| "expired"
+	| "rate_limited";
 
 export type AuthResult =
-  | { ok: true; principal: Principal }
-  | { ok: false; reason: AuthFailure };
+	| { ok: true; principal: Principal }
+	| { ok: false; reason: AuthFailure };
 
 interface CredentialRow {
-  id: string;
-  name: string;
-  user_id: string;
-  scopes: string;
-  secret_hash: string;
-  expires_at: number | null;
-  revoked_at: number | null;
-  window_start: number | null;
-  window_count: number;
+	id: string;
+	name: string;
+	user_id: string;
+	scopes: string;
+	secret_hash: string;
+	expires_at: number | null;
+	revoked_at: number | null;
+	window_start: number | null;
+	window_count: number;
 }
 
 /** "Bearer apprank_mcp_<id>_<secret>" → its two halves. */
 export function parseToken(
-  header: string | null
+	header: string | null
 ): { id: string; secret: string } | null {
-  if (!header?.startsWith("Bearer ")) {
-    return null;
-  }
-  const token = header.slice("Bearer ".length).trim();
-  if (!token.startsWith(TOKEN_PREFIX)) {
-    return null;
-  }
-  const rest = token.slice(TOKEN_PREFIX.length);
-  // First separator only: the id is hex, but the secret is base64url and
-  // routinely contains underscores of its own. Splitting on the last one, or
-  // on all of them, would corrupt most secrets.
-  const separator = rest.indexOf("_");
-  if (separator <= 0) {
-    return null;
-  }
-  const id = rest.slice(0, separator);
-  const secret = rest.slice(separator + 1);
-  return secret.length > 0 ? { id, secret } : null;
+	if (!header?.startsWith("Bearer ")) {
+		return null;
+	}
+	const token = header.slice("Bearer ".length).trim();
+	if (!token.startsWith(TOKEN_PREFIX)) {
+		return null;
+	}
+	const rest = token.slice(TOKEN_PREFIX.length);
+	// First separator only: the id is hex, but the secret is base64url and
+	// routinely contains underscores of its own. Splitting on the last one, or
+	// on all of them, would corrupt most secrets.
+	const separator = rest.indexOf("_");
+	if (separator <= 0) {
+		return null;
+	}
+	const id = rest.slice(0, separator);
+	const secret = rest.slice(separator + 1);
+	return secret.length > 0 ? { id, secret } : null;
 }
 
 export function formatToken(id: string, secret: string): string {
-  return `${TOKEN_PREFIX}${id}_${secret}`;
+	return `${TOKEN_PREFIX}${id}_${secret}`;
 }
 
 export async function hashSecret(secret: string): Promise<string> {
-  return [...(await digest(secret))]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+	return [...(await digest(secret))]
+		.map((b) => b.toString(16).padStart(2, "0"))
+		.join("");
 }
 
 /**
@@ -103,13 +103,13 @@ export async function hashSecret(secret: string): Promise<string> {
  * count without a follow-up read.
  */
 async function chargeCall(
-  db: D1Database,
-  id: string,
-  now: number
+	db: D1Database,
+	id: string,
+	now: number
 ): Promise<number> {
-  const row = await db
-    .prepare(
-      `UPDATE mcp_credential
+	const row = await db
+		.prepare(
+			`UPDATE mcp_credential
          SET window_start = CASE WHEN window_start IS NULL OR window_start < ?2
                                  THEN ?3 ELSE window_start END,
              window_count = CASE
@@ -124,10 +124,10 @@ async function chargeCall(
              last_used_at = ?3
        WHERE id = ?1
        RETURNING window_count`
-    )
-    .bind(id, now - DAY_MS, now, DAILY_CALL_BUDGET)
-    .first<{ window_count: number }>();
-  return row?.window_count ?? 0;
+		)
+		.bind(id, now - DAY_MS, now, DAILY_CALL_BUDGET)
+		.first<{ window_count: number }>();
+	return row?.window_count ?? 0;
 }
 
 /**
@@ -137,74 +137,74 @@ async function chargeCall(
  * secret" cost the same and the id space cannot be probed by timing.
  */
 export async function authenticateMcp(
-  db: D1Database,
-  header: string | null,
-  now: number = Date.now()
+	db: D1Database,
+	header: string | null,
+	now: number = Date.now()
 ): Promise<AuthResult> {
-  const parsed = parseToken(header);
-  if (!parsed) {
-    return { ok: false, reason: header ? "malformed" : "missing" };
-  }
+	const parsed = parseToken(header);
+	if (!parsed) {
+		return { ok: false, reason: header ? "malformed" : "missing" };
+	}
 
-  const row = await db
-    .prepare(
-      `SELECT id, name, user_id, scopes, secret_hash, expires_at, revoked_at,
+	const row = await db
+		.prepare(
+			`SELECT id, name, user_id, scopes, secret_hash, expires_at, revoked_at,
               window_start, window_count
        FROM mcp_credential WHERE id = ?1`
-    )
-    .bind(parsed.id)
-    .first<CredentialRow>();
+		)
+		.bind(parsed.id)
+		.first<CredentialRow>();
 
-  const given = await hashSecret(parsed.secret);
-  const expected = row?.secret_hash ?? "no-such-credential";
-  const encoder = new TextEncoder();
-  const matches = timingSafeEqual(
-    encoder.encode(given),
-    encoder.encode(expected)
-  );
-  if (!(row && matches)) {
-    return { ok: false, reason: "unknown" };
-  }
+	const given = await hashSecret(parsed.secret);
+	const expected = row?.secret_hash ?? "no-such-credential";
+	const encoder = new TextEncoder();
+	const matches = timingSafeEqual(
+		encoder.encode(given),
+		encoder.encode(expected)
+	);
+	if (!(row && matches)) {
+		return { ok: false, reason: "unknown" };
+	}
 
-  // Checked after the compare so a revoked or expired id is not distinguishable
-  // from an unknown one by anybody who does not already hold the secret.
-  if (row.revoked_at !== null) {
-    return { ok: false, reason: "revoked" };
-  }
-  if (row.expires_at !== null && row.expires_at <= now) {
-    return { ok: false, reason: "expired" };
-  }
+	// Checked after the compare so a revoked or expired id is not distinguishable
+	// from an unknown one by anybody who does not already hold the secret.
+	if (row.revoked_at !== null) {
+		return { ok: false, reason: "revoked" };
+	}
+	if (row.expires_at !== null && row.expires_at <= now) {
+		return { ok: false, reason: "expired" };
+	}
 
-  const used = await chargeCall(db, row.id, now);
-  if (used > DAILY_CALL_BUDGET) {
-    return { ok: false, reason: "rate_limited" };
-  }
+	const used = await chargeCall(db, row.id, now);
+	if (used > DAILY_CALL_BUDGET) {
+		return { ok: false, reason: "rate_limited" };
+	}
 
-  let scopes: string[] = [];
-  try {
-    const parsedScopes: unknown = JSON.parse(row.scopes);
-    scopes = Array.isArray(parsedScopes) ? (parsedScopes as string[]) : [];
-  } catch {
-    // A malformed scope list grants nothing rather than everything.
-    scopes = [];
-  }
+	let scopes: string[] = [];
+	try {
+		const parsedScopes: unknown = JSON.parse(row.scopes);
+		scopes = Array.isArray(parsedScopes) ? (parsedScopes as string[]) : [];
+	} catch {
+		// A malformed scope list grants nothing rather than everything.
+		scopes = [];
+	}
 
-  return {
-    ok: true,
-    principal: {
-      callsRemainingToday: Math.max(0, DAILY_CALL_BUDGET - used),
-      credentialId: row.id,
-      expiresAt: row.expires_at,
-      name: row.name,
-      scopes,
-      userId: row.user_id,
-    },
-  };
+	return {
+		ok: true,
+		principal: {
+			callsRemainingToday: Math.max(0, DAILY_CALL_BUDGET - used),
+			credentialId: row.id,
+			expiresAt: row.expires_at,
+			name: row.name,
+			scopes,
+			userId: row.user_id,
+		},
+	};
 }
 
 /** Scope check. `read:all` is the umbrella the issuing script grants by default. */
 export function hasScope(principal: Principal, scope: string): boolean {
-  return (
-    principal.scopes.includes("read:all") || principal.scopes.includes(scope)
-  );
+	return (
+		principal.scopes.includes("read:all") || principal.scopes.includes(scope)
+	);
 }

@@ -17,36 +17,36 @@
 import { createHash, randomBytes } from "node:crypto";
 
 function arg(flag, fallback) {
-  const i = process.argv.indexOf(`--${flag}`);
-  return i === -1 ? fallback : process.argv[i + 1];
+	const i = process.argv.indexOf(`--${flag}`);
+	return i === -1 ? fallback : process.argv[i + 1];
 }
 
 const userId = arg("user");
 const name = arg("name");
 const days = Number(arg("days", "365"));
 const scopes = arg("scopes", "read:all")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
+	.split(",")
+	.map((s) => s.trim())
+	.filter(Boolean);
 
 if (!(userId && name)) {
-  console.error(
-    "usage: node scripts/mcp-token/issue.mjs --user <userId> --name <client-name>\n" +
-      "                                       [--days 365] [--scopes read:all]\n\n" +
-      "  --user    must match tracked_app.user_id — the same durable identity as\n" +
-      "            the userId in BASIC_AUTH_ACCOUNTS, not the username.\n" +
-      "  --name    which client this is, so you can tell two credentials apart\n" +
-      "            later and revoke the right one."
-  );
-  process.exit(1);
+	console.error(
+		"usage: node scripts/mcp-token/issue.mjs --user <userId> --name <client-name>\n" +
+			"                                       [--days 365] [--scopes read:all]\n\n" +
+			"  --user    must match tracked_app.user_id — the same durable identity as\n" +
+			"            the userId in BASIC_AUTH_ACCOUNTS, not the username.\n" +
+			"  --name    which client this is, so you can tell two credentials apart\n" +
+			"            later and revoke the right one."
+	);
+	process.exit(1);
 }
 if (!/^[a-z0-9][a-z0-9-]{1,40}$/u.test(name)) {
-  console.error("--name must be lowercase letters, digits and hyphens.");
-  process.exit(1);
+	console.error("--name must be lowercase letters, digits and hyphens.");
+	process.exit(1);
 }
 if (!(Number.isFinite(days) && days > 0)) {
-  console.error("--days must be a positive number.");
-  process.exit(1);
+	console.error("--days must be a positive number.");
+	process.exit(1);
 }
 
 const id = randomBytes(6).toString("hex");

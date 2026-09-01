@@ -4,26 +4,26 @@
 import { useT } from "../i18n";
 
 interface Props {
-  change: number | null;
-  daysAgo: number | null;
+	change: number | null;
+	daysAgo: number | null;
 }
 
 export function Delta({ change, daysAgo }: Props) {
-  const t = useT();
-  if (!change) {
-    return (
-      <span className="delta delta-flat" title={t.noChangeWindow}>
-        —
-      </span>
-    );
-  }
-  const improved = change > 0;
-  return (
-    <span className={improved ? "delta delta-up" : "delta delta-down"}>
-      {daysAgo ? <span className="delta-age">{daysAgo}d</span> : null}
-      <span aria-hidden="true">{improved ? "↑" : "↓"}</span>
-      <span className="sr-only">{improved ? "up " : "down "}</span>
-      {Math.abs(change)}
-    </span>
-  );
+	const t = useT();
+	if (!change) {
+		return (
+			<span className="delta delta-flat" title={t.noChangeWindow}>
+				—
+			</span>
+		);
+	}
+	const improved = change > 0;
+	return (
+		<span className={improved ? "delta delta-up" : "delta delta-down"}>
+			{daysAgo ? <span className="delta-age">{daysAgo}d</span> : null}
+			<span aria-hidden="true">{improved ? "↑" : "↓"}</span>
+			<span className="sr-only">{improved ? "up " : "down "}</span>
+			{Math.abs(change)}
+		</span>
+	);
 }

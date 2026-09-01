@@ -1,9 +1,9 @@
 {
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    // The `cloudflare:test` module declaration used by the API tests.
-    "types": ["@cloudflare/vitest-pool-workers/types", "node"],
-    "strictNullChecks": true
-  },
-  "include": ["worker-configuration.d.ts", "src/**/*.ts", "test/**/*.ts"]
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		// The `cloudflare:test` module declaration used by the API tests.
+		"types": ["@cloudflare/vitest-pool-workers/types", "node"],
+		"strictNullChecks": true
+	},
+	"include": ["worker-configuration.d.ts", "src/**/*.ts", "test/**/*.ts"]
 }

@@ -22,10 +22,10 @@ import type { Env } from "../env";
 export type CollectionMode = "all" | "credentialed";
 
 export function collectionMode(env: Env): CollectionMode {
-  return env.COLLECTION_MODE === "credentialed" ? "credentialed" : "all";
+	return env.COLLECTION_MODE === "credentialed" ? "credentialed" : "all";
 }
 
 /** Whether this deployment may reach Apple's public, IP-rate-limited endpoints. */
 export function collectsPublicEndpoints(env: Env): boolean {
-  return collectionMode(env) === "all";
+	return collectionMode(env) === "all";
 }

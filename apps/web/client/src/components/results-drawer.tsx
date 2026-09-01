@@ -11,91 +11,91 @@ import { fmt, useT } from "../i18n";
 import { AppIcon } from "./app-icon";
 
 interface Props {
-  row: KeywordRow;
-  storefront: string;
-  trackedAppId: number | null;
-  onClose: () => void;
+	row: KeywordRow;
+	storefront: string;
+	trackedAppId: number | null;
+	onClose: () => void;
 }
 
 export function ResultsDrawer({
-  row,
-  storefront,
-  trackedAppId,
-  onClose,
+	row,
+	storefront,
+	trackedAppId,
+	onClose,
 }: Props) {
-  const f = useFormat();
-  const t = useT();
-  const [page, setPage] = useState<ResultPage | null>(null);
-  const [failed, setFailed] = useState(false);
+	const f = useFormat();
+	const t = useT();
+	const [page, setPage] = useState<ResultPage | null>(null);
+	const [failed, setFailed] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        setPage(await api.results(row.pairId));
-      } catch {
-        setFailed(true);
-      }
-    })();
-  }, [row.pairId]);
+	useEffect(() => {
+		(async () => {
+			try {
+				setPage(await api.results(row.pairId));
+			} catch {
+				setFailed(true);
+			}
+		})();
+	}, [row.pairId]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+	useEffect(() => {
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === "Escape") {
+				onClose();
+			}
+		};
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, [onClose]);
 
-  return (
-    <aside
-      aria-label={fmt(t.drawerSearchResults, { keyword: row.keyword })}
-      className="drawer"
-    >
-      <header className="drawer-head">
-        <div>
-          <h2>“{row.keyword}”</h2>
-          <p className="drawer-sub">
-            {f.region(storefront)} ·{" "}
-            {page?.date
-              ? fmt(t.drawerObserved, { date: f.day(page.date) })
-              : t.loading}
-            {page
-              ? ` · ${fmt(t.drawerResultCount, { n: f.number(page.resultCount) })}`
-              : ""}
-          </p>
-        </div>
-        <button className="link" onClick={onClose} type="button">
-          {t.close}
-        </button>
-      </header>
+	return (
+		<aside
+			aria-label={fmt(t.drawerSearchResults, { keyword: row.keyword })}
+			className="drawer"
+		>
+			<header className="drawer-head">
+				<div>
+					<h2>“{row.keyword}”</h2>
+					<p className="drawer-sub">
+						{f.region(storefront)} ·{" "}
+						{page?.date
+							? fmt(t.drawerObserved, { date: f.day(page.date) })
+							: t.loading}
+						{page
+							? ` · ${fmt(t.drawerResultCount, { n: f.number(page.resultCount) })}`
+							: ""}
+					</p>
+				</div>
+				<button className="link" onClick={onClose} type="button">
+					{t.close}
+				</button>
+			</header>
 
-      {failed ? <p className="empty">{t.drawerFailed}</p> : null}
+			{failed ? <p className="empty">{t.drawerFailed}</p> : null}
 
-      <ol className="result-list">
-        {(page?.results ?? []).map((r) => (
-          <li
-            className={
-              r.appId === trackedAppId ? "result-row row-self" : "result-row"
-            }
-            key={r.appId}
-          >
-            <span className="result-position">{r.position}</span>
-            <AppIcon
-              className="result-icon"
-              iconUrl={r.iconUrl}
-              name={r.name}
-            />
-            <span className="result-name">
-              {r.name ?? fmt(t.appFallback, { id: r.appId })}
-              {r.developer ? (
-                <span className="result-developer">{r.developer}</span>
-              ) : null}
-            </span>
-          </li>
-        ))}
-      </ol>
-    </aside>
-  );
+			<ol className="result-list">
+				{(page?.results ?? []).map((r) => (
+					<li
+						className={
+							r.appId === trackedAppId ? "result-row row-self" : "result-row"
+						}
+						key={r.appId}
+					>
+						<span className="result-position">{r.position}</span>
+						<AppIcon
+							className="result-icon"
+							iconUrl={r.iconUrl}
+							name={r.name}
+						/>
+						<span className="result-name">
+							{r.name ?? fmt(t.appFallback, { id: r.appId })}
+							{r.developer ? (
+								<span className="result-developer">{r.developer}</span>
+							) : null}
+						</span>
+					</li>
+				))}
+			</ol>
+		</aside>
+	);
 }

@@ -7,9 +7,9 @@
 
 import type { Env } from "../env";
 import {
-  computeCapacity,
-  measureOverheadPerDay,
-  planCadence,
+	computeCapacity,
+	measureOverheadPerDay,
+	planCadence,
 } from "../lib/budget";
 import type { CadencePlan } from "../lib/budget";
 import { loadPacing } from "../lib/pacing";
@@ -51,8 +51,8 @@ const SCORE_SQL = `
  * "not in the top 200" is not a position to take a variance over.
  */
 async function refreshVolatility(env: Env, since: string): Promise<void> {
-  await env.DB.prepare(
-    `UPDATE crawl_pair SET volatility = COALESCE((
+	await env.DB.prepare(
+		`UPDATE crawl_pair SET volatility = COALESCE((
        SELECT
          -- population standard deviation of the observed positions
          CASE WHEN COUNT(re.position) < 2 THEN 0 ELSE
@@ -67,15 +67,15 @@ async function refreshVolatility(env: Env, since: string): Promise<void> {
        WHERE r.pair_id = crawl_pair.id AND r.valid = 1 AND r.observed_date >= ?1
      ), 0)
      WHERE ref_count > 0 AND tier = 1`
-  )
-    .bind(since)
-    .run();
+	)
+		.bind(since)
+		.run();
 }
 
 /** What the non-keyword daily work costs, measured from the tracked set. */
 async function measureOverhead(env: Env): Promise<number> {
-  const row = await env.DB.prepare(
-    `SELECT
+	const row = await env.DB.prepare(
+		`SELECT
        (SELECT COUNT(*) FROM (
           SELECT ta.app_id, sl.storefront_code
           FROM tracked_app ta
@@ -86,19 +86,19 @@ async function measureOverhead(env: Env): Promise<number> {
           GROUP BY ta.app_id, sl.storefront_code)) AS app_storefronts,
        (SELECT COUNT(DISTINCT cp.storefront_code) FROM crawl_pair cp
          WHERE cp.ref_count > 0 AND cp.tier = 1) AS storefronts`
-  ).first<{ app_storefronts: number; storefronts: number }>();
+	).first<{ app_storefronts: number; storefronts: number }>();
 
-  const configuredGenres = await getStateJson<(number | null)[]>(
-    env.DB,
-    "chart_genres"
-  );
-  const chartGenres = configuredGenres?.length ?? DEFAULT_CHART_GENRES;
+	const configuredGenres = await getStateJson<(number | null)[]>(
+		env.DB,
+		"chart_genres"
+	);
+	const chartGenres = configuredGenres?.length ?? DEFAULT_CHART_GENRES;
 
-  return measureOverheadPerDay({
-    appStorefrontPairs: row?.app_storefronts ?? 0,
-    chartGenres,
-    storefronts: row?.storefronts ?? 0,
-  });
+	return measureOverheadPerDay({
+		appStorefrontPairs: row?.app_storefronts ?? 0,
+		chartGenres,
+		storefronts: row?.storefronts ?? 0,
+	});
 }
 
 /**
@@ -107,12 +107,12 @@ async function measureOverhead(env: Env): Promise<number> {
  * window is pinned to daily regardless of where it scores.
  */
 async function applyIntervals(
-  env: Env,
-  plan: CadencePlan,
-  now: number
+	env: Env,
+	plan: CadencePlan,
+	now: number
 ): Promise<void> {
-  await env.DB.prepare(
-    `WITH latest AS (
+	await env.DB.prepare(
+		`WITH latest AS (
        SELECT r.pair_id, re.position
        FROM ranking r
        JOIN crawl_pair cp ON cp.id = r.pair_id
@@ -153,9 +153,9 @@ async function applyIntervals(
        ELSE ?4
      END
      WHERE ref_count > 0 AND tier = 1`
-  )
-    .bind(now, plan.fastCount, plan.fastDays * 24, plan.slowDays * 24)
-    .run();
+	)
+		.bind(now, plan.fastCount, plan.fastDays * 24, plan.slowDays * 24)
+		.run();
 }
 
 /**
@@ -164,44 +164,44 @@ async function applyIntervals(
  * (slower) interval elapses.
  */
 async function tightenDueDates(env: Env, now: number): Promise<void> {
-  await env.DB.prepare(
-    `UPDATE crawl_pair
+	await env.DB.prepare(
+		`UPDATE crawl_pair
      SET next_due_at = COALESCE(last_fetched_at, ?1) + interval_hours * 3600000
      WHERE ref_count > 0 AND tier = 1
        AND next_due_at > COALESCE(last_fetched_at, ?1) + interval_hours * 3600000`
-  )
-    .bind(now)
-    .run();
+	)
+		.bind(now)
+		.run();
 }
 
 /** Recompute the crawl budget and re-space every tracked pair against it. */
 export async function recomputeCadence(env: Env): Promise<CadencePlan> {
-  const now = Date.now();
-  const since = new Date(now - VOLATILITY_WINDOW_DAYS * 24 * 3_600_000)
-    .toISOString()
-    .slice(0, 10);
+	const now = Date.now();
+	const since = new Date(now - VOLATILITY_WINDOW_DAYS * 24 * 3_600_000)
+		.toISOString()
+		.slice(0, 10);
 
-  await refreshVolatility(env, since);
+	await refreshVolatility(env, since);
 
-  const [pacing, overhead, pairRow, windowHours] = await Promise.all([
-    loadPacing(env.DB),
-    measureOverhead(env),
-    env.DB.prepare(
-      "SELECT COUNT(*) AS n FROM crawl_pair WHERE ref_count > 0 AND tier = 1"
-    ).first<{ n: number }>(),
-    getStateJson<number>(env.DB, "tier1_window_hours"),
-  ]);
+	const [pacing, overhead, pairRow, windowHours] = await Promise.all([
+		loadPacing(env.DB),
+		measureOverhead(env),
+		env.DB.prepare(
+			"SELECT COUNT(*) AS n FROM crawl_pair WHERE ref_count > 0 AND tier = 1"
+		).first<{ n: number }>(),
+		getStateJson<number>(env.DB, "tier1_window_hours"),
+	]);
 
-  const capacity = computeCapacity({
-    overheadPerDay: overhead,
-    ratePerMin: pacing.ratePerMin,
-    windowHours: windowHours ?? DEFAULT_WINDOW_HOURS,
-  });
-  const plan = planCadence(pairRow?.n ?? 0, capacity);
+	const capacity = computeCapacity({
+		overheadPerDay: overhead,
+		ratePerMin: pacing.ratePerMin,
+		windowHours: windowHours ?? DEFAULT_WINDOW_HOURS,
+	});
+	const plan = planCadence(pairRow?.n ?? 0, capacity);
 
-  await applyIntervals(env, plan, now);
-  await tightenDueDates(env, now);
-  await setStateJson(env.DB, "cadence_plan", { ...plan, computedAt: now });
+	await applyIntervals(env, plan, now);
+	await tightenDueDates(env, now);
+	await setStateJson(env.DB, "cadence_plan", { ...plan, computedAt: now });
 
-  return plan;
+	return plan;
 }

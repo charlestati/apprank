@@ -10,32 +10,32 @@
 export const INTERVAL_LADDER_DAYS = [1, 2, 3, 7] as const;
 
 export interface CapacityInput {
-  /** Fetches per minute the collector has learned Apple tolerates. */
-  ratePerMin: number;
-  /** Hours per day the collection window is open. */
-  windowHours: number;
-  /** Daily fetches already committed to app-level pulls and API polling. */
-  overheadPerDay: number;
+	/** Fetches per minute the collector has learned Apple tolerates. */
+	ratePerMin: number;
+	/** Hours per day the collection window is open. */
+	windowHours: number;
+	/** Daily fetches already committed to app-level pulls and API polling. */
+	overheadPerDay: number;
 }
 
 export interface Capacity {
-  totalPerDay: number;
-  overheadPerDay: number;
-  /** What is left for keyword rank checks. */
-  keywordsPerDay: number;
+	totalPerDay: number;
+	overheadPerDay: number;
+	/** What is left for keyword rank checks. */
+	keywordsPerDay: number;
 }
 
 export function computeCapacity({
-  ratePerMin,
-  windowHours,
-  overheadPerDay,
+	ratePerMin,
+	windowHours,
+	overheadPerDay,
 }: CapacityInput): Capacity {
-  const totalPerDay = Math.floor(ratePerMin * 60 * windowHours);
-  return {
-    keywordsPerDay: Math.max(0, totalPerDay - overheadPerDay),
-    overheadPerDay,
-    totalPerDay,
-  };
+	const totalPerDay = Math.floor(ratePerMin * 60 * windowHours);
+	return {
+		keywordsPerDay: Math.max(0, totalPerDay - overheadPerDay),
+		overheadPerDay,
+		totalPerDay,
+	};
 }
 
 /**
@@ -44,29 +44,29 @@ export function computeCapacity({
  * storefront rather than per app.
  */
 export function measureOverheadPerDay(input: {
-  appStorefrontPairs: number;
-  storefronts: number;
-  chartGenres: number;
+	appStorefrontPairs: number;
+	storefronts: number;
+	chartGenres: number;
 }): number {
-  const perApp = input.appStorefrontPairs * 2;
-  const charts = input.storefronts * input.chartGenres * 3;
-  return perApp + charts;
+	const perApp = input.appStorefrontPairs * 2;
+	const charts = input.storefronts * input.chartGenres * 3;
+	return perApp + charts;
 }
 
 export interface Allocation {
-  /** Interval, in days, for the highest-priority share of the pairs. */
-  fastDays: number;
-  /** Interval for the remainder. */
-  slowDays: number;
-  /** How many pairs get `fastDays`; the rest get `slowDays`. */
-  fastCount: number;
-  /** Fetches per day the plan consumes. */
-  loadPerDay: number;
-  /**
-   * True when even the slowest rung on the ladder overruns the budget: every
-   * pair is at the floor resolution and the window is genuinely too small.
-   */
-  saturated: boolean;
+	/** Interval, in days, for the highest-priority share of the pairs. */
+	fastDays: number;
+	/** Interval for the remainder. */
+	slowDays: number;
+	/** How many pairs get `fastDays`; the rest get `slowDays`. */
+	fastCount: number;
+	/** Fetches per day the plan consumes. */
+	loadPerDay: number;
+	/**
+	 * True when even the slowest rung on the ladder overruns the budget: every
+	 * pair is at the floor resolution and the window is genuinely too small.
+	 */
+	saturated: boolean;
 }
 
 /**
@@ -78,87 +78,87 @@ export interface Allocation {
  * f/a + (1 - f)/b = C/N.
  */
 export function allocate(count: number, keywordsPerDay: number): Allocation {
-  const ladder = INTERVAL_LADDER_DAYS;
-  const [fastest] = ladder;
-  const slowest = ladder.at(-1) as number;
+	const ladder = INTERVAL_LADDER_DAYS;
+	const [fastest] = ladder;
+	const slowest = ladder.at(-1) as number;
 
-  if (count === 0) {
-    return {
-      fastCount: 0,
-      fastDays: fastest,
-      loadPerDay: 0,
-      saturated: false,
-      slowDays: fastest,
-    };
-  }
+	if (count === 0) {
+		return {
+			fastCount: 0,
+			fastDays: fastest,
+			loadPerDay: 0,
+			saturated: false,
+			slowDays: fastest,
+		};
+	}
 
-  const perPairPerDay = keywordsPerDay / count;
+	const perPairPerDay = keywordsPerDay / count;
 
-  if (perPairPerDay >= 1) {
-    return {
-      fastCount: count,
-      fastDays: fastest,
-      loadPerDay: count,
-      saturated: false,
-      slowDays: fastest,
-    };
-  }
+	if (perPairPerDay >= 1) {
+		return {
+			fastCount: count,
+			fastDays: fastest,
+			loadPerDay: count,
+			saturated: false,
+			slowDays: fastest,
+		};
+	}
 
-  if (perPairPerDay <= 1 / slowest) {
-    return {
-      fastCount: 0,
-      fastDays: slowest,
-      loadPerDay: count / slowest,
-      saturated: true,
-      slowDays: slowest,
-    };
-  }
+	if (perPairPerDay <= 1 / slowest) {
+		return {
+			fastCount: 0,
+			fastDays: slowest,
+			loadPerDay: count / slowest,
+			saturated: true,
+			slowDays: slowest,
+		};
+	}
 
-  for (let i = 0; i < ladder.length - 1; i += 1) {
-    const fast = ladder[i] as number;
-    const slow = ladder[i + 1] as number;
-    if (perPairPerDay <= 1 / fast && perPairPerDay >= 1 / slow) {
-      const share = (perPairPerDay - 1 / slow) / (1 / fast - 1 / slow);
-      const fastCount = Math.round(share * count);
-      return {
-        fastCount,
-        fastDays: fast,
-        loadPerDay: fastCount / fast + (count - fastCount) / slow,
-        saturated: false,
-        slowDays: slow,
-      };
-    }
-  }
+	for (let i = 0; i < ladder.length - 1; i += 1) {
+		const fast = ladder[i] as number;
+		const slow = ladder[i + 1] as number;
+		if (perPairPerDay <= 1 / fast && perPairPerDay >= 1 / slow) {
+			const share = (perPairPerDay - 1 / slow) / (1 / fast - 1 / slow);
+			const fastCount = Math.round(share * count);
+			return {
+				fastCount,
+				fastDays: fast,
+				loadPerDay: fastCount / fast + (count - fastCount) / slow,
+				saturated: false,
+				slowDays: slow,
+			};
+		}
+	}
 
-  // Unreachable: the loop covers every gap between the rungs.
-  return {
-    fastCount: 0,
-    fastDays: slowest,
-    loadPerDay: count / slowest,
-    saturated: true,
-    slowDays: slowest,
-  };
+	// Unreachable: the loop covers every gap between the rungs.
+	return {
+		fastCount: 0,
+		fastDays: slowest,
+		loadPerDay: count / slowest,
+		saturated: true,
+		slowDays: slowest,
+	};
 }
 
 export interface CadencePlan extends Allocation {
-  capacity: Capacity;
-  pairs: number;
-  /** Human-readable summary for the data-health page. */
-  summary: string;
+	capacity: Capacity;
+	pairs: number;
+	/** Human-readable summary for the data-health page. */
+	summary: string;
 }
 
 export function planCadence(pairs: number, capacity: Capacity): CadencePlan {
-  const allocation = allocate(pairs, capacity.keywordsPerDay);
-  const slowCount = pairs - allocation.fastCount;
-  let summary: string;
-  if (pairs === 0) {
-    summary = "Nothing tracked yet.";
-  } else if (allocation.saturated) {
-    summary = `Budget saturated: all ${pairs} pairs checked every ${allocation.slowDays} days, the floor resolution.`;
-  } else if (slowCount === 0) {
-    summary = `All ${pairs} pairs checked daily.`;
-  } else {
-    summary = `${allocation.fastCount} pairs every ${allocation.fastDays}d, ${slowCount} every ${allocation.slowDays}d.`;
-  }
-  return { ...allocation, capacity, pairs, summary };
+	const allocation = allocate(pairs, capacity.keywordsPerDay);
+	const slowCount = pairs - allocation.fastCount;
+	let summary: string;
+	if (pairs === 0) {
+		summary = "Nothing tracked yet.";
+	} else if (allocation.saturated) {
+		summary = `Budget saturated: all ${pairs} pairs checked every ${allocation.slowDays} days, the floor resolution.`;
+	} else if (slowCount === 0) {
+		summary = `All ${pairs} pairs checked daily.`;
+	} else {
+		summary = `${allocation.fastCount} pairs every ${allocation.fastDays}d, ${slowCount} every ${allocation.slowDays}d.`;
+	}
+	return { ...allocation, capacity, pairs, summary };
 }

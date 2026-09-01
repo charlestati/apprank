@@ -13,9 +13,9 @@
 // 10ms CPU budget is better spent elsewhere.
 
 async function digest(value: string): Promise<Uint8Array> {
-  return new Uint8Array(
-    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))
-  );
+	return new Uint8Array(
+		await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))
+	);
 }
 
 /**
@@ -24,23 +24,23 @@ async function digest(value: string): Promise<Uint8Array> {
  */
 // oxlint-disable-next-line no-bitwise -- constant-time compare, see above
 function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
-  let diff = 0;
-  for (const [i, byte] of a.entries()) {
-    // oxlint-disable-next-line no-bitwise -- constant-time compare
-    diff |= byte ^ (b[i] as number);
-  }
-  return diff === 0;
+	if (a.length !== b.length) {
+		return false;
+	}
+	let diff = 0;
+	for (const [i, byte] of a.entries()) {
+		// oxlint-disable-next-line no-bitwise -- constant-time compare
+		diff |= byte ^ (b[i] as number);
+	}
+	return diff === 0;
 }
 
 export function bearer(header: string | null): string | null {
-  if (!header?.startsWith("Bearer ")) {
-    return null;
-  }
-  const token = header.slice("Bearer ".length).trim();
-  return token.length > 0 ? token : null;
+	if (!header?.startsWith("Bearer ")) {
+		return null;
+	}
+	const token = header.slice("Bearer ".length).trim();
+	return token.length > 0 ? token : null;
 }
 
 /**
@@ -49,16 +49,16 @@ export function bearer(header: string | null): string | null {
  * triggerable, so this fails closed exactly like the web Worker's wall.
  */
 export async function authorize(
-  header: string | null,
-  expected: string | undefined
+	header: string | null,
+	expected: string | undefined
 ): Promise<{ ok: boolean; configured: boolean }> {
-  if (!expected) {
-    return { configured: false, ok: false };
-  }
-  const given = bearer(header);
-  if (given === null) {
-    return { configured: true, ok: false };
-  }
-  const [a, b] = await Promise.all([digest(given), digest(expected)]);
-  return { configured: true, ok: timingSafeEqual(a, b) };
+	if (!expected) {
+		return { configured: false, ok: false };
+	}
+	const given = bearer(header);
+	if (given === null) {
+		return { configured: true, ok: false };
+	}
+	const [a, b] = await Promise.all([digest(given), digest(expected)]);
+	return { configured: true, ok: timingSafeEqual(a, b) };
 }
