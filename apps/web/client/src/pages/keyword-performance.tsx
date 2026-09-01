@@ -40,7 +40,7 @@ const TOP_RESULTS_SHOWN = 3;
 // 1 and 3, and sit too close to them on the dark surface to tell apart.
 //
 // Each slot carries a dash pattern as well as a hue. Colour is never the only
-// thing separating two lines — the same rule the status pills follow, and the
+// thing separating two lines, the same rule the status pills follow, and the
 // reason the chart stays readable printed in grey.
 const SERIES_STYLES: SeriesStyle[] = [
 	{ color: "var(--ds-chart-1)", dash: "" },
@@ -468,7 +468,7 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 												{row.resultCountChange && row.resultCountChange > 20 ? (
 													<span
 														className="contested"
-														title={`${row.resultCountChange} more results than at the start of the window — the term is getting more contested`}
+														title={`${row.resultCountChange} more results than at the start of the window, so the term is getting more contested`}
 													>
 														↑
 													</span>

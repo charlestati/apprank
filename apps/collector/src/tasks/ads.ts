@@ -1,6 +1,7 @@
-// Apple Ads search-term popularity — weekly pull, one (storefront × genre)
+// Apple Ads search-term popularity: a weekly pull, one (storefront × genre)
 // query per task tick. Raw response is archived verbatim (it's small JSON);
-// popularity rows are upserted for keywords we know; seed_term rows feed Tier 2.
+// popularity rows are upserted for keywords we know; seed_term rows feed Tier
+// 2.
 
 import {
 	AdsClient,
@@ -32,8 +33,9 @@ async function adAccountId(env: Env): Promise<string> {
 	const account = pickPrimaryAccount(accounts);
 	if (!account) {
 		// Credentials that authenticate but reach no account mean the API user was
-		// never granted access to one — an Apple Ads user-management problem, not
-		// a key problem, and the two are easy to confuse. Carry the raw body: an
+		// never granted access to one. That is an Apple Ads user-management
+		// problem rather than a key problem, and the two are easy to confuse.
+		// Carry the raw body: an
 		// unexpected response shape produces an empty list too, and that would be
 		// the same message for a completely different cause.
 		throw new Error(
@@ -100,8 +102,9 @@ export async function adsPullStep(
 				// Tier-2 seed list entry.
 				env.DB.prepare(
 					// The WHERE turns an unchanged row into a no-op. Apple's list is
-					// weekly, so most of a re-pull is identical — without this, every
-					// repeat spent a write per term against the free tier's daily budget.
+					// weekly, so most of a re-pull is identical. Without this, every
+					// repeat spent a write per term against the free tier's daily
+					// budget.
 					"INSERT INTO seed_term (month, storefront_code, genre_id, term, rank_in_genre, popularity_1_100) VALUES (?, ?, ?, ?, ?, ?) " +
 						"ON CONFLICT(month, storefront_code, genre_id, term) DO UPDATE SET rank_in_genre = excluded.rank_in_genre, popularity_1_100 = excluded.popularity_1_100 " +
 						"WHERE rank_in_genre IS NOT excluded.rank_in_genre OR popularity_1_100 IS NOT excluded.popularity_1_100"
@@ -157,7 +160,7 @@ export async function adsPullStep(
 		}
 		// Only a pull that actually returned terms counts as the week collected.
 		// Marking an empty response done would let one bad answer from Apple block
-		// every retry for that week — and the week is the whole retention grain.
+		// every retry for that week, and the week is the whole retention grain.
 		if (rows.length > 0) {
 			await setState(
 				env.DB,

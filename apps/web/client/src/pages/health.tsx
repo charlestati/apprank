@@ -6,7 +6,7 @@ import { useFormat } from "../format";
 import type { Dictionary } from "../i18n";
 import { fmt, useT } from "../i18n";
 
-/** "chart_pull ×6, review_pull ×2" — what the depth is actually made of. */
+/** "chart_pull ×6, review_pull ×2": what the depth is actually made of. */
 function queueSummary(tasks?: Record<string, number>): string | null {
 	if (!tasks) {
 		return null;
@@ -60,7 +60,7 @@ function dailyRunNote(
 	}
 	const queued =
 		run.queued === null ? "" : fmt(t.dailyQueuedSuffix, { n: run.queued });
-	// The trigger is a machine word — cron, manual — and stays untranslated.
+	// The trigger is a machine word, cron or manual, and stays untranslated.
 	return `${run.ok ? t.dailyCompleted : t.dailyFailed} · ${run.trigger}${queued}`;
 }
 
@@ -107,7 +107,7 @@ function OverdueTile({ n }: { n: number }) {
  * One error class, with when it last happened and what the upstream actually
  * said. The message is collapsed by default: an Apple error body is several
  * hundred characters of JSON, and pasting that into the table cost the page
- * its readable layout — the count column was pushed off-screen entirely.
+ * its readable layout: the count column was pushed off-screen entirely.
  */
 function ErrorRow({ entry }: { entry: DataHealth["errorsLast24h"][number] }) {
 	const f = useFormat();

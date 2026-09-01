@@ -7,8 +7,7 @@
 // operator configures: they are rows, applied with wrangler.
 //
 // The token is printed once. Only its SHA-256 goes in the database, because
-// D1 is an ordinary queryable table that gets dumped and rebuilt — unlike
-// BASIC_AUTH_ACCOUNTS, which is a Worker secret and can hold plaintext.
+// D1 is an ordinary queryable table that gets dumped and rebuilt, unlike BASIC_AUTH_ACCOUNTS, which is a Worker secret and can hold plaintext.
 //
 //   node scripts/mcp-token/issue.mjs --user admin --name laptop
 //   node scripts/mcp-token/issue.mjs --user admin --name bob-ci --days 90 \
@@ -33,7 +32,7 @@ if (!(userId && name)) {
 	console.error(
 		"usage: node scripts/mcp-token/issue.mjs --user <userId> --name <client-name>\n" +
 			"                                       [--days 365] [--scopes read:all]\n\n" +
-			"  --user    must match tracked_app.user_id — the same durable identity as\n" +
+			"  --user must match tracked_app.user_id, the same durable identity as\n" +
 			"            the userId in BASIC_AUTH_ACCOUNTS, not the username.\n" +
 			"  --name    which client this is, so you can tell two credentials apart\n" +
 			"            later and revoke the right one."
@@ -58,7 +57,7 @@ const expiresAt = now + days * 86_400_000;
 const quote = (v) => `'${String(v).replaceAll("'", "''")}'`;
 
 console.log(`
-Token — copy it now, it is not stored and cannot be shown again:
+Token (copy it now, it is not stored and cannot be shown again):
 
   ${token}
 
@@ -68,7 +67,7 @@ Apply the credential (add --remote for the deployed database):
 INSERT INTO mcp_credential (id, user_id, name, secret_hash, scopes, created_at, expires_at) VALUES (\\
 ${quote(id)}, ${quote(userId)}, ${quote(name)}, ${quote(secretHash)}, ${quote(JSON.stringify(scopes))}, ${now}, ${expiresAt});"
 
-Connect Claude Code (user scope — never a committed .mcp.json, this repo is public):
+Connect Claude Code (user scope, never a committed .mcp.json, this repo is public):
 
   claude mcp add --scope user --transport http apprank \\
     https://<your-app-url>/mcp \\

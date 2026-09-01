@@ -30,8 +30,8 @@ const api = new Hono<{ Bindings: Env; Variables: Vars }>();
  *
  * The finite check is the point: `Number("abc")` is NaN, and NaN survives both
  * Math.max and Math.min unchanged, so an unguarded clamp returns NaN and the
- * caller happily builds a date from it — `sinceDate(NaN)` throws
- * `RangeError: Invalid time value` and the route answers 500. A junk value in
+ * caller happily builds a date from it. `sinceDate(NaN)` throws `RangeError:
+ * Invalid time value` and the route answers 500. A junk value in
  * a query string is a client mistake, not a server fault: fall back to the
  * default and serve the page.
  */
@@ -106,7 +106,8 @@ function csvEscape(value: string | number | null): string {
 	return /[",\n]/u.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
-// CSV of the current report, for the spreadsheet the numbers usually end up in.
+// CSV of the current report, for the spreadsheet the numbers usually end up
+// in.
 api.get("/apps/:appId/report.csv", async (c) => {
 	const appId = Number(c.req.param("appId"));
 	if (!(await callerOwnsApp(c, appId))) {
@@ -175,7 +176,8 @@ api.get("/apps/:appId/keywords", async (c) => {
 	return c.json(rows.results);
 });
 
-// Rank history for one pair (optionally for one app; default = the tracked app's position).
+// Rank history for one pair (optionally for one app; default = the tracked
+// app's position).
 api.get("/pairs/:pairId/history", async (c) => {
 	const pairId = Number(c.req.param("pairId"));
 	if (!(await callerOwnsPair(c, pairId))) {
@@ -257,8 +259,8 @@ api.patch("/suggestions/:id", async (c) => {
  * A `fetch()` that gets a 401 does not reliably make a browser show its
  * credential prompt, so protecting only the API would leave the page loading
  * and every request failing with no way to sign in. Gating the HTML too means
- * the browser asks once, then attaches the header to everything — including
- * the API calls the page makes.
+ * the browser asks once, then attaches the header to everything, including the
+ * API calls the page makes.
  *
  * It also means the app is not merely walled at the data layer: an
  * unauthenticated visitor never receives the application at all.
@@ -290,7 +292,7 @@ app.use("*", async (c, next) => {
 
 	if (accounts.length === 0) {
 		// Fail closed. An unconfigured deployment serves nothing, because the
-		// alternative — an implicit operator — publishes one person's competitive
+		// alternative, an implicit operator, publishes one person's competitive
 		// position to anyone who finds the URL.
 		if (c.env.ALLOW_UNAUTHENTICATED === "true") {
 			// Local development only. The identity is configurable because ownership
@@ -330,7 +332,7 @@ app.all(MCP_ROUTE, async (c) => {
 
 	// `c.executionCtx` throws when the Worker is invoked without one. The audit
 	// write is the only thing that wants it, and losing the deferral must never
-	// cost the request — so fall back to awaiting the write inline rather than
+	// cost the request, so fall back to awaiting the write inline rather than
 	// failing the call or, worse, dropping the record.
 	const pending: Promise<unknown>[] = [];
 	const waitUntil = (promise: Promise<unknown>) => {

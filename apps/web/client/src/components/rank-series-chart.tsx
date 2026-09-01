@@ -1,10 +1,12 @@
-// Multi-series rank history on a calendar axis: y inverted (rank 1 at the top),
-// one line per keyword, and four states kept visually distinct — ranked, ranked
+// Multi-series rank history on a calendar axis: y inverted (rank 1 at the
+// top),
+// one line per keyword, and four states kept visually distinct: ranked, ranked
 // outside the top 200, never collected, and collected and failed.
 //
 // The axis is one slot per calendar day, not one slot per observed day. Pairs
 // sit on a stretched cadence rung (1, 2, 3 or 7 days), so packing observations
-// side by side drew a six-day step at the same width as an overnight one: every
+// side by side drew a six-day step at the same width as an overnight one:
+// every
 // slope across a stretched stretch was wrong, and the gap the cadence created
 // disappeared exactly where it had to be visible.
 
@@ -92,8 +94,9 @@ function calendarDays(from: string, to: string): string[] {
  * The scale is linear but the candidates are not, so on a 200-deep chart 1, 5
  * and 10 land within a few pixels of each other and their labels overlap. The
  * old filter only checked the *value* against the ceiling, which meant the
- * collision was a function of label size — the axis was legible at 11px purely
- * by accident. Rank 1 is always kept: it is the line the whole chart is read
+ * collision was a function of label size, and the axis was legible at 11px
+ * purely by accident. Rank 1 is always kept: it is the line the whole chart is
+ * read
  * against.
  */
 function gridRanksFor(maxRank: number, yOf: (r: number) => number): number[] {
@@ -214,7 +217,7 @@ export function RankSeriesChart({
 		const built = series.map((s) => {
 			const positions = new Map(s.points.map((p) => [p.date, p.position]));
 			const segments: Segment[] = [];
-			// Observed, but nowhere in the top 200 — data, not a hole, so it gets a
+			// Observed, but nowhere in the top 200. Data, not a hole, so it gets a
 			// slot of its own instead of being drawn as an absence.
 			const unranked: number[] = [];
 			const failures: { i: number; errorClass: string }[] = [];
@@ -530,7 +533,7 @@ export function RankSeriesChart({
 									x={x(i) - slot / 2}
 									y={errorRailY - 4.5}
 								>
-									<title>{`${dates[i]}: ${row.keyword} fetch failed (${errorClass}) — not a rank change`}</title>
+									<title>{`${dates[i]}: ${row.keyword} fetch failed (${errorClass}), not a rank change`}</title>
 								</rect>
 							))}
 						</g>

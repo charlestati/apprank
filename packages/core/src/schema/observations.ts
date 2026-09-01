@@ -21,7 +21,7 @@ export const ranking = sqliteTable(
 		fetchedAt: integer("fetched_at").notNull(),
 		httpStatus: integer("http_status").notNull(),
 		id: integer("id").primaryKey({ autoIncrement: true }),
-		observedDate: text("observed_date").notNull(), // 'YYYY-MM-DD' — idempotency grain
+		observedDate: text("observed_date").notNull(), // 'YYYY-MM-DD', the idempotency grain
 		pairId: integer("pair_id")
 			.notNull()
 			.references(() => crawlPair.id),
@@ -52,7 +52,7 @@ export const rankEntry = sqliteTable(
 	]
 );
 
-// Apple Ads search-term popularity — WEEKLY granularity.
+// Apple Ads search-term popularity, WEEKLY granularity.
 export const popularity = sqliteTable(
 	"popularity",
 	{
@@ -63,7 +63,8 @@ export const popularity = sqliteTable(
 		storefrontCode: text("storefront_code").notNull(),
 		genreId: integer("genre_id").notNull(),
 		weekStart: text("week_start").notNull(),
-		// 0 = queried but absent from Apple's ranked list: "no data" is distinct from "low".
+		// 0 = queried but absent from Apple's ranked list: "no data" is distinct
+		// from "low".
 		present: integer("present").notNull().default(1),
 		popularity1_100: integer("popularity_1_100"),
 		popularity1_5: integer("popularity_1_5"),
@@ -98,7 +99,7 @@ export const review = sqliteTable("review", {
 	author: text("author"),
 	body: text("body"),
 	fetchedAt: integer("fetched_at").notNull(),
-	id: text("id").primaryKey(), // Apple review id — natural idempotency
+	id: text("id").primaryKey(), // Apple review id, natural idempotency
 	rating: integer("rating"),
 	reviewedAt: integer("reviewed_at"),
 	storefrontCode: text("storefront_code").notNull(),
@@ -115,13 +116,13 @@ export const chartRanking = sqliteTable(
 		observedDate: text("observed_date").notNull(),
 		r2Key: text("r2_key"),
 		resultIds: text("result_ids").notNull(),
-		source: text("source"), // 'itunes-rss' | 'marketingtools-v2' — which endpoint served it
+		source: text("source"), // 'itunes-rss' | 'marketingtools-v2': which endpoint served it
 		storefrontCode: text("storefront_code").notNull(),
 	},
 	(t) => [
 		// NOTE: a second, partial unique index exists in migration
 		// 0000_init.sql covering the genre_id IS NULL rows. Drizzle
-		// cannot express a partial index, so it lives in SQL only — do not
+		// cannot express a partial index, so it lives in SQL only. Do not
 		// "restore" this file from a fresh generate without re-adding it, or the
 		// storefront-wide charts silently start duplicating again.
 		uniqueIndex("cr_unique").on(
@@ -186,7 +187,7 @@ export const keywordDifficulty = sqliteTable(
 		observedDate: text("observed_date").notNull(),
 		/** 0–100, higher is harder to rank for. */
 		score: integer("score").notNull(),
-		/** Rating mass of the top 3 — how entrenched the leaders are. */
+		/** Rating mass of the top 3: how entrenched the leaders are. */
 		entrenchment: real("entrenchment").notNull(),
 		/** Rating mass of the whole top 10. */
 		incumbentStrength: real("incumbent_strength").notNull(),

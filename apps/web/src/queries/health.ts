@@ -2,8 +2,8 @@
 //
 // Everything the daily-run dashboard needs to answer "can I trust today's
 // numbers?". Collector pacing, cadence and error classes describe shared
-// infrastructure — `crawl_pair` is deliberately the union of what every
-// operator tracks — so they are not scoped to a user. ASC anomalies are the
+// infrastructure, since `crawl_pair` is deliberately the union of what every
+// operator tracks, so they are not scoped to a user. ASC anomalies are the
 // exception: they describe first-party analytics for one app, so they are
 // joined against `tracked_app` and answer only for apps the caller tracks.
 
@@ -108,7 +108,7 @@ export async function dataHealth(
 			.bind(userId)
 			.all(),
 		// Loop liveness. Absent or stale means the work loop is not ticking,
-		// which no observation table can tell you — it looks exactly like a day
+		// which no observation table can tell you: it looks exactly like a day
 		// with nothing due.
 		db
 			.prepare("SELECT value FROM collector_state WHERE key = 'loop_heartbeat'")
@@ -140,7 +140,7 @@ export async function dataHealth(
 	return {
 		ascAnomalies: anomalies.results,
 		// NULL finished_at on the newest row means the last daily job started and
-		// never completed — the failure mode that used to be invisible.
+		// never completed, the failure mode that used to be invisible.
 		lastDailyRun: lastDaily
 			? {
 					finishedAt: lastDaily.finished_at,

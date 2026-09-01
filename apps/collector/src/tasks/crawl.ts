@@ -1,11 +1,12 @@
 // Tier 1 keyword-rank crawl: one (keyword, storefront, locale) pair per tick.
 //
-// Persistence per observation (all idempotent — alarms are at-least-once):
+// Persistence per observation (all idempotent, because alarms are
+// at-least-once):
 //   R2 staging/rankings/{date}/{pairId}.json      normalised observation
 //   R2 verbatim/{date}/{fetchId}.json             failures + 1-in-10 sample
 //   D1 ranking (UNIQUE pair_id+date), rank_entry (top-10 + tracked apps),
-//      app + app_metadata_version (top-10 + tracked only — full 200-depth app
-//      metadata is recoverable from the archive in batch, not worth 200 rows
+// app + app_metadata_version (top-10 + tracked only; full 200-depth app
+// metadata is recoverable from the archive in batch, not worth 200 rows
 //      of writes per fetch)
 //   crawl_pair.next_due_at advanced to tomorrow's window
 
@@ -121,7 +122,8 @@ export async function crawlPair(
 			r2Key: `verbatim/${date}/${fetchId}-error.json`,
 			responseMs: outcome.responseMs,
 		});
-		// Not throttling: reschedule the pair for tomorrow rather than wedging today.
+		// Not throttling: reschedule the pair for tomorrow rather than wedging
+		// today.
 		await env.DB.prepare("UPDATE crawl_pair SET next_due_at = ? WHERE id = ?")
 			.bind(nextDue(pair.interval_hours, windowStartHour), pair.id)
 			.run();
@@ -265,7 +267,7 @@ export async function crawlPair(
 			.filter((e, i) => i < 10 || trackedIds.has(e.appId));
 
 		// Rewrite only when the indexed page actually moved. A board that held its
-		// order — the common case between two consecutive days — used to cost a
+		// order, the common case between two consecutive days, used to cost a
 		// delete plus eleven inserts for an identical result.
 		const existing = await env.DB.prepare(
 			"SELECT position, app_id FROM rank_entry WHERE ranking_id = ? ORDER BY position"

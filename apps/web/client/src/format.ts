@@ -1,6 +1,7 @@
 // Locale-aware display, driven by the language the operator picked rather than
-// the browser's own. The two disagree routinely — a French speaker on an en-US
-// machine chooses Français here — and `toLocaleDateString()` with no argument
+// the browser's own. The two disagree routinely, since a French speaker on an
+// en-US machine chooses Français here, and `toLocaleDateString()` with no
+// argument
 // silently follows the machine, so a French page ends up mixing "1,234" with
 // "1 234" and reads as a bug.
 //
@@ -49,12 +50,13 @@ function dayFormatter(lang: Lang): Intl.DateTimeFormat {
 }
 
 /**
- * A storefront code is ISO 3166-1 alpha-2, so Intl can name it in any language.
+ * A storefront code is ISO 3166-1 alpha-2, so Intl can name it in any
+ * language.
  *
  * `fallback: "none"` is what makes the unknown case detectable: the default
  * echoes the code straight back, which is indistinguishable from a real answer
  * without comparing strings. With it, an unassigned code returns undefined and
- * the name the reference data carries wins — Apple ships the odd storefront
+ * the name the reference data carries wins. Apple ships the odd storefront
  * that is not a country, and a bare "QQ" helps nobody.
  */
 export function regionName(
@@ -83,7 +85,7 @@ export function regionName(
 	return fallback ?? upper;
 }
 
-/** Grouped integer — 1,234 or 1 234 depending on the language. */
+/** Grouped integer: 1,234 or 1 234 depending on the language. */
 export function formatNumber(value: number, lang: Lang): string {
 	return cached(
 		numbers,

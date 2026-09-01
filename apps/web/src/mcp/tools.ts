@@ -2,8 +2,8 @@
 //
 // Every tool is intent-shaped: there is deliberately no `run_sql`, no query
 // builder and no passthrough, because a tool that accepts arbitrary SQL
-// re-opens every boundary the rest of this file exists to hold — ownership,
-// row caps, and the provenance that stops a throttled week reading as a
+// re-opens every boundary the rest of this file exists to hold: ownership, row
+// caps, and the provenance that stops a throttled week reading as a
 // ranking collapse.
 //
 // Three rules hold across all of them:
@@ -11,11 +11,11 @@
 //   1. Ownership is checked here, by the same `ownsApp`/`ownsPair` the HTTP
 //      routes call. A resource the caller does not track answers "no such"
 //      rather than "forbidden".
-//   2. Row caps are enforced, never trusted. The requested limit is clamped and
+// 2. Row caps are enforced, never trusted. The requested limit is clamped and
 //      the query asks for one row past the cap, so truncation is a fact the
 //      answer reports rather than a silence.
 //   3. Aggregates are the default. A year of daily ranks across 150 pairs is
-//      tens of thousands of rows; `detail` opts into the raw ones, still capped.
+// tens of thousands of rows; `detail` opts into the raw ones, still capped.
 
 import { ownsApp, ownsPair } from "../access";
 import type { Env } from "../env";
@@ -195,7 +195,7 @@ export function summariseSeries(
  * Deliberately carries no scope requirement and reads no data.
  *
  * It describes the credential the caller is already holding, which tells them
- * nothing they did not bring with them — and a credential with no usable scope
+ * nothing they did not bring with them, and a credential with no usable scope
  * must still be able to find that out. Naming the tracked apps here would make
  * it a data tool; that list belongs to `list_tracked_apps`, behind a scope.
  */
@@ -593,7 +593,7 @@ export async function getKeywordPopularity(
 		data: {
 			keywords: rows,
 			provenance: {
-				note: `Apple Ads publishes popularity weekly and covers only about the top 500 terms per storefront and top-level genre. ${unmeasured} of ${rows.length} keywords here have no published volume in this window — that is absence of data, never a measurement of zero demand.`,
+				note: `Apple Ads publishes popularity weekly and covers only about the top 500 terms per storefront and top-level genre. ${unmeasured} of ${rows.length} keywords here have no published volume in this window. That is absence of data, never a measurement of zero demand.`,
 				requested: w,
 				storefront: args.storefront,
 				truncated,
@@ -620,7 +620,7 @@ export async function getMetadataChanges(
 			changes,
 			localizations: localizations.results,
 			provenance: {
-				note: "One row per detected change, not per sighting — the collector stores a new version only when the content hash differs. A rank move is only interpretable against the release that might have caused it.",
+				note: "One row per detected change, not per sighting: the collector stores a new version only when the content hash differs. A rank move is only interpretable against the release that might have caused it.",
 				requested: w,
 			},
 		},

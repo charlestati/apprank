@@ -1,4 +1,4 @@
-// What the tracked set should become, expressed as SQL — the decision half of
+// What the tracked set should become, expressed as SQL: the decision half of
 // `pnpm track`, kept free of I/O so it can be reasoned about and tested.
 //
 // Three rules shape everything here, and all three come from the invariants:
@@ -9,14 +9,14 @@
 //   and a day deleted is the same thing.
 //
 //   crawl_pair is the reference-counted union of what everyone tracks, so two
-//   people asking for the same keyword in the same storefront share one row and
+// people asking for the same keyword in the same storefront share one row and
 //   therefore one fetch a day.
 //
 //   Only differences are emitted. A re-run that changes nothing must cost no
 //   row-writes: D1 charges for a conflicting upsert even when it updates
 //   nothing, and the free tier's daily budget is the binding constraint.
 
-/** Lowercase, NFC, trimmed — the form `keyword.normalized` stores. */
+/** Lowercase, NFC, trimmed, the form `keyword.normalized` stores. */
 export function normalize(text) {
 	return text.toLowerCase().normalize("NFC").trim();
 }
@@ -26,8 +26,9 @@ export function normalize(text) {
  * storefront's own default.
  *
  * Apple cross-localizes: Canada indexes fr-CA, Belgium fr-FR. Where a
- * storefront indexes nothing in the app's language — Spain, for a French app —
- * the default locale is the honest description of the query being made, rather
+ * storefront indexes nothing in the app's language, Spain for a French app
+ * say, the default locale is the honest description of the query being made,
+ * rather
  * than inventing a cross-localization Apple does not publish.
  */
 export function localeFor(storefront, language, storefrontLocales) {
@@ -63,8 +64,8 @@ function sqlString(value) {
 
 /**
  * @param config  { [userId]: { apps: [{ appId, name, language, storefronts,
- *   keywords }] } } — a list, because one person routinely ships more than one
- *   app and `tracked_app` has always been keyed (user_id, app_id).
+ * keywords }] } }, a list, because one person routinely ships more than one
+ * app and `tracked_app` has always been keyed (user_id, app_id).
  * @param state   rows already in the database
  * @returns The SQL to run, counts for the human-readable plan, and any
  *   storefront the reference data does not know about.
@@ -162,7 +163,7 @@ export function planChanges(config, state) {
 					);
 					if (!locale) {
 						warnings.push(
-							`${storefront}: not in the reference data — add the storefront and its locales first`
+							`${storefront}: not in the reference data; add the storefront and its locales first`
 						);
 						continue;
 					}
