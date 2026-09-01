@@ -51,7 +51,15 @@ export function appKeywords(db: D1Database, userId: string, appId: number) {
     .prepare(
       `WITH latest AS (
        SELECT r.pair_id, MAX(r.observed_date) AS d
-       FROM ranking r WHERE r.valid = 1 GROUP BY r.pair_id
+       FROM ranking r WHERE r.valid = 1
+       -- Bounded deliberately. Reads here scale with the size of the ranking
+       -- table, which grows by one row per pair per day: 50 rows read today,
+       -- but ~45,000 a year from now, on every dashboard load. The cadence
+       -- ladder tops out at 7 days, so a pair with nothing inside this window
+       -- has genuinely stopped being collected, and showing no rank for it is
+       -- the correct answer.
+       AND r.observed_date >= date('now', '-90 day')
+       GROUP BY r.pair_id
      )
      SELECT k.id AS keyword_id, k.text AS keyword, cp.id AS pair_id,
             cp.storefront_code, cp.locale_code, l.d AS observed_date,

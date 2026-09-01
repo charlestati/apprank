@@ -167,6 +167,9 @@ Task steps swallow a failed unit into `fetch_error` and return normally, so that
 - macOS is case-insensitive; renaming `Foo.tsx` → `foo.tsx` leaves the old path in the git index and breaks Linux CI. `git config core.ignorecase false` and re-add.
 - The ultracite vitest preset applies rules inside its own override block, which beats top-level `rules` in `oxlint.config.ts`. Test-specific relaxations must therefore be justified `/* oxlint-disable … -- reason */` headers in the test files.
 
+- **The web app's scarce resource is reads, not writes** (5M rows/day free). Its three "latest observation per pair" CTEs scanned the whole `ranking` table on every dashboard load — 50 rows read today, but the table grows by one row per pair per day, so a year of history would mean ~45,000 rows read per page view and ~110 views a day would exhaust the tier. All three are now bounded to 90 days. Measured, not assumed: the obvious correlated-subquery rewrite reads _more_ today (400 vs 50, being one index seek per pair against a small table) and only overtakes once the table passes ~400 rows.
+- **A backtick inside a SQL comment terminates the template literal it lives in.** Three separate build breaks in one session came from writing `` `ranking` `` or `*/10` inside a `` ` ``-quoted query or a JSDoc block. Name tables and crons in prose inside those comments.
+
 **Testing**
 
 - `@cloudflare/vitest-pool-workers` 0.20 has **no isolated storage** and **no `fetchMock`**. Reset the database in `beforeEach` (see `apps/web/test/fixtures.ts`) and stub `globalThis.fetch` via `vi.stubGlobal` (see `apps/collector/test/helpers.ts`) — tests share the isolate with the Worker, so a global stub intercepts its outbound calls.

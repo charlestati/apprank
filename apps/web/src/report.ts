@@ -245,6 +245,9 @@ function fetchTopResults(env: Env, q: ReportQuery) {
          AND cp.storefront_code = ?2
        JOIN ranking r ON r.pair_id = cp.id AND r.valid = 1
        WHERE tk.app_id = ?1 AND tk.user_id = ?3
+         -- Same bound as queries/apps.ts: reads scale with history, and the
+         -- top-of-page snapshot only has meaning if it is recent.
+         AND r.observed_date >= date('now', '-90 day')
        GROUP BY cp.id
      ),
      newest_meta AS (

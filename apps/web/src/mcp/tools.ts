@@ -391,7 +391,9 @@ export async function getCurrentRankings(
     .prepare(
       `WITH latest AS (
          SELECT r.pair_id, MAX(r.observed_date) AS d
-         FROM ranking r WHERE r.valid = 1 GROUP BY r.pair_id
+         FROM ranking r WHERE r.valid = 1
+           AND r.observed_date >= date('now', '-90 day')
+         GROUP BY r.pair_id
        )
        SELECT k.text AS keyword, cp.id AS pair_id, cp.storefront_code,
               cp.locale_code, cp.interval_hours, l.d AS observed_date,
