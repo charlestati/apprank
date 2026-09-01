@@ -1,14 +1,12 @@
 // Multi-series rank history on a calendar axis: y inverted (rank 1 at the
-// top),
-// one line per keyword, and four states kept visually distinct: ranked, ranked
-// outside the top 200, never collected, and collected and failed.
+// top), one line per keyword, and four states kept visually distinct: ranked,
+// ranked outside the top 200, never collected, and collected and failed.
 //
 // The axis is one slot per calendar day, not one slot per observed day. Pairs
 // sit on a stretched cadence rung (1, 2, 3 or 7 days), so packing observations
 // side by side drew a six-day step at the same width as an overnight one:
-// every
-// slope across a stretched stretch was wrong, and the gap the cadence created
-// disappeared exactly where it had to be visible.
+// every slope across a stretched stretch was wrong, and the gap the cadence
+// created disappeared exactly where it had to be visible.
 
 /* oxlint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/prefer-tag-over-role, jsx-a11y/no-noninteractive-tabindex --
    role="img" is the correct semantic for an inline SVG graphic (an <img> tag
@@ -96,8 +94,7 @@ function calendarDays(from: string, to: string): string[] {
  * old filter only checked the *value* against the ceiling, which meant the
  * collision was a function of label size, and the axis was legible at 11px
  * purely by accident. Rank 1 is always kept: it is the line the whole chart is
- * read
- * against.
+ * read against.
  */
 function gridRanksFor(maxRank: number, yOf: (r: number) => number): number[] {
 	const kept: number[] = [];

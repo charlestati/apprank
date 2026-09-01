@@ -120,11 +120,11 @@ export const chartRanking = sqliteTable(
 		storefrontCode: text("storefront_code").notNull(),
 	},
 	(t) => [
-		// NOTE: a second, partial unique index exists in migration
-		// 0000_init.sql covering the genre_id IS NULL rows. Drizzle
-		// cannot express a partial index, so it lives in SQL only. Do not
-		// "restore" this file from a fresh generate without re-adding it, or the
-		// storefront-wide charts silently start duplicating again.
+		// NOTE: a second, partial unique index exists in migration 0000_init.sql
+		// covering the genre_id IS NULL rows. Drizzle cannot express a partial
+		// index, so it lives in SQL only. Do not "restore" this file from a fresh
+		// generate without re-adding it, or the storefront-wide charts silently
+		// start duplicating again.
 		uniqueIndex("cr_unique").on(
 			t.storefrontCode,
 			t.genreId,

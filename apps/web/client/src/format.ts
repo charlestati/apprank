@@ -1,9 +1,8 @@
 // Locale-aware display, driven by the language the operator picked rather than
 // the browser's own. The two disagree routinely, since a French speaker on an
 // en-US machine chooses Français here, and `toLocaleDateString()` with no
-// argument
-// silently follows the machine, so a French page ends up mixing "1,234" with
-// "1 234" and reads as a bug.
+// argument silently follows the machine, so a French page ends up mixing
+// "1,234" with "1 234" and reads as a bug.
 //
 // Every formatter is cached per language. Constructing an Intl object is the
 // expensive part, and these run once per row of a dense table.

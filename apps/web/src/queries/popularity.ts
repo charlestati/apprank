@@ -1,11 +1,11 @@
 // Apple Ads search-term popularity.
 //
 // Weekly, posted about a week late, and covering only roughly the top 500
-// terms
-// per storefront × top-level genre. `present = 0` is the collector recording
-// that we asked and Apple published nothing, which is not the same fact as
-// "nobody searches this", and neither is the same as never having pulled
-// popularity for that keyword at all. Every read here keeps the three apart.
+// terms per storefront × top-level genre. `present = 0` is the collector
+// recording that we asked and Apple published nothing, which is not the same
+// fact as "nobody searches this", and neither is the same as never having
+// pulled popularity for that keyword at all. Every read here keeps the three
+// apart.
 
 export interface PopularityPoint {
 	weekStart: string;

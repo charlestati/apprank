@@ -28,8 +28,7 @@ export function normalize(text) {
  * Apple cross-localizes: Canada indexes fr-CA, Belgium fr-FR. Where a
  * storefront indexes nothing in the app's language, Spain for a French app
  * say, the default locale is the honest description of the query being made,
- * rather
- * than inventing a cross-localization Apple does not publish.
+ * rather than inventing a cross-localization Apple does not publish.
  */
 export function localeFor(storefront, language, storefrontLocales) {
 	const rows = storefrontLocales.filter(

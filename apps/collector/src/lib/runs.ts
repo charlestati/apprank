@@ -6,11 +6,10 @@
 // symptom is a hole in tomorrow's coverage. These two records close that gap:
 //
 // collector_run holds one row per scheduled job, opened before the work and
-// closed after it. An unfinished row *is* the alarm.
-// loop_heartbeat is the work loop's liveness, in collector_state rather than a
-// table because it is overwritten every tick and only the
-//                   newest value has any meaning. A row per tick would be pure
-//                   growth for a value nobody reads twice.
+// closed after it. An unfinished row *is* the alarm. loop_heartbeat is the
+// work loop's liveness, in collector_state rather than a table because it is
+// overwritten every tick and only the newest value has any meaning. A row per
+// tick would be pure growth for a value nobody reads twice.
 
 import { setStateJson } from "./state";
 

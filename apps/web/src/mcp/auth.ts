@@ -100,8 +100,7 @@ export async function hashSecret(secret: string): Promise<string> {
  * One statement, because the write is owed anyway: `last_used_at` is what
  * makes a forgotten credential findable, so the budget rides along on it
  * rather than costing a second round trip. `RETURNING` gives the
- * post-increment
- * count without a follow-up read.
+ * post-increment count without a follow-up read.
  */
 async function chargeCall(
 	db: D1Database,

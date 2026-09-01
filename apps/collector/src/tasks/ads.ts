@@ -35,9 +35,9 @@ async function adAccountId(env: Env): Promise<string> {
 		// Credentials that authenticate but reach no account mean the API user was
 		// never granted access to one. That is an Apple Ads user-management
 		// problem rather than a key problem, and the two are easy to confuse.
-		// Carry the raw body: an
-		// unexpected response shape produces an empty list too, and that would be
-		// the same message for a completely different cause.
+		// Carry the raw body: an unexpected response shape produces an empty list
+		// too, and that would be the same message for a completely different
+		// cause.
 		throw new Error(
 			`Apple Ads credentials are valid but reached no ad account; acls=${JSON.stringify(raw).slice(0, 300)}`
 		);

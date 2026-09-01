@@ -4,11 +4,10 @@
 // at-least-once):
 //   R2 staging/rankings/{date}/{pairId}.json      normalised observation
 //   R2 verbatim/{date}/{fetchId}.json             failures + 1-in-10 sample
-//   D1 ranking (UNIQUE pair_id+date), rank_entry (top-10 + tracked apps),
-// app + app_metadata_version (top-10 + tracked only; full 200-depth app
-// metadata is recoverable from the archive in batch, not worth 200 rows
-//      of writes per fetch)
-//   crawl_pair.next_due_at advanced to tomorrow's window
+// D1 ranking (UNIQUE pair_id+date), rank_entry (top-10 + tracked apps), app +
+// app_metadata_version (top-10 + tracked only; full 200-depth app metadata is
+// recoverable from the archive in batch, not worth 200 rows of writes per
+// fetch) crawl_pair.next_due_at advanced to tomorrow's window
 
 import { searchUrl, fetchClassified } from "@apprank/core/apple/itunes";
 import {

@@ -26,10 +26,9 @@ export const locale = sqliteTable("locale", {
 });
 
 // Which locales each storefront's search index covers (Apple's
-// cross-localization
-// table from the ASC "App Store localizations" reference). A keyword is
-// tracked
-// against a (storefront, locale) pair, never a storefront alone.
+// cross-localization table from the ASC "App Store localizations" reference).
+// A keyword is tracked against a (storefront, locale) pair, never a storefront
+// alone.
 export const storefrontLocale = sqliteTable(
 	"storefront_locale",
 	{

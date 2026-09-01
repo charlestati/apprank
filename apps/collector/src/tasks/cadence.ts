@@ -104,8 +104,7 @@ async function measureOverhead(env: Env): Promise<number> {
 /**
  * Apply the plan: rank every active pair by score and give the top slice the
  * fast interval, the rest the slow one. A pair inside its metadata-change
- * burst
- * window is pinned to daily regardless of where it scores.
+ * burst window is pinned to daily regardless of where it scores.
  */
 async function applyIntervals(
 	env: Env,

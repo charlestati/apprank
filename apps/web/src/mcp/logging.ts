@@ -6,9 +6,8 @@
 //
 // The wrapper is also where scope and ownership failures are turned into a
 // reply rather than a stack trace: a tool that throws would surface an
-// internal
-// message to the model, and a tool that swallowed the failure would look like
-// an empty result. Neither is honest.
+// internal message to the model, and a tool that swallowed the failure would
+// look like an empty result. Neither is honest.
 
 import type { Principal } from "./auth";
 import { hasScope } from "./auth";

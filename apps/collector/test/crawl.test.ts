@@ -332,8 +332,7 @@ describe("metadata write economy", () => {
 		// app_metadata_version dedupes on content_hash, but its key is
 		// AUTOINCREMENT, so an ignored insert still costs a write, because SQLite
 		// touches sqlite_sequence regardless. Crawling an unchanged board must not
-		// spend a
-		// write per app to store nothing.
+		// spend a write per app to store nothing.
 		await insertPair(1);
 		stubFetch(() => Response.json(fakeSearchResponse(12)));
 		await crawlPair(env, pair, 3);

@@ -71,8 +71,7 @@ export function onThrottle(p: PacingState, now = Date.now()): PacingState {
 	// Apple's limit is per shared egress IP ("Rate limit has been exceeded for:
 	// itunes-apple-com|general|<ip>"), and it is mostly consumed by others on
 	// the same address. Egress IPs vary per isolate, so spread retries out:
-	// pauses grow
-	// with consecutive throttles (30m, 1h, 2h, 4h cap).
+	// pauses grow with consecutive throttles (30m, 1h, 2h, 4h cap).
 	const count = p.windowErrorCount + 1;
 
 	// Belt and braces: the loop parks for the whole pause, and manual fetches

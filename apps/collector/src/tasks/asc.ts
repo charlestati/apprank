@@ -12,8 +12,8 @@
 //                       bookkeeping, detect duplicate/skipped processingDate
 //
 // Verbatim-first: parsing into metric tables comes after we've seen real
-// report
-// shapes. The archive is the source of truth; a parser can always re-run.
+// report shapes. The archive is the source of truth; a parser can always
+// re-run.
 
 import { AscClient, downloadSegment } from "@apprank/core/apple/asc";
 import type { AscCredentials } from "@apprank/core/apple/asc";

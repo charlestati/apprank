@@ -1,12 +1,11 @@
 // Reference data as tool parameter enums.
 //
 // Storefronts and genres are rows, not code, so adding one is an INSERT and
-// must
-// never need a redeploy. So the enums are built from the database rather than
-// hardcoded, and cached per isolate for a few minutes: a new storefront shows
-// up within the TTL, and a cold isolate picks it up immediately. The cost of
-// getting this wrong is a tool that cannot see a market the collector is
-// already crawling.
+// must never need a redeploy. So the enums are built from the database rather
+// than hardcoded, and cached per isolate for a few minutes: a new storefront
+// shows up within the TTL, and a cold isolate picks it up immediately. The
+// cost of getting this wrong is a tool that cannot see a market the collector
+// is already crawling.
 
 export interface ReferenceData {
 	storefronts: string[];

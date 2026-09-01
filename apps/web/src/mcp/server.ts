@@ -100,9 +100,8 @@ const detailSchema = z
  * Build the server for one request.
  *
  * `createMcpHandler` calls this per HTTP request by design, so registration
- * and
- * schema conversion are on the request path rather than at startup. Keep the
- * bodies out of here. They live in `tools.ts` and are only referenced.
+ * and schema conversion are on the request path rather than at startup. Keep
+ * the bodies out of here. They live in `tools.ts` and are only referenced.
  */
 function buildServer(
 	env: Env,

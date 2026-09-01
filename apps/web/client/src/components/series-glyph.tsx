@@ -1,12 +1,9 @@
 // The key that ties a table row to a line on the chart.
 //
 // It draws the stroke itself, colour *and* dash together, rather than a colour
-// dot,
-// because a dot leaves colour as the only channel and roughly one man in
-// twelve
-// cannot use it. The same glyph appears in the legend and on the table's
-// toggle,
-// so the mapping is learned once.
+// dot, because a dot leaves colour as the only channel and roughly one man in
+// twelve cannot use it. The same glyph appears in the legend and on the
+// table's toggle, so the mapping is learned once.
 
 import type { SeriesStyle } from "./rank-series-chart";
 

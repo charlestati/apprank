@@ -9,10 +9,9 @@
 //   ]
 //
 // `userId` is what the ownership checks compare against
-// (`tracked_app.user_id`),
-// so it is the durable identity: change a password freely, but changing a
-// userId re-points that person at a different set of tracked apps. It defaults
-// to the username.
+// (`tracked_app.user_id`), so it is the durable identity: change a password
+// freely, but changing a userId re-points that person at a different set of
+// tracked apps. It defaults to the username.
 //
 // Passwords are compared against their SHA-256 digests in constant time; see
 // `lib/crypto.ts` for why a password KDF would be the wrong call here.

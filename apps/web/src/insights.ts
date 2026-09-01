@@ -1,8 +1,7 @@
 // Turning tracked numbers into the decisions an ASO cycle actually needs.
 //
 // The thresholds below are the ones the practice uses, and they are stated
-// here
-// rather than buried in a chart so they can be argued with:
+// here rather than buried in a chart so they can be argued with:
 //
 //   - Popularity ≥5 is the floor for measurable search volume; ≥30 is a head
 //     term. A good rank on a ≤5 term is close to worthless, which is the
@@ -151,8 +150,7 @@ export function classify(row: KeywordRow): KeywordVerdict {
 	// Never coerce a missing measurement to zero. Apple lists only the top ~500
 	// terms per country × top-level genre, so a real term routinely has no
 	// published volume, and treating that as "nobody searches this" invents the
-	// one
-	// fact every lane below depends on.
+	// one fact every lane below depends on.
 	const popularity =
 		row.popularityStatus === "measured" ? (row.popularity ?? 0) : null;
 	const difficulty = row.difficulty?.score ?? null;
@@ -204,8 +202,7 @@ export interface OpportunitySummary {
 	 * How many keywords Apple published no volume for. When this is most of the
 	 * set, which is the normal case for a niche app since Apple lists only the
 	 * top ~500 terms per country × genre, the lane counts are a thin read and
-	 * the page
-	 * should say so rather than imply the rest are worthless.
+	 * the page should say so rather than imply the rest are worthless.
 	 */
 	unmeasuredKeywords: number;
 }

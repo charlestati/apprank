@@ -2,10 +2,8 @@
 //
 // `wrangler.jsonc` ships with a placeholder database_id, and the real one
 // lives in the gitignored `wrangler.local.jsonc`, which CI cannot see. So the
-// config
-// is generated: take the template, inject the id from the environment, mark
-// the
-// data bindings `remote`, and drop the crons.
+// config is generated: take the template, inject the id from the environment,
+// mark the data bindings `remote`, and drop the crons.
 //
 // The crons matter. Without removing them, a `wrangler dev` session registers
 // its own schedule and becomes a second collector racing the deployed one.

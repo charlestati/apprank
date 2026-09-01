@@ -146,10 +146,9 @@ export interface Report {
 }
 
 // Four is the readable ceiling for categorical series; past it the palette
-// runs
-// out of hues that survive a colour-vision check side by side. More can still
-// be
-// switched on from the table, where the reader is choosing them deliberately.
+// runs out of hues that survive a colour-vision check side by side. More can
+// still be switched on from the table, where the reader is choosing them
+// deliberately.
 const CHART_SERIES_LIMIT = 4;
 
 function isoToday(): string {
@@ -215,9 +214,8 @@ function fetchErrors(env: Env, q: ReportQuery, since: string) {
  * tracked keyword is routinely missing from the list. For this app, 22 of 25
  * are. `present = 0` is the collector saying "we asked, Apple had nothing",
  * which is not the same fact as "nobody searches this", and neither is the
- * same
- * as never having pulled popularity at all. Filtering the absences out here
- * collapsed all three into one null.
+ * same as never having pulled popularity at all. Filtering the absences out
+ * here collapsed all three into one null.
  */
 function fetchPopularity(env: Env, q: ReportQuery) {
 	return env.DB.prepare(

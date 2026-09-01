@@ -1,8 +1,7 @@
 // The SchedulerDO work loop processes one task step per alarm tick. A step
-// does
-// bounded work (well under the 50-subrequest / 10ms-CPU free limits) and may
-// return follow-up tasks. Everything a step writes must be idempotent: alarms
-// are at-least-once.
+// does bounded work (well under the 50-subrequest / 10ms-CPU free limits) and
+// may return follow-up tasks. Everything a step writes must be idempotent:
+// alarms are at-least-once.
 
 export type Task =
 	| {

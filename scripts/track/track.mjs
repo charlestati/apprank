@@ -1,11 +1,10 @@
 // `pnpm track`: reconcile the tracked set from one file.
 //
 // Adding an app or a keyword must never be a code change (invariant 5), but
-// the
-// raw SQL for it is four statements with subqueries and easy to get wrong.
-// This
-// reads a gitignored config, works out the difference against what is already
-// in the database, and prints it. Nothing is written without `--apply`.
+// the raw SQL for it is four statements with subqueries and easy to get wrong.
+// This reads a gitignored config, works out the difference against what is
+// already in the database, and prints it. Nothing is written without
+// `--apply`.
 //
 // The database stays the source of truth: crawl_pair is reference-counted
 // across users, ownership lives on the rows, and retiring preserves history.
