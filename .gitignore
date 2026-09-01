@@ -1,15 +1,37 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
-.wrangler/
-.dev.vars
-*.local
-.DS_Store
-worker-configuration.d.ts
-packages/core/seeds/local/
-wrangler.local.jsonc
-.idea/
+
+# Test coverage
 coverage/
-apps/collector/wrangler.localcrawl.jsonc
-apps/web/wrangler.preview.jsonc
+
+# Generated Worker types: `wrangler types` regenerates them on every typecheck
+worker-configuration.d.ts
+
+# Wrangler local state
+.wrangler/
+
+# Secrets and machine-local config. Every wrangler.jsonc is committed with
+# placeholder ids; the wrangler.<name>.jsonc beside it holds the real
+# database_id, APP_URL and COLLECTION_MODE, and is local-only.
+wrangler.*.jsonc
+.dev.vars
+.dev.vars.*
+.env
+.env.*
+*.local
+
+# Local agent settings; `.claude/rules/` is committed
+.claude/settings.local.json
+
+# Operator data: the tracked set is an ASO strategy and this repository is public
 tracked.local.json
 tracked.local.sql
+packages/core/seeds/local/
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store

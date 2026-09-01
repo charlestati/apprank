@@ -1,0 +1,9 @@
+#!/bin/sh
+# The gates CI runs, minus coverage: typecheck regenerates
+# worker-configuration.d.ts first, because that file is generated rather than
+# committed and without it every Workers global is unknown. Together ~10s,
+# which is why nothing here filters by changed file.
+set -e
+
+pnpm typecheck
+pnpm test

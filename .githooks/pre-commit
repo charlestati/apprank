@@ -1,0 +1,6 @@
+#!/bin/sh
+# Formatting and lint only. Kept to the fastest gate (~1s) because it runs on
+# every commit; the slower checks live in pre-push.
+set -e
+
+pnpm lint
