@@ -117,7 +117,7 @@ export interface MetadataMarker {
 	changed: string[];
 }
 
-/** A day the crawl failed — the reason a hole in a series is a hole. */
+/** A day the crawl failed: the reason a hole in a series is a hole. */
 export interface SeriesError {
 	date: string;
 	errorClass: string;
@@ -163,14 +163,14 @@ export type Opportunity =
 	| "dormant"
 	| "unknown";
 
-/** Whether Apple published a volume for a term — absent is not zero. */
+/** Whether Apple published a volume for a term. Absent is not zero. */
 export type PopularityStatus = "measured" | "absent" | "unqueried";
 
 export interface KeywordVerdict {
 	opportunity: Opportunity;
 	/** Stable key for the explanation, so the client renders it in its own language. */
 	reasonKey?: string;
-	/** Canonical English prose — the fallback when a key is unrecognised. */
+	/** Canonical English prose: the fallback when a key is unrecognised. */
 	reason: string;
 	unproven: boolean;
 }

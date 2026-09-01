@@ -1,6 +1,6 @@
 // Difficulty is our own score, not a vendor's black box, so the cell shows
-// the number, the band it falls in, and — on hover — the inputs that produced
-// it and how many of the top ten we actually hold ratings for.
+// the number, the band it falls in, and on hover the inputs that produced it
+// and how many of the top ten we actually hold ratings for.
 
 import type { Difficulty as DifficultyValue } from "../api";
 import { fmt, useT } from "../i18n";

@@ -32,8 +32,8 @@ function storedAppId(): number | null {
 }
 
 /**
- * Shown only to an operator who tracks more than one app — a select with a
- * single option is a control that cannot do anything.
+ * Shown only to an operator who tracks more than one app, because a select
+ * with a single option is a control that cannot do anything.
  *
  * Switching while on a pair detail returns to the report, because that route
  * addresses one pair of the app being left behind: keeping it would render
@@ -120,8 +120,8 @@ function Shell() {
 	const [userId, setUserId] = useState<string | null>(null);
 	const [appId, setAppId] = useState<number | null>(storedAppId);
 
-	// A stored id that is no longer tracked — an app removed since the last
-	// visit — falls back rather than rendering an empty report.
+	// A stored id that is no longer tracked, an app removed since the last
+	// visit, falls back rather than rendering an empty report.
 	const app = apps.find((a) => a.id === appId) ?? apps[0] ?? null;
 
 	const selectApp = (id: number) => {

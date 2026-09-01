@@ -25,7 +25,7 @@ const CHART_GENRES_DEFAULT: (number | null)[] = [7019, null]; // Word + storefro
 
 /**
  * The week's Ads popularity pull, or null when there is nothing to ask for.
- * Shared by the Monday cron and the manual trigger — the trigger skips the
+ * Shared by the Monday cron and the manual trigger, which skips the
  * day-of-week gate, which is a scheduling choice, not a correctness one:
  * `popularity` is unique on (keyword, storefront, genre, week_start), so
  * re-pulling the same week is a no-op.
@@ -140,7 +140,8 @@ async function runDailyJobs(env: Env): Promise<{
 	// locale for our language), reviews, charts. All three hit the public iTunes
 	// endpoints, so a deployment that cannot reach them skips queueing work whose
 	// only outcome is a throttle and an abandoned batch.
-	// The storefront set follows each app's content language (language ≠ storefront).
+	// The storefront set follows each app's content language (language ≠
+	// storefront).
 	const targets = await env.DB.prepare(
 		`SELECT ta.app_id, sl.storefront_code AS code, MIN(sl.locale_code) AS locale_code
      FROM tracked_app ta
@@ -192,8 +193,8 @@ async function runDailyJobs(env: Env): Promise<{
  * The daily job, bracketed by a `collector_run` row.
  *
  * The bracket is the point: everything below writes observations only when it
- * succeeds, so a throw halfway — before `enqueue`, say — used to leave no
- * trace at all and surfaced a day later as missing coverage.
+ * succeeds, so a throw halfway, before `enqueue` say, used to leave no trace
+ * at all and surfaced a day later as missing coverage.
  */
 async function dailyJobs(
 	env: Env,

@@ -1,16 +1,18 @@
-// ASC Analytics Reports ingestion — for every tracked app, no app hardcoded.
+// ASC Analytics Reports ingestion, for every tracked app, no app hardcoded.
 //
-// Flow per day (driven by the SchedulerDO task loop, one bounded step per tick):
+// Flow per day (driven by the SchedulerDO task loop, one bounded step per
+// tick):
 //   asc_poll (fan-out)  read tracked apps from D1, queue one init per app
 //   asc_poll(init)      ensure ONGOING + ONE_TIME_SNAPSHOT requests exist
-//   asc_poll(reports)   list reports for the ONGOING request, filter categories,
-//                       dump the full report list to R2 once (per-search-term verification)
+// asc_poll(reports) list reports for the ONGOING request, filter categories,
+// dump the full report list to R2 once (per-search-term verification)
 //   asc_poll(instances) for one report at a time: list DAILY instances, queue
 //                       unseen ones as asc_fetch_instance tasks
 //   asc_fetch_instance  download all segments verbatim (.tsv.gz) to R2, record
 //                       bookkeeping, detect duplicate/skipped processingDate
 //
-// Verbatim-first: parsing into metric tables comes after we've seen real report
+// Verbatim-first: parsing into metric tables comes after we've seen real
+// report
 // shapes. The archive is the source of truth; a parser can always re-run.
 
 import { AscClient, downloadSegment } from "@apprank/core/apple/asc";
@@ -58,7 +60,8 @@ async function initStep(env: Env, appId: string): Promise<Task[]> {
 			r.attributes.stoppedDueToInactivity
 	);
 	if (stopped) {
-		// Known ASC behavior: ONGOING requests die if not polled. Recreate; alert via fetch_error.
+		// Known ASC behavior: ONGOING requests die if not polled. Recreate; alert
+		// via fetch_error.
 		await recordFetchError(env.DB, {
 			endpoint: "asc:reportRequest",
 			errorClass: "stopped_due_to_inactivity",
@@ -68,7 +71,8 @@ async function initStep(env: Env, appId: string): Promise<Task[]> {
 	if (!ongoing) {
 		ongoing = await asc.createReportRequest(appId, "ONGOING");
 	}
-	// One-time snapshot: fire once ever per app, to capture all available history.
+	// One-time snapshot: fire once ever per app, to capture all available
+	// history.
 	const snapshotKey = `asc:${appId}:snapshot_requested`;
 	const snapshotDone = await getStateJson<boolean>(env.DB, snapshotKey);
 	if (
@@ -95,7 +99,7 @@ async function reportsStep(
 		return [{ appId, stage: "init", type: "asc_poll" }];
 	}
 	const reports = await asc.listReports(requestId);
-	// Dump the complete report list once — this is how we verify whether any
+	// Dump the complete report list once. This is how we verify whether any
 	// report carries per-search-term impressions (open question from planning).
 	const dumpedKey = `asc:${appId}:report_list_dumped`;
 	const dumped = await getStateJson<boolean>(env.DB, dumpedKey);
@@ -254,7 +258,7 @@ export async function ascFetchInstanceStep(
  * Daily gap check: yesterday-2 should exist for each report we ingest.
  *
  * Grouped per app. Apple skips a processing date per report request, and
- * requests are per app — so with the app dimension collapsed, one app's
+ * requests are per app, so with the app dimension collapsed, one app's
  * published Monday satisfied the `NOT EXISTS` for every other app's missing
  * Monday and the defect went unreported.
  */
