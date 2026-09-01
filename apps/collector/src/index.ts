@@ -30,7 +30,10 @@ const CHART_GENRES_DEFAULT: (number | null)[] = [7019, null]; // Word + storefro
  * `popularity` is unique on (keyword, storefront, genre, week_start), so
  * re-pulling the same week is a no-op.
  */
-async function buildAdsTask(env: Env, force = false): Promise<Task | null> {
+async function buildAdsTask(
+  env: Env,
+  force = false
+): Promise<Extract<Task, { type: "ads_pull" }> | null> {
   const genres =
     (await getStateJson<number[]>(env.DB, "ads:focus_genres")) ??
     FOCUS_GENRES_DEFAULT;
@@ -220,7 +223,11 @@ function json(body: unknown, status = 200): Response {
  * `asc` and `ads` execute a first step inline; everything it queues afterwards
  * drains on the normal paced loop.
  */
-async function runJob(env: Env, job: Job): Promise<Response> {
+async function runJob(
+  env: Env,
+  job: Job,
+  opts: { verifyOnly?: boolean } = {}
+): Promise<Response> {
   const stub = env.SCHEDULER.get(env.SCHEDULER.idFromName("singleton"));
   switch (job) {
     case "daily": {
@@ -242,7 +249,10 @@ async function runJob(env: Env, job: Job): Promise<Response> {
       if (!task) {
         return json({ error: "no active storefronts to pull", job }, 412);
       }
-      const result = await stub.runNow(task);
+      const result = await stub.runNow({
+        ...task,
+        verifyOnly: opts.verifyOnly ?? true,
+      });
       return json({ job, ...result }, result.ok ? 200 : 502);
     }
     case "step": {
@@ -297,7 +307,11 @@ export default {
     if (!JOBS.includes(job as Job)) {
       return json({ error: "unknown job", jobs: JOBS }, 400);
     }
-    return runJob(env, job as Job);
+    // A bare `job=ads` only verifies the credential; `?write=1` opts into the
+    // full pull, which rewrites 500 terms per unit.
+    return runJob(env, job as Job, {
+      verifyOnly: url.searchParams.get("write") !== "1",
+    });
   },
 
   async scheduled(

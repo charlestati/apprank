@@ -191,6 +191,28 @@ describe("POST /admin/run", () => {
     expect(body.errors[0]?.endpoint).toBe("ads:popularity");
   });
 
+  it("verifies the ads credential without writing rows", async () => {
+    // A credential check that rewrote 500 terms per unit spent a real slice of
+    // the daily write budget to learn only that Apple answered — which the R2
+    // archive already proves.
+    stubFetch((url) => {
+      if (url.includes("appleid.apple.com")) {
+        return Response.json({ access_token: "tok", expires_in: 3600 });
+      }
+      if (url.includes("/v1/acls")) {
+        return Response.json({ data: { acls: [{ adAccount: { id: 1 } }] } });
+      }
+      return Response.json({
+        result: { rows: [{ rankInGenre: 1, searchTerm: "mots" }] },
+      });
+    });
+    await worker.fetch(post("ads"), configured({ ADS_CLIENT_ID: "client" }));
+    const seeded = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM seed_term"
+    ).first<{ n: number }>();
+    expect(seeded?.n).toBe(0);
+  });
+
   it("advances the queue one task at a time, and says when it is empty", async () => {
     stubFetch(() => Response.json({ resultCount: 0, results: [] }));
     await expect(

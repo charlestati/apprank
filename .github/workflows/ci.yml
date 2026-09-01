@@ -23,5 +23,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - run: pnpm lint
+      # typecheck regenerates worker-configuration.d.ts first: it is generated,
+      # not committed, and without it every Workers global and binding is unknown.
       - run: pnpm typecheck
       - run: pnpm coverage

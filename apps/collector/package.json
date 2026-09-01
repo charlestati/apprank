@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsc",
+    "types": "wrangler types",
+    "typecheck": "wrangler types && tsc",
     "test": "vitest run",
     "coverage": "vitest run --coverage",
     "dev": "wrangler dev -c $(test -f wrangler.local.jsonc && echo wrangler.local.jsonc || echo wrangler.jsonc)",

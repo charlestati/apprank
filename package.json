@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "types": "pnpm --filter collector --filter web types",
     "typecheck": "pnpm -r typecheck",
     "lint": "ultracite check",
     "lint:fix": "ultracite fix",

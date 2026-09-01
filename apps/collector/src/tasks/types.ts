@@ -27,6 +27,12 @@ export type Task =
       queue: AdsPullUnit[];
       weekStart: string;
       attempt?: number;
+      /**
+       * Fetch and archive, but write no rows. A credential check only needs to
+       * know Apple answered; making it rewrite 500 terms per unit spent a
+       * meaningful slice of the daily write budget to learn nothing new.
+       */
+      verifyOnly?: boolean;
     }
   | { type: "lookup_pull"; queue: LookupUnit[]; attempt?: number }
   | { type: "review_pull"; queue: ReviewUnit[]; attempt?: number }

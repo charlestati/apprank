@@ -183,6 +183,29 @@ describe(adsPullStep, () => {
     expect(pop?.popularity_1_100).toBeNull();
   });
 
+  it("does not mark the week collected when Apple returns nothing", async () => {
+    // An empty answer that counted as done would block every retry for that
+    // week, and the week is the whole retention grain.
+    stubFetch((url) => {
+      if (url.includes("appleid.apple.com")) {
+        return Response.json({ access_token: "tok", expires_in: 3600 });
+      }
+      if (url.includes("/v1/acls")) {
+        return Response.json({ data: { acls: [{ adAccount: { id: 777 } }] } });
+      }
+      return Response.json({ result: { rows: [] } });
+    });
+    await adsPullStep(adsEnv(), {
+      queue: [{ category: "GAMES", genreId: 6014, storefront: "fr" }],
+      type: "ads_pull",
+      weekStart: "2026-08-16",
+    });
+    const marker = await env.DB.prepare(
+      "SELECT value FROM collector_state WHERE key = 'ads:pulled:fr:GAMES'"
+    ).first<{ value: string }>();
+    expect(marker).toBeNull();
+  });
+
   it("caches the discovered ad account id", async () => {
     const calls = stubFetch((url) => {
       if (url.includes("appleid.apple.com")) {

@@ -85,6 +85,13 @@ export async function adsPullStep(
     const r2Key = `ads/popularity/${task.weekStart}/${unit.storefront}/${unit.category}.json`;
     await env.ARCHIVE.put(r2Key, JSON.stringify(raw));
 
+    // The archive above is the source of truth, so a verify pass has already
+    // proved everything a credential check cares about: the JWT signed, Apple
+    // answered, the shape parsed. Stop before the D1 writes.
+    if (task.verifyOnly) {
+      return requeue;
+    }
+
     const month = task.weekStart.slice(0, 7);
     const now = Date.now();
     const stmts: D1PreparedStatement[] = [];
@@ -148,11 +155,16 @@ export async function adsPullStep(
     for (let i = 0; i < stmts.length; i += 50) {
       await env.DB.batch(stmts.slice(i, i + 50));
     }
-    await setState(
-      env.DB,
-      `ads:pulled:${unit.storefront}:${unit.category}`,
-      task.weekStart
-    );
+    // Only a pull that actually returned terms counts as the week collected.
+    // Marking an empty response done would let one bad answer from Apple block
+    // every retry for that week — and the week is the whole retention grain.
+    if (rows.length > 0) {
+      await setState(
+        env.DB,
+        `ads:pulled:${unit.storefront}:${unit.category}`,
+        task.weekStart
+      );
+    }
     return requeue;
   } catch (error) {
     if (error instanceof AdsRateLimitedError) {
