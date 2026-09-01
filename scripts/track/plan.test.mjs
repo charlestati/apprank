@@ -132,10 +132,10 @@ test("retires a dropped keyword instead of deleting its history", () => {
 			},
 		],
 		keywords: [{ id: 3, normalized: "obsolete", language: "fr" }],
-		trackedApps: [{ user_id: "charles", app_id: 1 }],
+		trackedApps: [{ user_id: "operator", app_id: 1 }],
 		trackedKeywords: [
 			{
-				user_id: "charles",
+				user_id: "operator",
 				app_id: 1,
 				keyword_id: 3,
 				normalized: "obsolete",
@@ -145,7 +145,7 @@ test("retires a dropped keyword instead of deleting its history", () => {
 	};
 	const { statements, summary } = planChanges(
 		{
-			charles: {
+			operator: {
 				appId: 1,
 				name: "App",
 				language: "fr",
@@ -179,10 +179,10 @@ test("an unchanged config writes nothing at all", () => {
 			},
 		],
 		keywords: [{ id: 3, normalized: "mots", language: "fr" }],
-		trackedApps: [{ user_id: "charles", app_id: 1 }],
+		trackedApps: [{ user_id: "operator", app_id: 1 }],
 		trackedKeywords: [
 			{
-				user_id: "charles",
+				user_id: "operator",
 				app_id: 1,
 				keyword_id: 3,
 				normalized: "mots",
@@ -192,7 +192,7 @@ test("an unchanged config writes nothing at all", () => {
 	};
 	const { statements } = planChanges(
 		{
-			charles: {
+			operator: {
 				appId: 1,
 				name: "App",
 				language: "fr",
@@ -208,7 +208,7 @@ test("an unchanged config writes nothing at all", () => {
 test("warns instead of guessing when a storefront is unknown", () => {
 	const { warnings } = planChanges(
 		{
-			charles: {
+			operator: {
 				appId: 1,
 				name: "App",
 				language: "fr",
@@ -226,7 +226,7 @@ test("handles several apps under one user", () => {
 	// the only thing assuming one app each.
 	const { summary } = planChanges(
 		{
-			charles: {
+			operator: {
 				apps: [
 					{
 						appId: 1,
@@ -254,7 +254,7 @@ test("handles several apps under one user", () => {
 test("keeps accepting the single-app shorthand", () => {
 	const { summary } = planChanges(
 		{
-			charles: {
+			operator: {
 				appId: 1,
 				name: "A",
 				language: "fr",
@@ -270,7 +270,7 @@ test("keeps accepting the single-app shorthand", () => {
 test("two apps sharing a keyword still share one crawl pair", () => {
 	const { summary } = planChanges(
 		{
-			charles: {
+			operator: {
 				apps: [
 					{
 						appId: 1,
@@ -351,7 +351,7 @@ test("ignores underscore keys so the annotated example can be copied", () => {
 	const { summary } = planChanges(
 		{
 			_readme: ["a note to the reader, not an operator"],
-			charles: {
+			operator: {
 				apps: [
 					{
 						appId: 1,
@@ -388,7 +388,7 @@ test("tracks two languages for one app as two entries", () => {
 	];
 	const { statements, summary } = planChanges(
 		{
-			charles: {
+			operator: {
 				apps: [
 					{
 						appId: 1,

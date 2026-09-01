@@ -52,7 +52,7 @@ const RETRY_IN_PLACE = 2;
  *
  * So the unit rotates to the back every `RETRY_IN_PLACE` attempts, and the
  * batch is abandoned once every unit has had its turn. Abandoning is for the
- * day only — the daily job rebuilds these queues from the tracked set, so a
+ * day only: the daily job rebuilds these queues from the tracked set, so a
  * bad storefront costs today's pull, never the series. Leaving it queued
  * instead would stack a fresh copy on top of a wedged one every night.
  */
@@ -122,7 +122,7 @@ export async function lookupPullStep(
 	const date = todayUtc();
 
 	if (!result) {
-		// App absent from this storefront — that itself is worth recording.
+		// App absent from this storefront, which is itself worth recording.
 		await recordFetchError(env.DB, {
 			endpoint: "itunes:lookup",
 			errorClass: "app_not_in_storefront",
@@ -138,7 +138,7 @@ export async function lookupPullStep(
 	// This lookup already existed below, for the metadata-change burst. Doing it
 	// first lets it also skip the insert: app_metadata_version dedupes on
 	// content_hash, but its key is AUTOINCREMENT, so an ignored insert still
-	// costs a write — SQLite touches sqlite_sequence regardless.
+	// costs a write, because SQLite touches sqlite_sequence regardless.
 	const known = await env.DB.prepare(
 		"SELECT 1 AS x FROM app_metadata_version WHERE app_id = ? AND content_hash = ?"
 	)
@@ -189,7 +189,7 @@ export async function lookupPullStep(
 						m.contentHash
 					),
 				]),
-		// Per-storefront rating series — drives difficulty, moves daily.
+		// Per-storefront rating series: drives difficulty, moves daily.
 		env.DB.prepare(
 			`INSERT INTO rating_snapshot (app_id, storefront_code, observed_date, rating_count, rating_avg)
        VALUES (?, ?, ?, ?, ?)
@@ -197,7 +197,8 @@ export async function lookupPullStep(
 		).bind(napp.id, unit.storefront, date, m.ratingCount, m.ratingAvg),
 	];
 
-	// Metadata change → burst: force daily cadence on all this app's pairs for 14 days.
+	// Metadata change → burst: force daily cadence on all this app's pairs for
+	// 14 days.
 	const isTracked = await env.DB.prepare(
 		"SELECT 1 AS x FROM tracked_app WHERE app_id = ?"
 	)
@@ -453,6 +454,7 @@ export async function compactStep(
 			`${lines.join("\n")}\n`
 		);
 	}
-	// Staging objects expire via the R2 lifecycle rule (7 days) — no deletes needed.
+	// Staging objects expire via the R2 lifecycle rule (7 days), so no deletes
+	// are needed.
 	return [];
 }

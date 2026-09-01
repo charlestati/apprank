@@ -1,6 +1,7 @@
 // Turning tracked numbers into the decisions an ASO cycle actually needs.
 //
-// The thresholds below are the ones the practice uses, and they are stated here
+// The thresholds below are the ones the practice uses, and they are stated
+// here
 // rather than buried in a chart so they can be argued with:
 //
 //   - Popularity ≥5 is the floor for measurable search volume; ≥30 is a head
@@ -8,7 +9,7 @@
 //     classic small-app trap: winning only where nobody searches.
 //   - Results below roughly position 10 get effectively no taps, and 20 is the
 //     outer edge of visibility. A #59 on a real term can be worth more work
-//     than a #10 on a dead one — but only if the climb is achievable.
+//     than a #10 on a dead one, but only if the climb is achievable.
 //   - A rank set in the last 48 hours is unproven: Apple reshuffles, and
 //     concluding from it is how people talk themselves into bad releases.
 
@@ -57,7 +58,7 @@ export interface KeywordVerdict {
 }
 
 /**
- * A rank inside the tap zone means nothing on its own — its worth is entirely
+ * A rank inside the tap zone means nothing on its own. Its worth is entirely
  * a question of whether anyone searches the term, so all three answers
  * (measured volume, measured absence of volume, no measurement) land here.
  */
@@ -68,14 +69,14 @@ function tapZoneVerdict(
 		return {
 			opportunity: "unknown",
 			reason:
-				"Top 10, but Apple publishes no search volume for this term — a win and a vanity rank look identical here.",
+				"Top 10, but Apple publishes no search volume for this term, so a win and a vanity rank look identical here.",
 			reasonKey: "unknownTapZone",
 		};
 	}
 	return popularity >= POPULARITY_MEASURABLE
 		? {
 				opportunity: "winning",
-				reason: `Top ${TAP_ZONE} on a term with real volume — defend it.`,
+				reason: `Top ${TAP_ZONE} on a term with real volume, so defend it.`,
 				reasonKey: "winning",
 			}
 		: {
@@ -91,7 +92,7 @@ function dormantVerdict(rank: number | null): Omit<KeywordVerdict, "unproven"> {
 		opportunity: "dormant",
 		reason:
 			rank === null
-				? "Not ranking at all — either the metadata does not cover it or the term is out of reach."
+				? "Not ranking at all: either the metadata does not cover it or the term is out of reach."
 				: "Too far down to earn taps, with no evidence the climb is short.",
 		reasonKey: rank === null ? "dormantUnranked" : "dormantDeep",
 	};
@@ -114,7 +115,8 @@ function deepRankVerdict(
 	const reachable = rank !== null && rank <= REACHABLE_RANK;
 
 	if (popularity === null) {
-		// No measurement: the only honest options are "worth a look" and "not ranking".
+		// No measurement: the only honest options are "worth a look" and "not
+		// ranking".
 		return reachable
 			? {
 					opportunity: "unknown",
@@ -129,7 +131,7 @@ function deepRankVerdict(
 		return {
 			opportunity: "blocked",
 			reason:
-				"Real volume, but the top of the page is entrenched — metadata alone will not win it.",
+				"Real volume, but the top of the page is entrenched, so metadata alone will not win it.",
 			reasonKey: "blocked",
 		};
 	}
@@ -148,7 +150,8 @@ function deepRankVerdict(
 export function classify(row: KeywordRow): KeywordVerdict {
 	// Never coerce a missing measurement to zero. Apple lists only the top ~500
 	// terms per country × top-level genre, so a real term routinely has no
-	// published volume — treating that as "nobody searches this" invents the one
+	// published volume, and treating that as "nobody searches this" invents the
+	// one
 	// fact every lane below depends on.
 	const popularity =
 		row.popularityStatus === "measured" ? (row.popularity ?? 0) : null;
@@ -199,8 +202,9 @@ export interface OpportunitySummary {
 	genericInTapZone: number;
 	/**
 	 * How many keywords Apple published no volume for. When this is most of the
-	 * set — the normal case for a niche app, since Apple lists only the top ~500
-	 * terms per country × genre — the lane counts are a thin read and the page
+	 * set, which is the normal case for a niche app since Apple lists only the
+	 * top ~500 terms per country × genre, the lane counts are a thin read and
+	 * the page
 	 * should say so rather than imply the rest are worthless.
 	 */
 	unmeasuredKeywords: number;

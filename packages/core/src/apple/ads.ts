@@ -115,7 +115,7 @@ export interface AdAccountAcl {
 }
 
 /**
- * An Apple Ads login can hold several ad accounts — an Advanced account and a
+ * An Apple Ads login can hold several ad accounts: an Advanced account and a
  * separate "Search Ads Basic" one, say. The Advanced account is the one whose
  * id matches its own orgId; Basic appears as a distinct id under the same org
  * and has no Insights data. Prefer the former, fall back to whatever exists.
@@ -152,7 +152,7 @@ export class AdsClient {
 	/**
 	 * Ranked search-term popularity list for one genre × storefront.
 	 *
-	 * The body shape is the Platform API's own — `timeRange` + flat `filters`,
+	 * The body shape is the Platform API's own: `timeRange` plus flat `filters`,
 	 * not the `selector`/`conditions` envelope the older Campaign Management API
 	 * used; sending the latter earns `REQUEST_UNRECOGNIZED_PROPERTY`. A term must
 	 * clear ~500 searches to appear at all, and Apple returns at most 500 terms
@@ -216,8 +216,8 @@ export class AdsClient {
 	 * Discover the ad accounts this API user may act on, for the X-AP-Context
 	 * header every other endpoint requires.
 	 *
-	 * `/v1/acls` is the documented discovery call — one of only two endpoints
-	 * that work without X-AP-Context — and it returns the granted roles beside
+	 * `/v1/acls` is the documented discovery call, one of only two endpoints
+	 * that work without X-AP-Context, and it returns the granted roles beside
 	 * each account. `/v1/ad-accounts` answers 404 RESOURCE_NOT_FOUND when the
 	 * user holds no grant, which is indistinguishable from a wrong URL; the ACL
 	 * response says *why*, so it is worth preferring even though both exist.
@@ -235,7 +235,7 @@ export class AdsClient {
 			throw new Error(`Ads acls failed: ${res.status} ${body.slice(0, 200)}`);
 		}
 		// The live API wraps the payload in `result`; Apple's generated SDK models
-		// it bare, and other endpoints use `data`. Accept all three — guessing one
+		// it bare, and other endpoints use `data`. Accept all three. Guessing one
 		// yields an empty list, which reads as "no access granted" and sends you
 		// hunting a permissions problem that does not exist.
 		const raw = (await res.json()) as {

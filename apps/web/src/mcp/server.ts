@@ -1,6 +1,6 @@
 // The MCP endpoint.
 //
-// Transport is streamable HTTP via `createMcpHandler` — the stateless entry.
+// Transport is streamable HTTP via `createMcpHandler`, the stateless entry.
 // `McpAgent` would work too but is the legacy path, and it requires a Durable
 // Object binding this Worker does not have and does not need: nothing about
 // answering a read query is stateful, and a DO would add state that
@@ -42,8 +42,8 @@ import {
 export const MCP_ROUTE = "/mcp";
 
 /**
- * The transport is opt-in. Both callers in `index.ts` — the Basic-auth
- * exemption and the route itself — ask this same question, because an
+ * The transport is opt-in. Both callers in `index.ts`, the Basic-auth
+ * exemption and the route itself, ask this same question, because an
  * exemption that outlived its route would leave `/mcp` reachable without any
  * gate at all.
  */
@@ -93,15 +93,16 @@ const detailSchema = z
 	.enum(["summary", "daily"])
 	.optional()
 	.describe(
-		"summary (default) returns aggregates and inflection points; daily returns every observation, still capped. Prefer summary — a year of daily ranks across many keywords will not fit in context."
+		"summary (default) returns aggregates and inflection points; daily returns every observation, still capped. Prefer summary: a year of daily ranks across many keywords will not fit in context."
 	);
 
 /**
  * Build the server for one request.
  *
- * `createMcpHandler` calls this per HTTP request by design, so registration and
+ * `createMcpHandler` calls this per HTTP request by design, so registration
+ * and
  * schema conversion are on the request path rather than at startup. Keep the
- * bodies out of here — they live in `tools.ts` and are only referenced.
+ * bodies out of here. They live in `tools.ts` and are only referenced.
  */
 function buildServer(
 	env: Env,
@@ -205,7 +206,7 @@ function buildServer(
 		"get_current_rankings",
 		{
 			description:
-				"Latest known rank of one app across every keyword and storefront it is tracked in, with each pair's crawl cadence and how many days old the observation is. Use this to get pairIds, and to see at a glance what is ranking now. A null position means observed but outside Apple's top 200 — not a failed fetch.",
+				"Latest known rank of one app across every keyword and storefront it is tracked in, with each pair's crawl cadence and how many days old the observation is. Use this to get pairIds, and to see at a glance what is ranking now. A null position means observed but outside Apple's top 200, not a failed fetch.",
 			inputSchema: z.object({
 				appId: z.number().int(),
 				limit: limitSchema(CAPS.keywords, "keyword rows"),
@@ -274,7 +275,7 @@ function buildServer(
 		"get_keyword_popularity",
 		{
 			description:
-				"Apple Ads search popularity over time for the keywords tracked against one app. Weekly, published about a week late, and covering only roughly the top 500 terms per storefront and top-level genre — so most long-tail keywords have no published volume. A point with present:false means Apple published nothing, which is absence of data and never a measurement of zero demand.",
+				"Apple Ads search popularity over time for the keywords tracked against one app. Weekly, published about a week late, and covering only roughly the top 500 terms per storefront and top-level genre, so most long-tail keywords have no published volume. A point with present:false means Apple published nothing, which is absence of data and never a measurement of zero demand.",
 			inputSchema: z.object({
 				appId: z.number().int(),
 				from: isoDate
@@ -303,7 +304,7 @@ function buildServer(
 		"get_metadata_changes",
 		{
 			description:
-				"Metadata change events for one app: when the title, subtitle, version, price, in-app purchases, description, release notes, screenshots or icon changed, plus which indexed locales have no localization at all. These are the release anchors a rank move should be read against — a rank change without a metadata change nearby usually is not yours.",
+				"Metadata change events for one app: when the title, subtitle, version, price, in-app purchases, description, release notes, screenshots or icon changed, plus which indexed locales have no localization at all. These are the release anchors a rank move should be read against: a rank change without a metadata change nearby usually is not yours.",
 			inputSchema: z.object({
 				appId: z.number().int(),
 				from: isoDate
@@ -372,7 +373,7 @@ function buildServer(
 		"get_search_results",
 		{
 			description:
-				"The full ordered result page Apple returned for one keyword on one date — every app in position order, named where we have met it before. Use this to see who actually occupies a keyword's page rather than just the top ten.",
+				"The full ordered result page Apple returned for one keyword on one date: every app in position order, named where we have met it before. Use this to see who actually occupies a keyword's page rather than just the top ten.",
 			inputSchema: z.object({
 				date: isoDate
 					.optional()
@@ -411,7 +412,7 @@ function buildServer(
 		"get_ratings_history",
 		{
 			description:
-				"Rating count and average over time for one app, per storefront. Summary gives the change in rating count across the window and the latest average; detail:'daily' gives every snapshot. A flat average with a rising count is normal — Apple's average is lifetime, not per day.",
+				"Rating count and average over time for one app, per storefront. Summary gives the change in rating count across the window and the latest average; detail:'daily' gives every snapshot. A flat average with a rising count is normal, because Apple's average is lifetime rather than per day.",
 			inputSchema: z.object({
 				appId: z.number().int(),
 				detail: detailSchema,
@@ -436,7 +437,7 @@ function buildServer(
 		"get_collection_health",
 		{
 			description:
-				"Whether today's numbers can be trusted. Without appId: collector pacing, the cadence plan, loop liveness, the last daily run, overdue pairs and error classes for the last 24 hours. With appId: per-pair coverage for that app's keywords over a window — observed versus expected observations, gap ranges, and the error periods behind them. Call this before drawing a conclusion from a rank movement.",
+				"Whether today's numbers can be trusted. Without appId: collector pacing, the cadence plan, loop liveness, the last daily run, overdue pairs and error classes for the last 24 hours. With appId: per-pair coverage for that app's keywords over a window: observed versus expected observations, gap ranges, and the error periods behind them. Call this before drawing a conclusion from a rank movement.",
 			inputSchema: z.object({
 				appId: z
 					.number()
@@ -511,8 +512,8 @@ export async function handleMcp(
 ): Promise<Response> {
 	const header = request.headers.get("Authorization");
 
-	// Burst brake first, keyed on the credential id alone — it is the public
-	// half of the token, so this costs nothing and reveals nothing. Refusing
+	// Burst brake first, keyed on the credential id alone. It is the public half
+	// of the token, so this costs nothing and reveals nothing. Refusing
 	// here means a hot retry loop never reaches D1, and cannot spend the write
 	// allowance on being told no.
 	const identified = parseToken(header);

@@ -10,7 +10,7 @@
 // D1 is an ordinary queryable table that gets dumped and rebuilt — unlike
 // BASIC_AUTH_ACCOUNTS, which is a Worker secret and can hold plaintext.
 //
-//   node scripts/mcp-token/issue.mjs --user admin --name charles-laptop
+//   node scripts/mcp-token/issue.mjs --user admin --name laptop
 //   node scripts/mcp-token/issue.mjs --user admin --name bob-ci --days 90 \
 //     --scopes read:rankings,read:health
 

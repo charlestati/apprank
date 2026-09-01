@@ -6,7 +6,8 @@ import {
 	index,
 } from "drizzle-orm/sqlite-core";
 
-// A failed fetch is recorded here, never as an observation. Visible gap > silent garbage.
+// A failed fetch is recorded here, never as an observation. Visible gap >
+// silent garbage.
 //
 // `error_class` is a small closed vocabulary and nothing else: the data-health
 // page groups on it, so putting an upstream message here fragments the summary
@@ -45,7 +46,8 @@ export const collectorRun = sqliteTable(
 	(t) => [index("cr_started").on(t.startedAt)]
 );
 
-// learned_rate, tier2_cursor, window schedule, canary config — survives redeploys.
+// learned_rate, tier2_cursor, window schedule, canary config. Survives
+// redeploys.
 export const collectorState = sqliteTable("collector_state", {
 	key: text("key").primaryKey(),
 	updatedAt: integer("updated_at"),
@@ -72,9 +74,9 @@ export const suggestion = sqliteTable("suggestion", {
 // `app_id` is not decoration. Report requests are created per app
 // (`tasks/asc.ts` fans out over `tracked_app`), so the app is known at write
 // time; dropping it made every row belong to the union of tracked apps. That
-// broke both anomaly detectors — one app's report covered another app's
-// missing day, and a second app's legitimate report was flagged as the first
-// app's `duplicate_date` — and it left first-party analytics with no column
+// broke both anomaly detectors: one app's report covered another app's missing
+// day, and a second app's legitimate report was flagged as the first app's
+// `duplicate_date`, and it left first-party analytics with no column
 // for `ownsApp` to check. It is also what makes the R2 archive rebuildable
 // into this table: the app dimension has to exist in the key and the row, or
 // it cannot be recovered.
@@ -115,7 +117,7 @@ export const userQuota = sqliteTable("user_quota", {
 //
 // Deliberately *not* the Basic accounts. An MCP client is a long-lived agent
 // holding a token on disk, and it must not be able to reach the web API with
-// it, nor a browser account reach MCP — so the two credential types are
+// it, nor a browser account reach MCP, so the two credential types are
 // separate tables of separate shapes, checked by separate gates, and each is
 // revocable without touching the other. What they share is the identity:
 // `user_id` is the same durable value as `tracked_app.user_id`, so ownership
@@ -132,7 +134,7 @@ export const mcpCredential = sqliteTable("mcp_credential", {
 	createdAt: integer("created_at").notNull(),
 	expiresAt: integer("expires_at"), // NULL = no expiry
 	lastUsedAt: integer("last_used_at"),
-	/** Which client this is — "charles-laptop", "bob-ci". Named so it can be found. */
+	/** Which client this is: "laptop", "ci-runner". Named so it can be found. */
 	name: text("name").notNull(),
 	revokedAt: integer("revoked_at"), // non-NULL = dead on the next call
 	scopes: text("scopes").notNull().default('["read:all"]'), // JSON array
@@ -143,7 +145,8 @@ export const mcpCredential = sqliteTable("mcp_credential", {
 	windowStart: integer("window_start"),
 });
 
-// Every tool call, so a leak can be answered with "what was asked, and by whom".
+// Every tool call, so a leak can be answered with "what was asked, and by
+// whom".
 export const mcpToolCall = sqliteTable(
 	"mcp_tool_call",
 	{

@@ -4,7 +4,7 @@
 // repository, which is public:
 //
 //   [
-//     { "username": "charles", "password": "…", "userId": "admin" },
+//     { "username": "operator", "password": "…", "userId": "admin" },
 //     { "username": "alice",   "password": "…", "userId": "alice" }
 //   ]
 //

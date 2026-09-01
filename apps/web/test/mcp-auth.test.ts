@@ -76,7 +76,7 @@ describe("the MCP transport switch", () => {
 		// take the request back — otherwise switching MCP off would open the one
 		// path that skips authentication entirely.
 		const accounts = JSON.stringify([
-			{ password: "pw", userId: USER_ID, username: "charles" },
+			{ password: "pw", userId: USER_ID, username: "operator" },
 		]);
 		const res = await fetchMcp(
 			mcpRequest(rpc("tools/list")),
@@ -114,11 +114,11 @@ describe("the MCP transport boundary", () => {
 
 	it("rejects a Basic credential — the two transports do not cross", async () => {
 		const accounts = JSON.stringify([
-			{ password: "pw", userId: USER_ID, username: "charles" },
+			{ password: "pw", userId: USER_ID, username: "operator" },
 		]);
 		const res = await fetchMcp(
 			mcpRequest(rpc("tools/list"), undefined, {
-				Authorization: `Basic ${btoa("charles:pw")}`,
+				Authorization: `Basic ${btoa("operator:pw")}`,
 			}),
 			walled({
 				ALLOW_UNAUTHENTICATED: undefined,
@@ -131,7 +131,7 @@ describe("the MCP transport boundary", () => {
 	it("rejects an MCP token against the HTTP API", async () => {
 		const { token } = await issueCredential({ userId: USER_ID });
 		const accounts = JSON.stringify([
-			{ password: "pw", userId: USER_ID, username: "charles" },
+			{ password: "pw", userId: USER_ID, username: "operator" },
 		]);
 		const res = await fetchMcp(
 			apiRequest("/apps", { headers: { Authorization: `Bearer ${token}` } }),

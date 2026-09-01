@@ -15,7 +15,7 @@ import {
 } from "./fixtures";
 
 const ACCOUNTS = JSON.stringify([
-	{ password: "correct-horse-battery", userId: "admin", username: "charles" },
+	{ password: "correct-horse-battery", userId: "admin", username: "operator" },
 	{ password: "second-account-secret", username: "alice" },
 ]);
 
@@ -45,7 +45,7 @@ describe(parseAccounts, () => {
 			{
 				password: "correct-horse-battery",
 				userId: "admin",
-				username: "charles",
+				username: "operator",
 			},
 			{ password: "second-account-secret", userId: "alice", username: "alice" },
 		]);
@@ -73,14 +73,14 @@ describe(parseAccounts, () => {
 
 describe(decodeHeader, () => {
 	it("decodes a well-formed header", () => {
-		expect(decodeHeader(header("charles", "secret"))).toStrictEqual({
+		expect(decodeHeader(header("operator", "secret"))).toStrictEqual({
 			password: "secret",
-			username: "charles",
+			username: "operator",
 		});
 	});
 
 	it("keeps colons that belong to the password", () => {
-		expect(decodeHeader(header("charles", "a:b:c"))?.password).toBe("a:b:c");
+		expect(decodeHeader(header("operator", "a:b:c"))?.password).toBe("a:b:c");
 	});
 
 	it("refuses anything that is not Basic", () => {
@@ -96,11 +96,11 @@ describe(authenticate, () => {
 
 	it("accepts a correct password and resolves the mapped user id", async () => {
 		await expect(
-			authenticate(header("charles", "correct-horse-battery"), accounts)
+			authenticate(header("operator", "correct-horse-battery"), accounts)
 		).resolves.toStrictEqual({
 			ok: true,
 			userId: "admin",
-			username: "charles",
+			username: "operator",
 		});
 	});
 
@@ -114,10 +114,10 @@ describe(authenticate, () => {
 
 	it("rejects a wrong password, an unknown user and a swapped pair", async () => {
 		for (const attempt of [
-			header("charles", "wrong"),
+			header("operator", "wrong"),
 			header("nobody", "correct-horse-battery"),
-			// alice's password must not work for charles.
-			header("charles", "second-account-secret"),
+			// alice's password must not work for operator.
+			header("operator", "second-account-secret"),
 		]) {
 			await expect(authenticate(attempt, accounts)).resolves.toStrictEqual({
 				ok: false,
@@ -127,7 +127,7 @@ describe(authenticate, () => {
 
 	it("rejects everything when no accounts are configured", async () => {
 		await expect(
-			authenticate(header("charles", "correct-horse-battery"), [])
+			authenticate(header("operator", "correct-horse-battery"), [])
 		).resolves.toStrictEqual({ ok: false });
 	});
 });
@@ -153,7 +153,7 @@ describe("the wall", () => {
 	it("serves the app once the credentials are right", async () => {
 		const res = await worker.fetch(
 			apiRequest("/apps", {
-				headers: { Authorization: header("charles", "correct-horse-battery") },
+				headers: { Authorization: header("operator", "correct-horse-battery") },
 			}),
 			walled()
 		);
@@ -163,7 +163,7 @@ describe("the wall", () => {
 	});
 
 	it("keeps each account to its own apps", async () => {
-		// The tracked app belongs to 'admin', which is charles — not alice.
+		// The tracked app belongs to 'admin', which is operator — not alice.
 		const res = await worker.fetch(
 			apiRequest("/apps", {
 				headers: { Authorization: header("alice", "second-account-secret") },

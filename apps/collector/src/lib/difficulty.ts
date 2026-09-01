@@ -1,7 +1,7 @@
 // Keyword difficulty, v1.
 //
 // The question the score answers: **how hard would it be to break into the top
-// of this keyword?** Everything it uses is observed, not inferred — the rating
+// of this keyword?** Everything it uses is observed, not inferred: the rating
 // counts of the apps currently holding the result page, how much that page
 // turns over, and how full it is. There is no panel data and no model of
 // anybody's installs behind it.
@@ -75,13 +75,13 @@ function stabilityOf(distinctTopTenApps: number): number {
 /**
  * Weights, and why:
  *
- * - **entrenchment (0.45)** — the top three are what you actually have to
+ * - **entrenchment (0.45)**: the top three are what you actually have to
  *   displace to win the visible part of the page. It dominates on purpose.
- * - **incumbent strength (0.30)** — the depth behind them: a page of
+ * - **incumbent strength (0.30)**: the depth behind them. A page of
  *   established apps is harder than one strong app and nine weak ones.
- * - **stability (0.15)** — a board that never moves offers no opening, however
+ * - **stability (0.15)**: a board that never moves offers no opening, however
  *   modest its ratings.
- * - **saturation (0.10)** — a full 200-result page means more competitors, but
+ * - **saturation (0.10)**: a full 200-result page means more competitors, but
  *   most are irrelevant, so it is only a nudge.
  */
 export function computeDifficulty(input: DifficultyInput): DifficultyScore {
