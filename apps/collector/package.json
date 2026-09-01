@@ -15,8 +15,7 @@
     "seed:remote": "wrangler d1 execute apprank --remote -c $(test -f wrangler.local.jsonc && echo wrangler.local.jsonc || echo wrangler.jsonc) --file ../../packages/core/seeds/reference.sql"
   },
   "dependencies": {
-    "@apprank/core": "workspace:*",
-    "drizzle-orm": "^0.45.0"
+    "@apprank/core": "workspace:*"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.22.0",
