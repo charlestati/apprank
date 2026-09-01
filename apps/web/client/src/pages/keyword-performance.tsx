@@ -13,6 +13,7 @@ import type { SeriesStyle } from "../components/rank-series-chart";
 import { ResultsDrawer } from "../components/results-drawer";
 import { SeriesGlyph } from "../components/series-glyph";
 import { SummaryTiles } from "../components/summary-tiles";
+import { useFormat } from "../format";
 import { fmt, plural, reasonText, useT } from "../i18n";
 
 // Bands carry a dictionary key, not prose: the numbers are the identity, the
@@ -65,6 +66,7 @@ function rankBand(position: number | null): string {
 }
 
 export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
+  const f = useFormat();
   const t = useT();
   const [storefronts, setStorefronts] = useState<StorefrontOption[]>([]);
   const [storefront, setStorefront] = useState("");
@@ -185,7 +187,7 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
           >
             {storefronts.map((s) => (
               <option key={s.code} value={s.code}>
-                {s.name} ({s.keywords})
+                {f.region(s.code, s.name)} ({f.number(s.keywords)})
               </option>
             ))}
           </select>
@@ -272,7 +274,7 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
                   <li key={change.date}>
                     <span className="marker-key-index">{i + 1}</span>
                     <span>
-                      {change.date}
+                      {f.day(change.date)}
                       {change.version ? ` · ${change.version}` : ""}
                       {change.changed.length > 0
                         ? ` · ${change.changed.join(", ")}`

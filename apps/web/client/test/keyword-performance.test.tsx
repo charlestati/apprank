@@ -169,7 +169,7 @@ describe("Keyword performance page", () => {
     ).toBe("chart-caption");
     // Numbered pin, and the key that says what the release actually changed.
     expect(document.querySelector(".marker-key")?.textContent).toContain(
-      "2026-08-30 · 3.2 · title"
+      "30 Aug 2026 · 3.2 · title"
     );
   });
 

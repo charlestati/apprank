@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 
 import { api } from "../api";
 import type { Review, TrackedApp } from "../api";
+import { useFormat } from "../format";
 import { useT } from "../i18n";
 
 export function Reviews({ app }: { app: TrackedApp | null }) {
+  const f = useFormat();
   const t = useT();
   const [reviews, setReviews] = useState<Review[] | null>(null);
   useEffect(() => {
@@ -54,7 +56,7 @@ export function Reviews({ app }: { app: TrackedApp | null }) {
           </h3>
           <div className="meta">
             {r.author} · {r.storefront_code.toUpperCase()} · v{r.app_version} ·{" "}
-            {r.reviewed_at ? new Date(r.reviewed_at).toLocaleDateString() : ""}
+            {r.reviewed_at ? f.dayAt(r.reviewed_at) : ""}
           </div>
           <p style={{ margin: "6px 0 0" }}>{r.body}</p>
         </article>

@@ -48,7 +48,9 @@ export default defineConfig(async () => {
           test: {
             name: "client",
             environment: "happy-dom",
-            include: ["client/test/**/*.test.tsx"],
+            // ts as well as tsx: a pure-logic test needs no JSX, and the narrower
+            // glob silently skipped one rather than failing.
+            include: ["client/test/**/*.test.ts", "client/test/**/*.test.tsx"],
             setupFiles: ["./client/test/setup.ts"],
           },
         },

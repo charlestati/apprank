@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { api } from "../api";
 import type { DataHealth } from "../api";
+import { useFormat } from "../format";
 import { useT } from "../i18n";
 
 /** "chart_pull ×6, review_pull ×2" — what the depth is actually made of. */
@@ -59,6 +60,7 @@ function dailyRunNote(run: NonNullable<DataHealth["lastDailyRun"]>): string {
 }
 
 function DailyRunTile({ run }: { run: DataHealth["lastDailyRun"] }) {
+  const f = useFormat();
   if (run === null) {
     return (
       <div className="tile">
@@ -74,7 +76,7 @@ function DailyRunTile({ run }: { run: DataHealth["lastDailyRun"] }) {
     <div className="tile">
       <div className="tile-title">Last daily job</div>
       <div className={bad ? "stat-value stat-bad" : "stat-value"}>
-        {new Date(run.startedAt).toLocaleTimeString()}
+        {f.time(run.startedAt)}
       </div>
       <div className="tile-note">{dailyRunNote(run)}</div>
     </div>
@@ -82,10 +84,13 @@ function DailyRunTile({ run }: { run: DataHealth["lastDailyRun"] }) {
 }
 
 function OverdueTile({ n }: { n: number }) {
+  const f = useFormat();
   return (
     <div className="tile">
       <div className="tile-title">Overdue pairs</div>
-      <div className={n > 0 ? "stat-value stat-warn" : "stat-value"}>{n}</div>
+      <div className={n > 0 ? "stat-value stat-warn" : "stat-value"}>
+        {f.number(n)}
+      </div>
       <div className="tile-note">past due by more than one interval</div>
     </div>
   );
@@ -98,14 +103,13 @@ function OverdueTile({ n }: { n: number }) {
  * its readable layout — the count column was pushed off-screen entirely.
  */
 function ErrorRow({ entry }: { entry: DataHealth["errorsLast24h"][number] }) {
+  const f = useFormat();
   const [open, setOpen] = useState(false);
   return (
     <tr>
-      <td className="col-when">
-        {new Date(entry.lastAt).toLocaleTimeString()}
-      </td>
+      <td className="col-when">{f.time(entry.lastAt)}</td>
       <td className="col-class">{entry.errorClass}</td>
-      <td className="col-count">{entry.n}</td>
+      <td className="col-count">{f.number(entry.n)}</td>
       <td>
         {entry.message === null ? (
           <span className="muted">—</span>
@@ -125,6 +129,7 @@ function ErrorRow({ entry }: { entry: DataHealth["errorsLast24h"][number] }) {
 }
 
 export function Health() {
+  const f = useFormat();
   const t = useT();
   const [h, setH] = useState<DataHealth | null>(null);
   const [loadedAt, setLoadedAt] = useState(0);
@@ -164,17 +169,17 @@ export function Health() {
             <span className="stat-of"> / {h.tier1Pairs}</span>
           </div>
           <div className="tile-note">
-            {coverage}% of Tier-1 pairs observed ({h.date})
+            {coverage}% of Tier-1 pairs observed ({f.day(h.date)})
           </div>
         </div>
         <div className="tile">
           <div className="tile-title">Crawl rate</div>
           <div className="stat-value">
-            {h.pacing ? h.pacing.ratePerMin.toFixed(1) : "–"}
+            {h.pacing ? f.decimal(h.pacing.ratePerMin, 1) : "–"}
           </div>
           <div className="tile-note">
             {paused
-              ? `paused until ${new Date(pauseUntil).toLocaleTimeString()}`
+              ? `paused until ${f.time(pauseUntil)}`
               : "fetches/min, learned"}
           </div>
         </div>

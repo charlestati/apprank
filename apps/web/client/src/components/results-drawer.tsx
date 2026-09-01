@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 
 import { api } from "../api";
 import type { KeywordRow, ResultPage } from "../api";
+import { useFormat } from "../format";
 import { AppIcon } from "./app-icon";
 
 interface Props {
@@ -21,6 +22,7 @@ export function ResultsDrawer({
   trackedAppId,
   onClose,
 }: Props) {
+  const f = useFormat();
   const [page, setPage] = useState<ResultPage | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -50,9 +52,9 @@ export function ResultsDrawer({
         <div>
           <h2>“{row.keyword}”</h2>
           <p className="drawer-sub">
-            {storefront.toUpperCase()} ·{" "}
-            {page?.date ? `observed ${page.date}` : "loading…"}
-            {page ? ` · ${page.resultCount} results` : ""}
+            {f.region(storefront)} ·{" "}
+            {page?.date ? `observed ${f.day(page.date)}` : "loading…"}
+            {page ? ` · ${f.number(page.resultCount)} results` : ""}
           </p>
         </div>
         <button className="link" onClick={onClose} type="button">

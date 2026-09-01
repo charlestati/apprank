@@ -46,7 +46,7 @@ describe("Health page", () => {
     render(<Health />);
     await expect(screen.findByText("Data health")).resolves.toBeDefined();
     expect(statDetail("Coverage today")).toBe(
-      "100% of Tier-1 pairs observed (2026-01-10)"
+      "100% of Tier-1 pairs observed (10 Jan 2026)"
     );
     expect(statValue("Crawl rate")?.textContent).toBe("12.0");
     expect(statDetail("Crawl rate")).toBe("fetches/min, learned");
@@ -61,7 +61,7 @@ describe("Health page", () => {
     render(<Health />);
     await expect(screen.findByText("Data health")).resolves.toBeDefined();
     expect(statDetail("Coverage today")).toBe(
-      "0% of Tier-1 pairs observed (2026-01-10)"
+      "0% of Tier-1 pairs observed (10 Jan 2026)"
     );
   });
 
