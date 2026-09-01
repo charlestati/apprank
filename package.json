@@ -8,7 +8,7 @@
 		"typecheck": "tsc -p tsconfig.json && pnpm -r typecheck",
 		"lint": "ultracite check",
 		"lint:fix": "ultracite fix",
-		"test": "pnpm -r test",
+		"test": "pnpm -r test && pnpm test:scripts",
 		"coverage": "pnpm -r coverage",
 		"generate": "pnpm --filter @apprank/core generate",
 		"migrate:local": "pnpm --filter collector migrate:local",
@@ -17,6 +17,7 @@
 		"seed:remote": "pnpm --filter collector seed:remote",
 		"deploy": "pnpm --filter collector deploy && pnpm --filter web deploy",
 		"track": "node scripts/track/track.mjs",
+		"rebuild:d1": "pnpm --filter rebuild-d1 rebuild",
 		"test:scripts": "node --test \"scripts/**/*.test.mjs\""
 	},
 	"devDependencies": {

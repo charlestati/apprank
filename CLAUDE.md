@@ -565,11 +565,12 @@ measuring. `runNow` therefore judges success by diffing `fetch_error` across the
 call, not by whether the step threw. A manual trigger that answered `ok: true`
 on a rejected credential would be worse than no trigger.
 
-- **`agents` pulls `core-js-pure`, whose build script must be answered.** pnpm
-  refuses to install with an unapproved build script, and every command
-  including `pnpm generate` then fails with `ERR_PNPM_IGNORED_BUILDS`. It is
-  denied in `pnpm-workspace.yaml`, not approved: nothing imports it and its
-  postinstall only prints a funding notice.
+- **`agents` pulls `core-js-pure`, whose build script must be answered.** The
+  chain is `agents` → `mimetext` → `@babel/runtime-corejs3`. pnpm refuses to
+  install with an unanswered build script, and every command including
+  `pnpm generate` then fails with `ERR_PNPM_IGNORED_BUILDS`. It is denied in
+  `pnpm-workspace.yaml`, not approved: nothing imports it and its postinstall
+  only prints an Open Collective funding notice.
 - **`minimumReleaseAge: 10080` outranks "latest".** At the time of writing
   `agents@0.22.0` (4 days) and `zod@4.5.x` (2 days) both fail it. Pinned:
   `agents@0.21.0`, `zod@4.4.3`, `@modelcontextprotocol/{server,client}@2.0.0`,
