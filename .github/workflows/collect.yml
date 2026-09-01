@@ -64,6 +64,14 @@ jobs:
       - name: Collect
         run: ./scripts/local-refresh/refresh.sh
 
+      - name: Diagnostics
+        if: always()
+        run: |
+          echo "--- log dir ---"
+          ls -la "$APPRANK_LOG_DIR" 2>&1 || echo "(missing)"
+          echo "--- wrangler ---"
+          tail -40 "$APPRANK_LOG_DIR"/wrangler-*.log 2>&1 || true
+
       - name: Logs
         if: always()
         uses: actions/upload-artifact@v4

@@ -36,7 +36,12 @@ MAX_STEPS="${APPRANK_REFRESH_MAX_STEPS:-80}"
 
 mkdir -p "$LOG_DIR" "$STATE_DIR"
 LOG="$LOG_DIR/refresh-$(date -u +%Y-%m-%d).log"
-say() { printf '%s %s\n' "$(date -u +%H:%M:%S)" "$*" >>"$LOG"; }
+# Every line goes to both the log file and stderr. The file is what the local
+# loop keeps; stderr is what a CI job shows. Logging only to a file made a
+# failed run completely opaque when the artifact upload found nothing.
+say() {
+  printf '%s %s\n' "$(date -u +%H:%M:%S)" "$*" | tee -a "$LOG" >&2
+}
 
 cd "$COLLECTOR" || { say "FATAL cannot cd to $COLLECTOR"; exit 1; }
 [ -f "$CONFIG" ] || { say "FATAL missing $CONFIG"; exit 1; }
