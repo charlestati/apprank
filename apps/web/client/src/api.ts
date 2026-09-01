@@ -110,6 +110,20 @@ export interface SeriesPoint {
   position: number | null;
 }
 
+/** One release and the fields it touched: what a chart marker actually marks. */
+export interface MetadataMarker {
+  date: string;
+  version: string | null;
+  changed: string[];
+}
+
+/** A day the crawl failed — the reason a hole in a series is a hole. */
+export interface SeriesError {
+  date: string;
+  errorClass: string;
+  count: number;
+}
+
 export interface TopResult {
   position: number;
   appId: number;
@@ -167,6 +181,7 @@ export interface KeywordRow {
   keyword: string;
   position: number | null;
   points: SeriesPoint[];
+  fetchErrors: SeriesError[];
   change: number | null;
   changeDaysAgo: number | null;
   best: number | null;
@@ -185,7 +200,9 @@ export interface Report {
   storefront: string;
   days: number;
   dates: string[];
-  metadataChanges: string[];
+  /** The requested window; the chart spans this one slot per calendar day. */
+  window: { from: string; to: string };
+  metadataChanges: MetadataMarker[];
   insights: {
     winning: number;
     close: number;

@@ -85,6 +85,8 @@ const en = {
   daysObserved: "{n} days observed",
   dayObserved: "{n} day observed",
   filterByPopularity: "Filter by popularity",
+  chartCaption:
+    "Rank of {app} for {n} keywords, {from} to {to}. Rank 1 is at the top. A gap is a day with no observation, never a flat rank; days outside the top 200 and days the fetch failed sit on their own rails below the plot. Every keyword and its latest rank are listed in the table below.",
   filterKeywords: "Filter keywords",
   filterNKeywords: "Filter {n} keywords",
   keywordInsights: "Keyword insights",
@@ -208,6 +210,8 @@ const fr: Dictionary = {
   filterByPopularity: "Filtrer par popularité",
   filterKeywords: "Filtrer les mots-clés",
   filterNKeywords: "Filtrer {n} mots-clés",
+  chartCaption:
+    "Classement de {app} pour {n} mots-clés, du {from} au {to}. Le rang 1 est en haut. Un trou est un jour sans observation, jamais un rang stable ; les jours hors du top 200 et les jours d'échec de collecte sont sur leurs propres rails sous le graphique. Le tableau ci-dessous liste chaque mot-clé et son dernier rang.",
   keywordInsights: "Analyse du mot-clé",
   noAppTracked: "Aucune application n'est encore suivie.",
   nOfMShown: "{n} sur {total} affichés",

@@ -6,6 +6,9 @@ import type { CompetitorPoint, HistoryPoint, TrackedApp } from "../api";
 import { RankSeriesChart } from "../components/rank-series-chart";
 import { useT } from "../i18n";
 
+// One line, so the dash ladder is unused: a solid stroke is the whole legend.
+const SINGLE_SERIES = { color: "var(--ds-chart-1)", dash: "" };
+
 export function PairDetail({ app }: { app: TrackedApp | null }) {
   const t = useT();
   const { pairId } = useParams();
@@ -71,6 +74,7 @@ export function PairDetail({ app }: { app: TrackedApp | null }) {
           date: h.observed_date,
           position: h.position,
         })),
+        fetchErrors: [],
         popularity: null,
         popularityStatus: "unqueried" as const,
         position: history.at(-1)?.position ?? null,
@@ -81,11 +85,6 @@ export function PairDetail({ app }: { app: TrackedApp | null }) {
       },
     ];
   }, [history, location.state, pairId]);
-
-  const dates = useMemo(
-    () => (history ?? []).map((h) => h.observed_date),
-    [history]
-  );
 
   const label = location.state?.keyword
     ? `“${location.state.keyword}” · ${location.state.storefront?.toUpperCase()}`
@@ -106,11 +105,7 @@ export function PairDetail({ app }: { app: TrackedApp | null }) {
         {history === null ? (
           <p className="empty">{t.loading}</p>
         ) : (
-          <RankSeriesChart
-            colorOf={() => "var(--ds-chart-1)"}
-            dates={dates}
-            series={series}
-          />
+          <RankSeriesChart series={series} styleOf={() => SINGLE_SERIES} />
         )}
       </div>
       <section className="card table-card">

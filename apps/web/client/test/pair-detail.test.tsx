@@ -75,7 +75,9 @@ describe("PairDetail page", () => {
     });
     renderPair(trackedApp);
     await expect(
-      screen.findByRole("img", { name: "Keyword rank history" })
+      screen.findByRole("img", {
+        name: /Rank history for 1 keyword over 2 days, 2026-01-01 to 2026-01-02/u,
+      })
     ).resolves.toBeDefined();
   });
 

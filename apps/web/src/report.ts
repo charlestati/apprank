@@ -11,6 +11,7 @@ import type {
   OpportunitySummary,
   PopularityStatus,
 } from "./insights";
+import { metadataChanges } from "./queries/metadata";
 import { sinceDate } from "./queries/rankings";
 
 export interface ReportQuery {
@@ -32,6 +33,18 @@ interface ObservationRow {
 export interface SeriesPoint {
   date: string;
   position: number | null;
+}
+
+/**
+ * A day the crawl of this pair failed, and what it failed with.
+ *
+ * Without it the chart cannot tell Apple's 403-with-empty-results from a day
+ * the cadence never scheduled, and both look like the app losing the keyword.
+ */
+export interface SeriesError {
+  date: string;
+  errorClass: string;
+  count: number;
 }
 
 export interface TopResult {
@@ -58,6 +71,8 @@ export interface KeywordRow {
   position: number | null;
   /** Positions ordered oldest → newest, one entry per observed day. */
   points: SeriesPoint[];
+  /** Days the fetch failed, so a throttled window is not read as a rank loss. */
+  fetchErrors: SeriesError[];
   /** Change against the previous *different* rank, and how long ago that was. */
   change: number | null;
   changeDaysAgo: number | null;
@@ -84,6 +99,19 @@ export interface KeywordRow {
   verdict?: KeywordVerdict;
 }
 
+/**
+ * One release, and what it touched.
+ *
+ * A marker that says only "metadata" cannot be read against a rank move, and
+ * three of them in a fortnight are indistinguishable from each other. The
+ * changed-field list comes from the same diff `queries/metadata.ts` serves.
+ */
+export interface MetadataMarker {
+  date: string;
+  version: string | null;
+  changed: string[];
+}
+
 export interface ReportStats {
   trackedKeywords: number;
   rankedKeywords: number;
@@ -98,16 +126,33 @@ export interface ReportStats {
 export interface Report {
   storefront: string;
   days: number;
+  /** The days that carry an observation — sparse, and never an axis. */
   dates: string[];
+  /**
+   * The requested window, inclusive.
+   *
+   * The chart spans this, one slot per calendar day, rather than one slot per
+   * observed day: pairs sit on a stretched cadence rung, so plotting observed
+   * days side by side drew a six-day gap the same width as an overnight step
+   * and flattened the slope across it.
+   */
+  window: { from: string; to: string };
   stats: ReportStats;
   /** Decision-shaped counts: what to defend, what to push, what to drop. */
   insights: OpportunitySummary;
-  /** Dates the tracked app's metadata changed — the attribution anchors. */
-  metadataChanges: string[];
+  /** Metadata releases in the window — the anchors a rank move is read against. */
+  metadataChanges: MetadataMarker[];
   rows: KeywordRow[];
 }
 
-const CHART_SERIES_LIMIT = 6;
+// Four is the readable ceiling for categorical series; past it the palette runs
+// out of hues that survive a colour-vision check side by side. More can still be
+// switched on from the table, where the reader is choosing them deliberately.
+const CHART_SERIES_LIMIT = 4;
+
+function isoToday(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 /** Positions of the tracked app, per keyword, per observed day. */
 function fetchObservations(env: Env, q: ReportQuery, since: string) {
@@ -126,6 +171,38 @@ function fetchObservations(env: Env, q: ReportQuery, since: string) {
   )
     .bind(q.appId, q.storefront, since, q.userId)
     .all<ObservationRow>();
+}
+
+/**
+ * Failed crawls per pair per day, for the days the chart would otherwise draw
+ * as ordinary absence.
+ *
+ * A failure deliberately writes no observation row, so the only link back to
+ * the pair is `fetch_error.params`, which the crawl task fills with
+ * "keyword|storefront|locale" — the same key `queries/coverage.ts` joins on.
+ */
+function fetchErrors(env: Env, q: ReportQuery, since: string) {
+  return env.DB.prepare(
+    `SELECT cp.id AS pair_id, fe.error_class,
+            DATE(fe.fetched_at / 1000, 'unixepoch') AS d, COUNT(*) AS n
+     FROM tracked_keyword tk
+     JOIN keyword k ON k.id = tk.keyword_id
+     JOIN crawl_pair cp ON cp.keyword_id = k.id AND cp.ref_count > 0
+       AND cp.storefront_code = ?2
+     JOIN fetch_error fe
+       ON fe.params = k.text || '|' || cp.storefront_code || '|' || cp.locale_code
+     WHERE tk.app_id = ?1 AND tk.user_id = ?4
+       AND DATE(fe.fetched_at / 1000, 'unixepoch') >= ?3
+     GROUP BY cp.id, d, fe.error_class
+     ORDER BY d`
+  )
+    .bind(q.appId, q.storefront, since, q.userId)
+    .all<{
+      pair_id: number;
+      error_class: string | null;
+      d: string;
+      n: number;
+    }>();
 }
 
 /**
@@ -233,6 +310,7 @@ function groupObservations(rows: ObservationRow[]): Map<number, KeywordRow> {
         change: null,
         changeDaysAgo: null,
         keyword: r.keyword,
+        fetchErrors: [],
         keywordId: r.keyword_id,
         pairId: r.pair_id,
         points: [],
@@ -258,17 +336,8 @@ function groupObservations(rows: ObservationRow[]): Map<number, KeywordRow> {
   return byPair;
 }
 
-/** Dates on which the tracked app's own metadata changed, for chart markers. */
-function fetchMetadataChanges(env: Env, q: ReportQuery, since: string) {
-  return env.DB.prepare(
-    `SELECT DISTINCT DATE(captured_at / 1000, 'unixepoch') AS d
-     FROM app_metadata_version
-     WHERE app_id = ?1 AND DATE(captured_at / 1000, 'unixepoch') >= ?2
-     ORDER BY d`
-  )
-    .bind(q.appId, since)
-    .all<{ d: string }>();
-}
+/** Releases in the window, with the fields each one changed. */
+const MARKER_LIMIT = 50;
 
 /** Latest rank, its move against the previous *different* rank, and extremes. */
 function summarisePoints(row: KeywordRow): void {
@@ -342,17 +411,25 @@ function computeStats(rows: KeywordRow[]): ReportStats {
 
 export async function buildReport(env: Env, q: ReportQuery): Promise<Report> {
   const since = sinceDate(q.days);
-  const [observations, popularity, topResults, difficulty, changes, appRow] =
-    await Promise.all([
-      fetchObservations(env, q, since),
-      fetchPopularity(env, q),
-      fetchTopResults(env, q),
-      fetchDifficulty(env, q),
-      fetchMetadataChanges(env, q, since),
-      env.DB.prepare("SELECT current_name FROM app WHERE id = ?1")
-        .bind(q.appId)
-        .first<{ current_name: string | null }>(),
-    ]);
+  const [
+    observations,
+    popularity,
+    topResults,
+    difficulty,
+    changes,
+    errors,
+    appRow,
+  ] = await Promise.all([
+    fetchObservations(env, q, since),
+    fetchPopularity(env, q),
+    fetchTopResults(env, q),
+    fetchDifficulty(env, q),
+    metadataChanges(env.DB, q.appId, since, isoToday(), MARKER_LIMIT),
+    fetchErrors(env, q, since),
+    env.DB.prepare("SELECT current_name FROM app WHERE id = ?1")
+      .bind(q.appId)
+      .first<{ current_name: string | null }>(),
+  ]);
 
   const byPair = groupObservations(observations.results);
   const popByKeyword = new Map(
@@ -374,6 +451,17 @@ export async function buildReport(env: Env, q: ReportQuery): Promise<Report> {
       position: r.position,
     });
     resultsByPair.set(r.pair_id, found);
+  }
+  const errorsByPair = new Map<number, SeriesError[]>();
+  for (const e of errors.results) {
+    const found = errorsByPair.get(e.pair_id) ?? [];
+    // A null class predates the closed vocabulary; it is still a failed day.
+    found.push({
+      count: e.n,
+      date: e.d,
+      errorClass: e.error_class ?? "unknown",
+    });
+    errorsByPair.set(e.pair_id, found);
   }
   const difficultyByPair = new Map(
     difficulty.results.map((d) => [
@@ -397,6 +485,7 @@ export async function buildReport(env: Env, q: ReportQuery): Promise<Report> {
     row.popularity = pop?.popularity ?? null;
     row.popularityStatus = pop?.status ?? "unqueried";
     row.topResults = resultsByPair.get(row.pairId) ?? [];
+    row.fetchErrors = errorsByPair.get(row.pairId) ?? [];
     row.difficulty = difficultyByPair.get(row.pairId) ?? null;
     row.resultCountChange =
       row.resultCount === null || row.resultCountChange === null
@@ -423,10 +512,15 @@ export async function buildReport(env: Env, q: ReportQuery): Promise<Report> {
     insights: summarise(
       sorted as (KeywordRow & { verdict: KeywordVerdict; brand: boolean })[]
     ),
-    metadataChanges: changes.results.map((r) => r.d),
+    metadataChanges: changes.map((c) => ({
+      changed: c.changed,
+      date: c.date,
+      version: c.version,
+    })),
     rows: sorted,
     stats: computeStats(sorted),
     storefront: q.storefront,
+    window: { from: since, to: isoToday() },
   };
 }
 

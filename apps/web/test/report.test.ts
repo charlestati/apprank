@@ -26,6 +26,11 @@ beforeEach(async () => {
   await seedKeywords();
 });
 
+/** Millisecond timestamp for a day the fixtures address by offset. */
+function capturedAt(offsetDays: number): number {
+  return Date.parse(`${isoDay(offsetDays)}T10:00:00Z`);
+}
+
 async function getReport(query = "?storefront=fr&days=30") {
   const res = await worker.fetch(
     apiRequest(`/apps/${APP_ID}/report${query}`),
@@ -36,6 +41,12 @@ async function getReport(query = "?storefront=fr&days=30") {
     storefront: string;
     days: number;
     dates: string[];
+    window: { from: string; to: string };
+    metadataChanges: {
+      date: string;
+      version: string | null;
+      changed: string[];
+    }[];
     stats: {
       trackedKeywords: number;
       rankedKeywords: number;
@@ -64,6 +75,7 @@ async function getReport(query = "?storefront=fr&days=30") {
       }[];
       difficulty: { score: number; sampleSize: number } | null;
       points: { date: string; position: number | null }[];
+      fetchErrors: { date: string; errorClass: string; count: number }[];
     }[];
   }>;
 }
@@ -179,6 +191,62 @@ describe("GET /apps/:appId/report", () => {
       { date: isoDay(1), position: null },
     ]);
     expect(report.dates).toContain(isoDay(1));
+  });
+
+  it("spans the whole requested window, not just the observed days", async () => {
+    await seedRanking({
+      date: isoDay(1),
+      entries: [[4, APP_ID]],
+      id: 1,
+      pairId: 1,
+    });
+    const report = await getReport("?storefront=fr&days=30");
+    // The axis is the window: a pair on a stretched cadence rung has to draw
+    // its six-day gaps six days wide, which needs both ends of the window.
+    expect(report.window.from).toBe(isoDay(30));
+    expect(report.window.to).toBe(isoDay(0));
+    expect(report.dates).toStrictEqual([isoDay(1)]);
+  });
+
+  it("reports the days a fetch failed against the pair that failed", async () => {
+    await env.DB.prepare(
+      `INSERT INTO fetch_error (endpoint, error_class, fetched_at, params, message)
+       VALUES ('itunes/search', 'throttled', ?1, ?2, 'HTTP 403, empty results')`
+    )
+      .bind(Date.parse(`${isoDay(2)}T09:00:00Z`), `${KEYWORD_A}|fr|fr-FR`)
+      .run();
+    const report = await getReport();
+    const rowA = report.rows.find((r) => r.keyword === KEYWORD_A);
+    const rowB = report.rows.find((r) => r.keyword === KEYWORD_B);
+    expect(rowA?.fetchErrors).toStrictEqual([
+      { count: 1, date: isoDay(2), errorClass: "throttled" },
+    ]);
+    // The key carries the storefront and locale, so the other pair on the same
+    // storefront stays clean — a throttle is never charged to a keyword that
+    // did not suffer it.
+    expect(rowB?.fetchErrors).toStrictEqual([]);
+  });
+
+  it("names what each metadata release changed, not just that one happened", async () => {
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO app_metadata_version
+           (app_id, captured_at, content_hash, source, title, version)
+         VALUES (?1, ?2, 'h1', 'itunes-lookup', 'Old title', '3.1')`
+      ).bind(APP_ID, capturedAt(6)),
+      env.DB.prepare(
+        `INSERT INTO app_metadata_version
+           (app_id, captured_at, content_hash, source, title, version)
+         VALUES (?1, ?2, 'h2', 'itunes-lookup', 'New title', '3.2')`
+      ).bind(APP_ID, capturedAt(3)),
+    ]);
+    const report = await getReport();
+    // A marker reading only "metadata" cannot be read against a rank move.
+    expect(report.metadataChanges.at(-1)).toStrictEqual({
+      changed: ["title", "version"],
+      date: isoDay(3),
+      version: "3.2",
+    });
   });
 
   it("ignores observations marked invalid by the collector's gates", async () => {

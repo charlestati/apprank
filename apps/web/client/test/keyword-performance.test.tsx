@@ -30,6 +30,7 @@ function keywordRow(over: Partial<KeywordRow> = {}): KeywordRow {
       stability: 0.9,
     },
     changeDaysAgo: 1,
+    fetchErrors: [],
     keyword: "example keyword",
     keywordId: 1,
     pairId: 1,
@@ -68,6 +69,7 @@ function report(over: Partial<Report> = {}): Report {
   return {
     dates: ["2026-08-29", "2026-08-30", "2026-08-31"],
     days: 30,
+    window: { from: "2026-08-29", to: "2026-08-31" },
     rows: [keywordRow()],
     stats: {
       averageRank: 4,
@@ -143,6 +145,32 @@ describe("Keyword performance page", () => {
       "3 / 12",
       "212",
     ]);
+  });
+
+  it("captions the chart and keys the metadata markers", async () => {
+    renderPage({
+      report: report({
+        metadataChanges: [
+          { changed: ["title"], date: "2026-08-30", version: "3.2" },
+        ],
+      }),
+      storefronts,
+    });
+    await screen.findAllByText("example keyword");
+
+    // The caption is what the graphic points at with aria-describedby, so it
+    // has to say what a gap means rather than restate the title.
+    const caption = document.querySelector("#chart-caption");
+    expect(caption?.textContent).toContain(
+      "A gap is a day with no observation"
+    );
+    expect(
+      document.querySelector("svg[role=img]")?.getAttribute("aria-describedby")
+    ).toBe("chart-caption");
+    // Numbered pin, and the key that says what the release actually changed.
+    expect(document.querySelector(".marker-key")?.textContent).toContain(
+      "2026-08-30 · 3.2 · title"
+    );
   });
 
   it("shows the leading competitors as icons, capped at a single line", async () => {

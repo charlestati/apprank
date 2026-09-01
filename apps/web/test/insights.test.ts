@@ -10,6 +10,7 @@ function row(over: Partial<KeywordRow> = {}): KeywordRow {
     change: null,
     changeDaysAgo: null,
     difficulty: null,
+    fetchErrors: [],
     keyword: "example keyword",
     keywordId: 1,
     pairId: 1,

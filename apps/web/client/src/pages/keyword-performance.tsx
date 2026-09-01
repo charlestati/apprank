@@ -9,7 +9,9 @@ import { Difficulty } from "../components/difficulty";
 import { Meter } from "../components/meter";
 import { Opportunities } from "../components/opportunities";
 import { RankSeriesChart } from "../components/rank-series-chart";
+import type { SeriesStyle } from "../components/rank-series-chart";
 import { ResultsDrawer } from "../components/results-drawer";
+import { SeriesGlyph } from "../components/series-glyph";
 import { SummaryTiles } from "../components/summary-tiles";
 import { fmt, plural, reasonText, useT } from "../i18n";
 
@@ -25,21 +27,29 @@ const POPULARITY_BANDS = [
 ] as const;
 
 const RANGES = [{ days: 7 }, { days: 30 }, { days: 90, label: "90 days" }];
-const CHART_SERIES = 6;
+// Four lines is the readable ceiling for a categorical palette; beyond it the
+// hues stop surviving a colour-vision check side by side. The table's toggles
+// still allow more, because then the reader picked them.
+const CHART_SERIES = 4;
 // Enough of the leaderboard to see who owns the keyword, without wrapping the
 // row onto a second line.
 const TOP_RESULTS_SHOWN = 3;
 // Atlassian's categorical chart slots, assigned in a fixed order and never
 // cycled. Slots 5 and 6 are deliberately skipped: they are the darker pairs of
 // 1 and 3, and sit too close to them on the dark surface to tell apart.
-const SERIES_COLORS = [
-  "var(--ds-chart-1)",
-  "var(--ds-chart-2)",
-  "var(--ds-chart-3)",
-  "var(--ds-chart-4)",
-  "var(--ds-chart-7)",
-  "var(--ds-chart-8)",
+//
+// Each slot carries a dash pattern as well as a hue. Colour is never the only
+// thing separating two lines — the same rule the status pills follow, and the
+// reason the chart stays readable printed in grey.
+const SERIES_STYLES: SeriesStyle[] = [
+  { color: "var(--ds-chart-1)", dash: "" },
+  { color: "var(--ds-chart-2)", dash: "7 3" },
+  { color: "var(--ds-chart-3)", dash: "2 3" },
+  { color: "var(--ds-chart-4)", dash: "11 4" },
+  { color: "var(--ds-chart-7)", dash: "7 3 2 3" },
+  { color: "var(--ds-chart-8)", dash: "1 4" },
 ];
+const FALLBACK_STYLE: SeriesStyle = { color: "var(--ds-chart-1)", dash: "" };
 
 function rankBand(position: number | null): string {
   if (position === null) {
@@ -64,6 +74,10 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
   const [band, setBand] = useState(0);
   const [selected, setSelected] = useState<number[] | null>(null);
   const [resultsFor, setResultsFor] = useState<KeywordRow | null>(null);
+  // The series the reader is pointing at, from either the chart or the table.
+  // Everything else greys out: contrast is what carries the story, not eight
+  // equally loud lines.
+  const [focused, setFocused] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
   const navigate = useNavigate();
 
@@ -120,10 +134,10 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
     });
   };
 
-  const colorIndex = useMemo(() => {
-    const map = new Map<number, string>();
+  const styleIndex = useMemo(() => {
+    const map = new Map<number, SeriesStyle>();
     for (const [i, row] of chartSeries.entries()) {
-      map.set(row.pairId, SERIES_COLORS[i] ?? "var(--ds-chart-1)");
+      map.set(row.pairId, SERIES_STYLES[i] ?? FALLBACK_STYLE);
     }
     return map;
   }, [chartSeries]);
@@ -205,24 +219,69 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
           <SummaryTiles stats={report.stats} />
 
           <section className="card chart-card">
-            <RankSeriesChart
-              colorOf={(pairId) =>
-                colorIndex.get(pairId) ?? "var(--ds-chart-1)"
-              }
-              dates={report.dates}
-              series={chartSeries}
-            />
+            <figure className="chart-figure">
+              <RankSeriesChart
+                describedBy="chart-caption"
+                focusedPairId={focused}
+                markers={report.metadataChanges}
+                onFocus={setFocused}
+                series={chartSeries}
+                styleOf={(pairId) => styleIndex.get(pairId) ?? FALLBACK_STYLE}
+                window={report.window}
+              />
+              {/* The prose alternative the graphic points at, and the pointer to
+                  the table that carries the numbers themselves. */}
+              <figcaption id="chart-caption">
+                {fmt(t.chartCaption, {
+                  app: app.current_name ?? "",
+                  from: report.window.from,
+                  n: chartSeries.length,
+                  to: report.window.to,
+                })}
+              </figcaption>
+            </figure>
             <ul className="legend">
               {chartSeries.map((row) => (
                 <li key={row.pairId}>
-                  <span
-                    className="swatch"
-                    style={{ background: colorIndex.get(row.pairId) }}
-                  />
-                  {row.keyword}
+                  {/* The chip is the same control as the table's toggle, so
+                      pointing at it to highlight a line is an interaction on
+                      something that was already interactive. */}
+                  <button
+                    aria-label={`Hide ${row.keyword} from the chart`}
+                    className={
+                      focused !== null && focused !== row.pairId
+                        ? "legend-chip legend-muted"
+                        : "legend-chip"
+                    }
+                    onBlur={() => setFocused(null)}
+                    onClick={() => toggleSeries(row.pairId)}
+                    onFocus={() => setFocused(row.pairId)}
+                    onMouseEnter={() => setFocused(row.pairId)}
+                    onMouseLeave={() => setFocused(null)}
+                    type="button"
+                  >
+                    <SeriesGlyph style={styleIndex.get(row.pairId) ?? null} />
+                    {row.keyword}
+                  </button>
                 </li>
               ))}
             </ul>
+            {report.metadataChanges.length > 0 ? (
+              <ol className="marker-key">
+                {report.metadataChanges.map((change, i) => (
+                  <li key={change.date}>
+                    <span className="marker-key-index">{i + 1}</span>
+                    <span>
+                      {change.date}
+                      {change.version ? ` · ${change.version}` : ""}
+                      {change.changed.length > 0
+                        ? ` · ${change.changed.join(", ")}`
+                        : ""}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            ) : null}
           </section>
 
           <section className="card table-card">
@@ -296,26 +355,31 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
                 </thead>
                 <tbody>
                   {rows.map((row: KeywordRow) => (
-                    <tr key={row.pairId}>
+                    <tr
+                      className={
+                        focused === row.pairId ? "row-focused" : undefined
+                      }
+                      key={row.pairId}
+                      onFocus={() => setFocused(row.pairId)}
+                      onMouseEnter={() => setFocused(row.pairId)}
+                      onMouseLeave={() => setFocused(null)}
+                    >
                       <td className="kw">
                         <button
                           aria-label={
-                            colorIndex.has(row.pairId)
+                            styleIndex.has(row.pairId)
                               ? `Remove ${row.keyword} from the chart`
                               : `Add ${row.keyword} to the chart`
                           }
-                          aria-pressed={colorIndex.has(row.pairId)}
-                          className="swatch swatch-button"
+                          aria-pressed={styleIndex.has(row.pairId)}
+                          className="swatch-button"
                           onClick={() => toggleSeries(row.pairId)}
-                          style={{
-                            background:
-                              colorIndex.get(row.pairId) ?? "transparent",
-                            borderColor: colorIndex.get(row.pairId)
-                              ? "transparent"
-                              : "var(--ds-border-bold)",
-                          }}
                           type="button"
-                        />
+                        >
+                          <SeriesGlyph
+                            style={styleIndex.get(row.pairId) ?? null}
+                          />
+                        </button>
                         <button
                           className="link"
                           onClick={() =>

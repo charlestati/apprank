@@ -711,8 +711,48 @@ h1 {
   stroke-width: 1;
   stroke-dasharray: 2 4;
 }
-.marker-label {
-  fill: var(--ds-text-subtlest);
+.marker-pin {
+  fill: var(--ds-surface-raised);
+  stroke: var(--ds-text-subtlest);
+  stroke-width: 1;
+}
+.marker-index {
+  fill: var(--ds-text-subtle);
+  font: var(--ds-font-body);
+}
+/* The key that turns a numbered pin into a release. */
+.marker-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-100) var(--ds-space-200);
+  margin: var(--ds-space-100) 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ds-text-subtlest);
+  font: var(--ds-font-body);
+}
+.marker-key li {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-075);
+}
+.marker-key-index {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border: 1px solid var(--ds-border-bold);
+  border-radius: var(--ds-radius-full);
+  color: var(--ds-text-subtle);
+}
+
+.chart-figure {
+  margin: 0;
+}
+.chart-figure figcaption {
+  margin-top: var(--ds-space-100);
+  color: var(--ds-text-subtlest);
   font: var(--ds-font-body);
 }
 
@@ -748,6 +788,44 @@ h1 {
 .series-dot {
   stroke: var(--ds-surface-raised);
   stroke-width: 1.5;
+}
+/* Everything the reader is not pointing at recedes to grey. Contrast is what
+   carries the story; eight equally loud lines carry none of it. */
+.series-muted .series-line {
+  stroke-width: 1.5;
+  opacity: 0.4;
+}
+.series-label {
+  font: var(--ds-font-body);
+}
+.series-label-muted {
+  opacity: 0.6;
+}
+
+/* The two rails below the plot floor: observed-but-outside-the-top-200, and
+   the days the fetch failed. Both are states, not absences, and neither may
+   be drawn as a rank. */
+.rail-line {
+  stroke: var(--ds-border);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+}
+.unranked-mark {
+  stroke: var(--ds-surface-raised);
+  stroke-width: 1;
+}
+.hatch-line {
+  stroke: var(--ds-chart-danger);
+  stroke-width: 2;
+}
+.error-mark {
+  opacity: 0.75;
+}
+
+.series-glyph {
+  width: 20px;
+  height: 8px;
+  flex: none;
 }
 
 .chart-tip {
@@ -792,6 +870,20 @@ h1 {
   display: flex;
   align-items: center;
   gap: var(--ds-space-075);
+}
+.legend-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-075);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.legend-muted {
+  opacity: 0.5;
 }
 
 .swatch {
@@ -954,6 +1046,12 @@ table.grid tbody tr:hover {
   background: var(--ds-background-selected);
 }
 
+/* The row and its line highlight together, so the mapping between the two
+   never has to be worked out from colour. */
+.row-focused {
+  background: var(--ds-neutral-subtle-hovered);
+}
+
 .num {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -1093,11 +1191,18 @@ table.grid tbody tr:hover {
   font: var(--ds-font-body);
 }
 
+/* Difficulty bands carry a texture as well as a hue, so the band survives a
+   colour-vision check and a greyscale print. The score sits beside the bar in
+   every case; the fill is the second reading, never the only one. */
 .meter-hard {
-  background: var(--ds-chart-danger);
+  background:
+    repeating-linear-gradient(-45deg, #00000059 0 2px, transparent 2px 5px),
+    var(--ds-chart-danger);
 }
 .meter-moderate {
-  background: var(--ds-chart-4);
+  background:
+    repeating-linear-gradient(-45deg, #00000038 0 1px, transparent 1px 6px),
+    var(--ds-chart-4);
 }
 .meter-easy {
   background: var(--ds-chart-success);
@@ -1129,7 +1234,11 @@ table.grid tbody tr:hover {
 }
 
 .swatch-button {
+  display: inline-flex;
+  align-items: center;
   padding: 0;
+  border: 0;
+  background: none;
   cursor: pointer;
 }
 
