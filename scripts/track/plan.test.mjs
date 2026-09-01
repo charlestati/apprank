@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { test } from "node:test";
 
 import { localeFor, normalize, planChanges } from "./plan.mjs";
@@ -291,6 +293,58 @@ test("two apps sharing a keyword still share one crawl pair", () => {
   );
   assert.equal(summary.pairsActivated, 1);
   assert.equal(summary.tracksAdded, 2);
+});
+
+test("plans the shipped example file as-is", () => {
+  // The claim that tracked.example.json can be copied and applied is only
+  // worth making if something checks the real file: the annotated example
+  // once carried a shape that would have thrown on the first run. Every
+  // storefront it names must resolve to a locale, or a new operator's first
+  // command is a warning.
+  const example = JSON.parse(
+    readFileSync(
+      path.join(import.meta.dirname, "../../tracked.example.json"),
+      "utf-8"
+    )
+  );
+  const locales = [
+    {
+      storefront_code: "us",
+      locale_code: "en-US",
+      is_default: 1,
+      language: "en",
+    },
+    {
+      storefront_code: "gb",
+      locale_code: "en-GB",
+      is_default: 1,
+      language: "en",
+    },
+    {
+      storefront_code: "ca",
+      locale_code: "en-CA",
+      is_default: 1,
+      language: "en",
+    },
+    {
+      storefront_code: "es",
+      locale_code: "es-ES",
+      is_default: 1,
+      language: "es",
+    },
+  ];
+  const { summary, warnings } = planChanges(example, {
+    ...EMPTY,
+    storefrontLocales: locales,
+  });
+  assert.deepEqual(warnings, []);
+  // Three entries, two distinct app ids: the first app is listed twice to
+  // carry a second language, which is the documented way to do it.
+  assert.equal(summary.apps, 3);
+  assert.equal(
+    new Set(example.admin.apps.map((a) => a.appId).filter(Boolean)).size,
+    2
+  );
 });
 
 test("ignores underscore keys so the annotated example can be copied", () => {

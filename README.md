@@ -6,13 +6,13 @@ You describe what to track in one file:
 
 ```json
 {
-  "charles": {
+  "admin": {
     "apps": [
       {
         "appId": 123456789,
-        "language": "fr",
-        "storefronts": ["fr", "ca", "be"],
-        "keywords": ["jeu de lettres", "mots croisés"]
+        "language": "en",
+        "storefronts": ["us", "gb", "ca"],
+        "keywords": ["habit tracker", "daily planner"]
       }
     ]
   }

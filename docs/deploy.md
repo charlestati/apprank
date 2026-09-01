@@ -41,7 +41,7 @@ pnpm deploy
 
 `tracked.local.json` is gitignored, so your app ids and keyword lists stay out of the repository. `pnpm track` is idempotent and diff-first: re-running it reports "already in sync" and writes nothing. Removing a keyword **retires** its crawl pairs rather than deleting them, because a deleted day and an uncollected day are the same loss.
 
-One entry cannot mix languages: `language` stamps every keyword, records `app_language`, and picks each storefront's locale. To track Spanish terms in the Spanish store beside French ones, list the same `appId` twice with different `language` values.
+One entry cannot mix languages: `language` stamps every keyword, records `app_language`, and picks each storefront's locale. To track Spanish terms in the Spanish store beside your English ones, list the same `appId` twice with different `language` values.
 
 ## Apple blocks Cloudflare, so collection runs from GitHub Actions
 
