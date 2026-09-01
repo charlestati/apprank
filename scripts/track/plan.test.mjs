@@ -218,3 +218,77 @@ test("warns instead of guessing when a storefront is unknown", () => {
   );
   assert.match(warnings[0], /zz: not in the reference data/u);
 });
+
+test("handles several apps under one user", () => {
+  // tracked_app has always been keyed (user_id, app_id); the config shape was
+  // the only thing assuming one app each.
+  const { summary } = planChanges(
+    {
+      charles: {
+        apps: [
+          {
+            appId: 1,
+            name: "A",
+            language: "fr",
+            storefronts: ["fr"],
+            keywords: ["x"],
+          },
+          {
+            appId: 2,
+            name: "B",
+            language: "fr",
+            storefronts: ["fr"],
+            keywords: ["y"],
+          },
+        ],
+      },
+    },
+    EMPTY
+  );
+  assert.equal(summary.apps, 2);
+  assert.equal(summary.tracksAdded, 2);
+});
+
+test("keeps accepting the single-app shorthand", () => {
+  const { summary } = planChanges(
+    {
+      charles: {
+        appId: 1,
+        name: "A",
+        language: "fr",
+        storefronts: ["fr"],
+        keywords: ["x"],
+      },
+    },
+    EMPTY
+  );
+  assert.equal(summary.apps, 1);
+});
+
+test("two apps sharing a keyword still share one crawl pair", () => {
+  const { summary } = planChanges(
+    {
+      charles: {
+        apps: [
+          {
+            appId: 1,
+            name: "A",
+            language: "fr",
+            storefronts: ["fr"],
+            keywords: ["mots"],
+          },
+          {
+            appId: 2,
+            name: "B",
+            language: "fr",
+            storefronts: ["fr"],
+            keywords: ["mots"],
+          },
+        ],
+      },
+    },
+    EMPTY
+  );
+  assert.equal(summary.pairsActivated, 1);
+  assert.equal(summary.tracksAdded, 2);
+});

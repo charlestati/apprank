@@ -1,9 +1,20 @@
 {
   "charles": {
-    "appId": 123456789,
-    "name": "Your App",
-    "language": "fr",
-    "storefronts": ["fr", "ca"],
-    "keywords": ["jeu de lettres", "mots croisés"]
+    "apps": [
+      {
+        "appId": 123456789,
+        "name": "Your App",
+        "language": "fr",
+        "storefronts": ["fr", "ca"],
+        "keywords": ["jeu de lettres", "mots croisés"]
+      },
+      {
+        "appId": 987654321,
+        "name": "Your Second App",
+        "language": "en",
+        "storefronts": ["us", "gb"],
+        "keywords": ["word game"]
+      }
+    ]
   }
 }

@@ -83,9 +83,11 @@ pnpm deploy        # collector then web
 
 ## Adding an app or keywords
 
-`tracked.local.json` (gitignored) is how the tracked set is authored; `pnpm track` reconciles it against the database and prints the difference, and `pnpm track --apply` writes it. `tracked.example.json` shows the shape.
+`tracked.local.json` (gitignored) is how the tracked set is authored — each user holds an `apps` array, because `tracked_app` has always been keyed `(user_id, app_id)` and one person routinely ships more than one; `pnpm track` reconciles it against the database and prints the difference, and `pnpm track --apply` writes it. `tracked.example.json` shows the shape.
 
 The file is the authoring surface, not the source of truth — that stays in rows, because three things depend on it. `crawl_pair` is reference-counted, so two users tracking the same keyword in the same storefront share one row and one fetch a day. Ownership lives on `tracked_keyword.user_id`, which is what makes another operator's data a 404. And removing a keyword **retires** its pairs (`ref_count = 0`) rather than deleting them, because history cannot be backfilled and a deleted day is the same as an uncollected one.
+
+The dashboard still renders `apps[0]` and has no app switcher, so a second app is collected and reachable over the API but invisible in the UI. That is a client gap, not a data one.
 
 The planner is pure and tested (`pnpm test:scripts`); the two rules worth not breaking are that an unchanged config emits **no** statements — D1 charges for a conflicting upsert even when it changes nothing — and that a storefront missing from the reference data produces a warning rather than a guessed locale.
 

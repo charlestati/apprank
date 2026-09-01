@@ -46,7 +46,9 @@ function sqlString(value) {
 }
 
 /**
- * @param config  { [userId]: { appId, name, language, storefronts, keywords } }
+ * @param config  { [userId]: { apps: [{ appId, name, language, storefronts,
+ *   keywords }] } } — a list, because one person routinely ships more than one
+ *   app and `tracked_app` has always been keyed (user_id, app_id).
  * @param state   rows already in the database
  * @returns The SQL to run, counts for the human-readable plan, and any
  *   storefront the reference data does not know about.
@@ -70,74 +72,84 @@ export function planChanges(config, state) {
   const wantedTracks = new Set();
   const wantedPairs = new Map();
 
-  for (const [userId, app] of Object.entries(config)) {
-    const { appId, name, language, storefronts, keywords } = app;
-    summary.apps += 1;
+  for (const [userId, entry] of Object.entries(config)) {
+    // A bare object is the single-app shorthand; the canonical form is a list.
+    const apps = Array.isArray(entry.apps) ? entry.apps : [entry];
+    for (const app of apps) {
+      const { appId, name, language, storefronts, keywords } = app;
+      summary.apps += 1;
 
-    if (!state.apps.some((a) => a.id === appId)) {
-      statements.push(
-        `INSERT OR IGNORE INTO app (id, current_name, first_seen_at, last_seen_at) VALUES (${appId}, ${sqlString(name)}, strftime('%s','now')*1000, strftime('%s','now')*1000);`
-      );
-    }
-    if (
-      !state.trackedApps.some((t) => t.user_id === userId && t.app_id === appId)
-    ) {
-      statements.push(
-        `INSERT OR IGNORE INTO tracked_app (user_id, app_id, created_at) VALUES (${sqlString(userId)}, ${appId}, strftime('%s','now')*1000);`
-      );
-    }
-    if (
-      !state.appLanguages.some(
-        (l) => l.app_id === appId && l.language === language
-      )
-    ) {
-      statements.push(
-        `INSERT OR IGNORE INTO app_language (app_id, language) VALUES (${appId}, ${sqlString(language)});`
-      );
-    }
-
-    for (const raw of keywords) {
-      const text = raw.trim();
-      const norm = normalize(text);
-      const key = `${norm}:${language}`;
-      if (!knownKeyword.has(key)) {
+      if (!state.apps.some((a) => a.id === appId)) {
         statements.push(
-          `INSERT OR IGNORE INTO keyword (text, normalized, language) VALUES (${sqlString(text)}, ${sqlString(norm)}, ${sqlString(language)});`
+          `INSERT OR IGNORE INTO app (id, current_name, first_seen_at, last_seen_at) VALUES (${appId}, ${sqlString(name)}, strftime('%s','now')*1000, strftime('%s','now')*1000);`
         );
-        knownKeyword.set(key, null); // id resolved by subquery below
-        summary.keywordsAdded += 1;
       }
-      wantedTracks.add(`${userId}|${appId}|${key}`);
-
-      const idExpr = `(SELECT id FROM keyword WHERE normalized = ${sqlString(norm)} AND language = ${sqlString(language)})`;
       if (
-        !state.trackedKeywords.some(
-          (t) =>
-            t.user_id === userId &&
-            t.app_id === appId &&
-            t.normalized === norm &&
-            t.language === language
+        !state.trackedApps.some(
+          (t) => t.user_id === userId && t.app_id === appId
         )
       ) {
         statements.push(
-          `INSERT OR IGNORE INTO tracked_keyword (user_id, app_id, keyword_id, created_at) SELECT ${sqlString(userId)}, ${appId}, id, strftime('%s','now')*1000 FROM keyword WHERE normalized = ${sqlString(norm)} AND language = ${sqlString(language)};`
+          `INSERT OR IGNORE INTO tracked_app (user_id, app_id, created_at) VALUES (${sqlString(userId)}, ${appId}, strftime('%s','now')*1000);`
         );
-        summary.tracksAdded += 1;
+      }
+      if (
+        !state.appLanguages.some(
+          (l) => l.app_id === appId && l.language === language
+        )
+      ) {
+        statements.push(
+          `INSERT OR IGNORE INTO app_language (app_id, language) VALUES (${appId}, ${sqlString(language)});`
+        );
       }
 
-      for (const storefront of storefronts) {
-        const locale = localeFor(storefront, language, state.storefrontLocales);
-        if (!locale) {
-          warnings.push(
-            `${storefront}: not in the reference data — add the storefront and its locales first`
+      for (const raw of keywords) {
+        const text = raw.trim();
+        const norm = normalize(text);
+        const key = `${norm}:${language}`;
+        if (!knownKeyword.has(key)) {
+          statements.push(
+            `INSERT OR IGNORE INTO keyword (text, normalized, language) VALUES (${sqlString(text)}, ${sqlString(norm)}, ${sqlString(language)});`
           );
-          continue;
+          knownKeyword.set(key, null); // id resolved by subquery below
+          summary.keywordsAdded += 1;
         }
-        wantedPairs.set(`${norm}:${language}|${storefront}|${locale}`, {
-          idExpr,
-          locale,
-          storefront,
-        });
+        wantedTracks.add(`${userId}|${appId}|${key}`);
+
+        const idExpr = `(SELECT id FROM keyword WHERE normalized = ${sqlString(norm)} AND language = ${sqlString(language)})`;
+        if (
+          !state.trackedKeywords.some(
+            (t) =>
+              t.user_id === userId &&
+              t.app_id === appId &&
+              t.normalized === norm &&
+              t.language === language
+          )
+        ) {
+          statements.push(
+            `INSERT OR IGNORE INTO tracked_keyword (user_id, app_id, keyword_id, created_at) SELECT ${sqlString(userId)}, ${appId}, id, strftime('%s','now')*1000 FROM keyword WHERE normalized = ${sqlString(norm)} AND language = ${sqlString(language)};`
+          );
+          summary.tracksAdded += 1;
+        }
+
+        for (const storefront of storefronts) {
+          const locale = localeFor(
+            storefront,
+            language,
+            state.storefrontLocales
+          );
+          if (!locale) {
+            warnings.push(
+              `${storefront}: not in the reference data — add the storefront and its locales first`
+            );
+            continue;
+          }
+          wantedPairs.set(`${norm}:${language}|${storefront}|${locale}`, {
+            idExpr,
+            locale,
+            storefront,
+          });
+        }
       }
     }
   }
