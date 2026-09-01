@@ -15,7 +15,7 @@ describe(RankTile, () => {
 	it("qualifies the unranked tooltip with the keyword when given", () => {
 		render(<RankTile rank={null} title="example keyword · FR" />);
 		expect(screen.getByLabelText("not ranked").title).toBe(
-			"example keyword · FR — not ranked (top 200)"
+			"example keyword · FR: not ranked (top 200)"
 		);
 	});
 
@@ -39,7 +39,7 @@ describe(RankTile, () => {
 			<RankTile onClick={onClick} rank={3} title="example keyword · FR" />
 		);
 		const tile = screen.getByRole("button", { name: "3" });
-		expect(tile.title).toBe("example keyword · FR — #3");
+		expect(tile.title).toBe("example keyword · FR: #3");
 		fireEvent.click(tile);
 		expect(onClick).toHaveBeenCalledOnce();
 	});

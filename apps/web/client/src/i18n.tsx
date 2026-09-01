@@ -37,13 +37,13 @@ const en = {
 	// Opportunity lanes
 	laneBlocked: "Blocked",
 	laneBlockedHint:
-		"Volume exists, but the leaders are entrenched — needs more than metadata.",
+		"Volume exists, but the leaders are entrenched. This needs more than metadata.",
 	laneClose: "Within reach",
 	laneCloseHint:
 		"Within reach of the visible zone. This is where a release should aim.",
 	laneUnknown: "No volume data",
 	laneUnknownHint:
-		"Ranking, but Apple publishes no volume for these terms — judge them on rank and difficulty.",
+		"Ranking, but Apple publishes no volume for these terms, so judge them on rank and difficulty.",
 	laneVanity: "Vanity ranks",
 	laneVanityHint:
 		"Ranked where nobody searches. Candidates to reclaim at the next release.",
@@ -51,29 +51,29 @@ const en = {
 	laneWinningHint: "Top 10 on a term with real volume. Defend these.",
 	whatToWorkOn: "What to work on",
 	genericProgress:
-		"{inZone} of {total} generic keywords are in the top 10 — the honest read on ASO progress.",
+		"{inZone} of {total} generic keywords are in the top 10, the honest read on ASO progress.",
 	brandCounted:
 		"{n} brand terms are counted separately, since that demand is already yours.",
 	brandCountedOne:
 		"1 brand term is counted separately, since that demand is already yours.",
 	coverageNote:
-		"Apple publishes no search volume for {n} of {total} tracked keywords, so those are judged on rank and difficulty alone — absent from Apple's list is not the same as unsearched.",
+		"Apple publishes no search volume for {n} of {total} tracked keywords, so those are judged on rank and difficulty alone. Absent from Apple's list is not the same as unsearched.",
 
-	// Verdict reasons — keyed to the server's ReasonKey.
+	// Verdict reasons, keyed to the server's ReasonKey.
 	reasonBlocked:
-		"Real volume, but the top of the page is entrenched — metadata alone will not win it.",
+		"Real volume, but the top of the page is entrenched, so metadata alone will not win it.",
 	reasonClose: "Within reach of the visible zone on a term that has volume.",
 	reasonDormantDeep:
 		"Too far down to earn taps, with no evidence the climb is short.",
 	reasonDormantUnranked:
-		"Not ranking at all — either the metadata does not cover it or the term is out of reach.",
+		"Not ranking at all: either the metadata does not cover it or the term is out of reach.",
 	reasonUnknownReachable:
 		"Close enough to push, but Apple publishes no volume for this term, so the payoff is unmeasured.",
 	reasonUnknownTapZone:
-		"Top 10, but Apple publishes no search volume for this term — a win and a vanity rank look identical here.",
+		"Top 10, but Apple publishes no search volume for this term, so a win and a vanity rank look identical here.",
 	reasonVanity:
 		"Ranked where almost nobody searches; the slot may be worth reclaiming.",
-	reasonWinning: "Top 10 on a term with real volume — defend it.",
+	reasonWinning: "Top 10 on a term with real volume, so defend it.",
 
 	// Keyword performance page
 	anyPopularity: "Any popularity",
@@ -103,7 +103,7 @@ const en = {
 	topResults: "Top results",
 	total: "Total",
 	unprovenTitle:
-		"moved in the last 48h — Apple reshuffles, so this has not settled",
+		"moved in the last 48h; Apple reshuffles, so this has not settled",
 
 	// Tiles, drawer, secondary pages
 	app: "App",
@@ -113,9 +113,9 @@ const en = {
 	count: "Count",
 	lastSeen: "Last seen",
 	detail: "Detail",
-	noErrors: "Clean — no errors recorded.",
+	noErrors: "Clean. No errors recorded.",
 	difficultyFewIncumbents: "few known incumbents",
-	difficultyUnscored: "not scored yet — needs a ranked observation",
+	difficultyUnscored: "not scored yet, needs a ranked observation",
 	rankDistribution: "Rank distribution",
 	ranked: "Ranked",
 	keywordMovement: "Keyword movement",
@@ -145,7 +145,7 @@ const en = {
 	// Data health
 	ascAnomalies: "ASC anomalies",
 	ascAnomaliesNote: "duplicate / skipped report dates",
-	budgetPending: "not computed yet — runs with the daily jobs",
+	budgetPending: "not computed yet, runs with the daily jobs",
 	budgetReserved: "{n} fetches/day reserved for app pulls.",
 	collapse: "Collapse",
 	healthCoverageNote: "{pct}% of Tier-1 pairs observed ({date})",
@@ -164,7 +164,7 @@ const en = {
 	healthIntro:
 		"Visible gaps beat silent garbage. Anything red here means today's numbers need a second look.",
 	lastDailyJob: "Last daily job",
-	loopNeverTicked: "never ticked — the collector has not run",
+	loopNeverTicked: "never ticked, the collector has not run",
 	loopQueued: "{n} queued",
 	loopQueueEmpty: "queue empty",
 	loopSinceTick: "since last tick",
@@ -183,7 +183,7 @@ const en = {
 	drawerSearchResults: "Search results for {keyword}",
 
 	// Reviews
-	reviewsEmpty: "Nothing collected yet — the daily pull fills this in.",
+	reviewsEmpty: "Nothing collected yet. The daily pull fills this in.",
 	reviewsIntro:
 		"Most recent reviews across storefronts. Apple's feed caps at the latest 500 per storefront.",
 	starsLabel: "{n} stars",
@@ -211,13 +211,13 @@ const en = {
 	noFieldDiff: "no field diff",
 	notInTop200: "not in top 200",
 	notRanked: "not ranked",
-	notRankedTitled: "{title} — not ranked (top 200)",
+	notRankedTitled: "{title}: not ranked (top 200)",
 	opportunityPop: " · pop {n}",
 	pairFallback: "Pair {id}",
 	removeFromChart: "Remove {keyword} from the chart",
 } as const;
 
-/** Every locale must supply exactly the English keys — enforced at compile time. */
+/** Every locale must supply exactly the English keys, enforced at compile time. */
 export type Dictionary = Record<keyof typeof en, string>;
 
 const fr: Dictionary = {
@@ -237,13 +237,13 @@ const fr: Dictionary = {
 
 	laneBlocked: "Bloqués",
 	laneBlockedHint:
-		"Le volume existe, mais les leaders sont installés — il faudra plus que des métadonnées.",
+		"Le volume existe, mais les leaders sont installés. Il faudra plus que des métadonnées.",
 	laneClose: "À portée",
 	laneCloseHint:
 		"À portée de la zone visible. C'est là qu'une mise à jour doit viser.",
 	laneUnknown: "Sans données de volume",
 	laneUnknownHint:
-		"Vous êtes classé, mais Apple ne publie aucun volume pour ces termes — jugez-les sur le rang et la difficulté.",
+		"Vous êtes classé, mais Apple ne publie aucun volume pour ces termes ; jugez-les sur le rang et la difficulté.",
 	laneVanity: "Rangs de vanité",
 	laneVanityHint:
 		"Classé là où personne ne cherche. À récupérer lors de la prochaine mise à jour.",
@@ -251,28 +251,28 @@ const fr: Dictionary = {
 	laneWinningHint: "Top 10 sur un terme à volume réel. À défendre.",
 	whatToWorkOn: "Sur quoi travailler",
 	genericProgress:
-		"{inZone} mots-clés génériques sur {total} sont dans le top 10 — la lecture honnête de la progression ASO.",
+		"{inZone} mots-clés génériques sur {total} sont dans le top 10, la lecture honnête de la progression ASO.",
 	brandCounted:
 		"{n} termes de marque sont comptés à part, puisque cette demande vous appartient déjà.",
 	brandCountedOne:
 		"1 terme de marque est compté à part, puisque cette demande vous appartient déjà.",
 	coverageNote:
-		"Apple ne publie aucun volume de recherche pour {n} des {total} mots-clés suivis ; ils sont donc jugés sur le rang et la difficulté seuls — absent de la liste d'Apple ne veut pas dire sans recherches.",
+		"Apple ne publie aucun volume de recherche pour {n} des {total} mots-clés suivis ; ils sont donc jugés sur le rang et la difficulté seuls. Absent de la liste d'Apple ne veut pas dire sans recherches.",
 
 	reasonBlocked:
-		"Volume réel, mais le haut de la page est verrouillé — les métadonnées seules n'y suffiront pas.",
+		"Volume réel, mais le haut de la page est verrouillé ; les métadonnées seules n'y suffiront pas.",
 	reasonClose: "À portée de la zone visible, sur un terme qui a du volume.",
 	reasonDormantDeep:
 		"Trop bas pour générer des taps, sans indice que la remontée soit courte.",
 	reasonDormantUnranked:
-		"Pas classé du tout — soit les métadonnées ne couvrent pas le terme, soit il est hors d'atteinte.",
+		"Pas classé du tout : soit les métadonnées ne couvrent pas le terme, soit il est hors d'atteinte.",
 	reasonUnknownReachable:
 		"Assez proche pour pousser, mais Apple ne publie aucun volume pour ce terme : le gain reste non mesuré.",
 	reasonUnknownTapZone:
-		"Top 10, mais Apple ne publie aucun volume de recherche pour ce terme — une victoire et un rang de vanité sont ici indiscernables.",
+		"Top 10, mais Apple ne publie aucun volume de recherche pour ce terme ; une victoire et un rang de vanité sont ici indiscernables.",
 	reasonVanity:
 		"Classé là où presque personne ne cherche ; le créneau vaut peut-être la peine d'être récupéré.",
-	reasonWinning: "Top 10 sur un terme à volume réel — à défendre.",
+	reasonWinning: "Top 10 sur un terme à volume réel, à défendre.",
 
 	anyPopularity: "Toute popularité",
 	bandVeryHigh: "Très élevée (85–100)",
@@ -302,7 +302,7 @@ const fr: Dictionary = {
 	topResults: "Meilleurs résultats",
 	total: "Total",
 	unprovenTitle:
-		"a bougé dans les dernières 48 h — Apple rebrasse, ce rang n'est pas stabilisé",
+		"a bougé dans les dernières 48 h ; Apple rebrasse, ce rang n'est pas stabilisé",
 
 	app: "Application",
 	averageRank: "Rang moyen",
@@ -311,9 +311,9 @@ const fr: Dictionary = {
 	count: "Nombre",
 	lastSeen: "Dernière fois",
 	detail: "Détail",
-	noErrors: "Rien à signaler — aucune erreur enregistrée.",
+	noErrors: "Rien à signaler. Aucune erreur enregistrée.",
 	difficultyFewIncumbents: "peu de concurrents connus",
-	difficultyUnscored: "pas encore évalué — nécessite une observation classée",
+	difficultyUnscored: "pas encore évalué, nécessite une observation classée",
 	rankDistribution: "Répartition des rangs",
 	ranked: "Classés",
 	keywordMovement: "Mouvement des mots-clés",
@@ -343,7 +343,7 @@ const fr: Dictionary = {
 	// Data health
 	ascAnomalies: "Anomalies ASC",
 	ascAnomaliesNote: "dates de rapport dupliquées ou manquantes",
-	budgetPending: "pas encore calculé — s'exécute avec les tâches quotidiennes",
+	budgetPending: "pas encore calculé, s'exécute avec les tâches quotidiennes",
 	budgetReserved: "{n} requêtes/jour réservées aux relevés d'app.",
 	collapse: "Réduire",
 	healthCoverageNote: "{pct} % des paires Tier-1 observées ({date})",
@@ -362,7 +362,7 @@ const fr: Dictionary = {
 	healthIntro:
 		"Mieux vaut un trou visible qu'une donnée fausse. Tout ce qui est en rouge demande de vérifier les chiffres du jour.",
 	lastDailyJob: "Dernière tâche quotidienne",
-	loopNeverTicked: "jamais démarrée — le collecteur n'a pas tourné",
+	loopNeverTicked: "jamais démarrée, le collecteur n'a pas tourné",
 	loopQueued: "{n} en file",
 	loopQueueEmpty: "file vide",
 	loopSinceTick: "depuis le dernier passage",
@@ -382,7 +382,7 @@ const fr: Dictionary = {
 
 	// Reviews
 	reviewsEmpty:
-		"Rien de collecté pour l'instant — le relevé quotidien s'en charge.",
+		"Rien de collecté pour l'instant. Le relevé quotidien s'en charge.",
 	reviewsIntro:
 		"Avis les plus récents, toutes boutiques confondues. Le flux d'Apple s'arrête aux 500 derniers par boutique.",
 	starsLabel: "{n} étoiles",
@@ -410,7 +410,7 @@ const fr: Dictionary = {
 	noFieldDiff: "aucun champ modifié",
 	notInTop200: "hors du top 200",
 	notRanked: "non classé",
-	notRankedTitled: "{title} — non classé (top 200)",
+	notRankedTitled: "{title} : non classé (top 200)",
 	opportunityPop: " · pop {n}",
 	pairFallback: "Paire {id}",
 	removeFromChart: "Retirer {keyword} du graphique",
@@ -489,7 +489,7 @@ export function fmt(
 
 /**
  * Pick the singular or plural key. English and French agree on the only rule
- * this product needs — 0 and 2+ take the plural, 1 does not — so a full
+ * this product needs (0 and 2+ take the plural, 1 does not), so a full
  * plural-rules engine would be machinery for a branch.
  */
 export function plural(
@@ -519,7 +519,7 @@ const REASON_KEYS = {
 
 /**
  * Translate a verdict. Falls back to the API's English prose for a key this
- * build does not know — a new server verdict should read oddly, never vanish.
+ * build does not know. A new server verdict should read oddly, never vanish.
  */
 export function reasonText(
 	t: Dictionary,

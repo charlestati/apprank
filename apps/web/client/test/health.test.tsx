@@ -51,7 +51,7 @@ describe("Health page", () => {
 		expect(statValue("Crawl rate")?.textContent).toBe("12.0");
 		expect(statDetail("Crawl rate")).toBe("fetches/min, learned");
 		expect(statValue("Throttle hits (24h)")?.getAttribute("style")).toBeNull();
-		expect(screen.getByText("Clean — no errors recorded.")).toBeDefined();
+		expect(screen.getByText("Clean. No errors recorded.")).toBeDefined();
 	});
 
 	it("reports zero coverage rather than dividing by zero", async () => {

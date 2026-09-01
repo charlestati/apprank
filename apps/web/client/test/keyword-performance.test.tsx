@@ -401,7 +401,7 @@ describe("Difficulty column", () => {
 		});
 		await screen.findAllByText("example keyword");
 		expect(
-			screen.getByTitle("not scored yet — needs a ranked observation")
+			screen.getByTitle("not scored yet, needs a ranked observation")
 		).toBeDefined();
 	});
 });

@@ -32,7 +32,7 @@ export function RankTile({ rank, onClick, title }: Props) {
 		<button
 			className={`tile-btn ${band}`}
 			onClick={onClick}
-			title={title ? `${title} — #${rank}` : `#${rank}`}
+			title={title ? `${title}: #${rank}` : `#${rank}`}
 			type="button"
 		>
 			{rank}
