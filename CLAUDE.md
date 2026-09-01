@@ -91,7 +91,7 @@ The file is the authoring surface, not the source of truth — that stays in row
 
 `language` does three jobs at once — it stamps every keyword in the entry, records `app_language`, and picks each storefront's locale — so **one entry cannot mix languages**. To track Spanish terms in the Spanish store beside French ones, list the same `appId` twice with different `language` values; `app_language` ends up with both rows, which is right for a bilingual listing. `tracked.example.json` shows it. Keys beginning with an underscore are notes and are skipped, so that annotated example can be copied as-is.
 
-The dashboard still renders `apps[0]` and has no app switcher, so a second app is collected and reachable over the API but invisible in the UI. That is a client gap, not a data one.
+The dashboard picks the app with a switcher in the topbar, shown only when the operator tracks more than one — a select with a single option is a control that cannot do anything. The choice persists in `localStorage` under `apprank.app`, falls back to the first tracked app when the stored id is no longer tracked, and returns to the report when switched from a pair detail, since that route addresses one pair of the app being left behind.
 
 The planner is pure and tested (`pnpm test:scripts`); the two rules worth not breaking are that an unchanged config emits **no** statements — D1 charges for a conflicting upsert even when it changes nothing — and that a storefront missing from the reference data produces a warning rather than a guessed locale.
 

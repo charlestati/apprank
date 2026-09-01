@@ -309,7 +309,8 @@ main {
 }
 /* Language picker: a quiet control in the top bar — it changes how the page
    reads, never what it reports, so it should not compete with the data. */
-.lang-picker select {
+.lang-picker select,
+.app-picker select {
   appearance: none;
   background: transparent;
   border: 1px solid var(--ds-border);
@@ -320,13 +321,22 @@ main {
   font: var(--ds-font-body);
   padding: 2px 8px;
 }
-.lang-picker select:hover {
+.lang-picker select:hover,
+.app-picker select:hover {
   background: var(--ds-background-neutral);
   color: var(--ds-text);
 }
-.lang-picker select:focus-visible {
+.lang-picker select:focus-visible,
+.app-picker select:focus-visible {
   outline: 2px solid var(--ds-border-focused);
   outline-offset: 1px;
+}
+
+/* Must follow the shared rule above: same specificity, so order decides.
+   The app name is the page's subject, not a preference like the language. */
+.app-picker select {
+  color: var(--ds-text);
+  font-weight: 500;
 }
 
 .who {

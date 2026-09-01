@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
-import { BrowserRouter, NavLink, Route, Routes } from "react-router";
+import {
+  BrowserRouter,
+  NavLink,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router";
 
 import { api } from "./api";
 import type { DataHealth, TrackedApp } from "./api";
@@ -9,6 +16,63 @@ import { KeywordPerformance } from "./pages/keyword-performance";
 import { PairDetail } from "./pages/pair-detail";
 import { Reviews } from "./pages/reviews";
 import { Suggestions } from "./pages/suggestions";
+
+const APP_STORAGE_KEY = "apprank.app";
+
+/** The last chosen app, if storage is readable and still holds a number. */
+function storedAppId(): number | null {
+  try {
+    const raw = localStorage.getItem(APP_STORAGE_KEY);
+    const id = raw === null ? Number.NaN : Number(raw);
+    return Number.isFinite(id) ? id : null;
+  } catch {
+    // Storage unavailable; the first tracked app is a fine default.
+    return null;
+  }
+}
+
+/**
+ * Shown only to an operator who tracks more than one app — a select with a
+ * single option is a control that cannot do anything.
+ *
+ * Switching while on a pair detail returns to the report, because that route
+ * addresses one pair of the app being left behind: keeping it would render
+ * another app's keyword under the newly chosen name.
+ */
+function AppPicker({
+  apps,
+  appId,
+  onSelect,
+}: {
+  apps: TrackedApp[];
+  appId: number | null;
+  onSelect: (id: number) => void;
+}) {
+  const t = useT();
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+
+  return (
+    <label className="app-picker">
+      <span className="sr-only">{t.application}</span>
+      <select
+        onChange={(e) => {
+          onSelect(Number(e.target.value));
+          if (pathname.startsWith("/pairs/")) {
+            navigate("/");
+          }
+        }}
+        value={appId ?? ""}
+      >
+        {apps.map((a) => (
+          <option key={a.id} value={a.id}>
+            {a.current_name ?? `#${a.id}`}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
 
 function Wordmark() {
   return (
@@ -54,7 +118,20 @@ function Shell() {
   const [apps, setApps] = useState<TrackedApp[]>([]);
   const [health, setHealth] = useState<DataHealth | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
-  const app = apps[0] ?? null; // an app switcher arrives with multi-app usage
+  const [appId, setAppId] = useState<number | null>(storedAppId);
+
+  // A stored id that is no longer tracked — an app removed since the last
+  // visit — falls back rather than rendering an empty report.
+  const app = apps.find((a) => a.id === appId) ?? apps[0] ?? null;
+
+  const selectApp = (id: number) => {
+    setAppId(id);
+    try {
+      localStorage.setItem(APP_STORAGE_KEY, String(id));
+    } catch {
+      // A choice we cannot persist is still worth honouring this session.
+    }
+  };
 
   // The browser holds the credentials: by the time this renders, the request
   // for the page itself was already authenticated.
@@ -84,7 +161,15 @@ function Shell() {
       <div className="shell">
         <header className="topbar">
           <Wordmark />
-          <span className="app-name">{app?.current_name ?? ""}</span>
+          {apps.length > 1 ? (
+            <AppPicker
+              appId={app?.id ?? null}
+              apps={apps}
+              onSelect={selectApp}
+            />
+          ) : (
+            <span className="app-name">{app?.current_name ?? ""}</span>
+          )}
           <span className="spacer" />
           <CollectionStatus health={health} />
           <LanguagePicker />

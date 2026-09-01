@@ -31,6 +31,7 @@ const en = {
   today: "today",
   collectionError: "collection error",
   collectionErrors: "collection errors",
+  application: "Application",
   language: "Language",
 
   // Opportunity lanes
@@ -157,6 +158,7 @@ const fr: Dictionary = {
   today: "aujourd'hui",
   collectionError: "erreur de collecte",
   collectionErrors: "erreurs de collecte",
+  application: "Application",
   language: "Langue",
 
   laneBlocked: "Bloqués",
