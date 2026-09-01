@@ -9,6 +9,16 @@ Design principles that shape everything here:
 - **Politeness is a correctness requirement.** All Workers egress shares Cloudflare IPs and Apple rate-limits by IP, so the crawler discovers its own sustainable rate and backs off hard.
 - **Reference data is rows, not code.** Adding a storefront, locale, genre or keyword is an `INSERT`, never a migration or a redeploy.
 
+## Apple blocks Cloudflare, so collection runs from GitHub Actions
+
+The one thing to know before deploying this. Apple rate-limits the public iTunes endpoints per IP, and every Cloudflare Worker egresses from a shared pool that is already spent: the deployed collector gets HTTP 429 on **every** keyword search, while the identical request from an ordinary connection succeeds. That is not a volume problem — it happens at one request per minute.
+
+So the fetching runs somewhere else, and `.github/workflows/collect.yml` is that somewhere. It starts `wrangler dev` on a runner with `remote: true` bindings, which means the **same collector code** executes against the same D1 and R2 — only the source address differs. Observations carry the same normaliser, the same provenance and the same idempotent keys as the scheduler's own.
+
+Cloudflare still runs App Store Connect and Apple Ads, which are credentialed, reached over different infrastructure, and work fine from a Worker. The deployment sets `COLLECTION_MODE=credentialed` so it stops attempting the fetches it cannot complete — those 429s were not free, each one fed the daily tally that halves the learned crawl rate.
+
+`scripts/local-refresh` runs the same cycle from your own machine, which is useful for backfilling a day or verifying a credential.
+
 ## Layout
 
 | Path | What it is |
@@ -18,7 +28,7 @@ Design principles that shape everything here:
 | `apps/web` | Hono JSON API + React SPA on Workers Static Assets |
 | `scripts/rebuild-d1` | Rebuild or verify D1 observations from the R2 archive |
 
-The collector runs one bounded unit of work per Durable Object alarm tick — one API task, or one keyword crawl — at an adaptive learned rate (starts at 4/min, halves and pauses on any 403/429 with exponential backoff, recovers 10% per clean day up to 6/min). A 10-minute watchdog cron re-arms the alarm; a 03:00 UTC cron queues the daily jobs (archive compaction, App Store Connect poll, Monday Apple Ads pull, per-app lookups, reviews and charts).
+The collector runs one bounded unit of work per Durable Object alarm tick — one API task, or one keyword crawl — at an adaptive learned rate. Two brakes, deliberately separate: any 403/429 **pauses** the loop with exponential backoff (30m to a 4h cap), while the **rate** is a per-day trend — it starts at 4/min, halves once on the throttle that takes a day past tolerance, and recovers 10% per day that stayed within it (floor 1/min, ceiling 6/min). Halving on every hit made the rate a one-way ratchet to the floor on a shared egress IP, which silently shrinks the crawl budget. A 10-minute watchdog cron re-arms the alarm; a 03:00 UTC cron queues the daily jobs (archive compaction, App Store Connect poll, Monday Apple Ads pull, per-app lookups, reviews and charts).
 
 Crawl cadence adapts to the tracked set. Each day the collector works out how many fetches the learned rate affords, subtracts what the app-level pulls cost, and re-spaces every tracked pair across a `1 / 2 / 3 / 7`-day ladder so the total fits. Pairs are ordered by keyword popularity, how close the app sits to the top-10 boundary, how much the rank has been moving, storefront weight, and whether the app's metadata changed recently. Adding apps or keywords costs resolution on the least informative pairs — never coverage, because a dropped pair loses its history for good. The current plan appears on the data-health page ("340 pairs every 1d, 260 every 2d").
 
@@ -45,17 +55,19 @@ cp apps/web/wrangler.jsonc apps/web/wrangler.local.jsonc
 pnpm migrate:remote
 pnpm seed:remote
 
-# 4. Tell it what to track: copy the template, edit it, apply it
-cp packages/core/seeds/tier1.example.sql packages/core/seeds/local/my-app.sql
-cd apps/collector
-npx wrangler d1 execute apprank --remote -c wrangler.local.jsonc \
-  --file ../../packages/core/seeds/local/my-app.sql
+# 4. Tell it what to track
+cp tracked.example.json tracked.local.json
+#    …edit it: app id, language, storefronts, keywords.
+pnpm track            # shows what would change, writes nothing
+pnpm track --apply
 
 # 5. Deploy
 pnpm deploy
 ```
 
-`packages/core/seeds/local/` is gitignored: your app ids and keyword lists stay out of the repository.
+`tracked.local.json` is gitignored, so your app ids and keyword lists stay out of the repository. `pnpm track` is idempotent and diff-first: re-running it reports "already in sync" and writes nothing, and removing a keyword **retires** its crawl pairs rather than deleting them, because a deleted day and an uncollected day are the same loss.
+
+Then add the GitHub Actions secrets so collection can run: `CLOUDFLARE_API_TOKEN` (needs Workers Scripts Edit as well as D1 and R2 — remote bindings provision a proxy Worker), `CLOUDFLARE_ACCOUNT_ID`, `D1_DATABASE_ID`, and `ADMIN_TOKEN` (any high-entropy string, also set via `wrangler secret put` on the collector).
 
 ## Commands
 
@@ -198,6 +210,8 @@ D1 holds a hot window; the archive holds everything. `scripts/rebuild-d1` recons
 ## Status
 
 Working: the collector (keyword ranks, metadata, ratings, reviews, charts, App Store Connect and Apple Ads ingestion), the JSON API, and the dashboard SPA (keyword grid, rank history, competitors, reviews, data health).
+
+Read the Apple-blocks-Cloudflare section above before deploying: the keyword crawl, metadata lookups, reviews and charts only work from a runner or your own machine. Deploy the Workers and you get a dashboard, App Store Connect and Apple Ads — and 429s on everything else until the GitHub workflow is wired up.
 
 Keyword difficulty is computed daily from observations already held — the rating mass of the incumbents on the result page, how much that page turns over, and how full it is — with every input stored beside the score so the formula can be revised and the history recomputed. Hovering the score shows what produced it; an asterisk marks a score built from fewer than five known incumbents.
 
