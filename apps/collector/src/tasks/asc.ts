@@ -4,8 +4,9 @@
 // tick):
 //   asc_poll (fan-out)  read tracked apps from D1, queue one init per app
 //   asc_poll(init)      ensure ONGOING + ONE_TIME_SNAPSHOT requests exist
-// asc_poll(reports) list reports for the ONGOING request, filter categories,
-// dump the full report list to R2 once (per-search-term verification)
+//   asc_poll(reports)   list reports for the ONGOING request, filter
+//                       categories, dump the full report list to R2 once
+//                       (per-search-term verification)
 //   asc_poll(instances) for one report at a time: list DAILY instances, queue
 //                       unseen ones as asc_fetch_instance tasks
 //   asc_fetch_instance  download all segments verbatim (.tsv.gz) to R2, record

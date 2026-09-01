@@ -1,14 +1,16 @@
 #!/usr/bin/env node
+
 // Rebuild the D1 `ranking` observations from the R2 archive: the proof that D1
 // is a materialised view and R2 is the source of truth.
 //
 // Usage:
-// R2_ACCOUNT_ID=… R2_ACCESS_KEY_ID=… R2_SECRET_ACCESS_KEY=… node rebuild.mjs
-// [--verify] [--out rebuild.sql]
+//   R2_ACCOUNT_ID=… R2_ACCESS_KEY_ID=… R2_SECRET_ACCESS_KEY=… \
+//     node rebuild.mjs [--verify] [--out rebuild.sql]
 //
 //   --verify   don't write SQL; compare archive observation counts against the
 //              live D1 ranking table (needs wrangler auth) and report drift
-// --out write INSERT statements to a .sql file for `wrangler d1 execute`
+//   --out      write INSERT statements to a .sql file for
+//              `wrangler d1 execute`
 //
 // R2 credentials: create an R2 API token (dashboard → R2 → Manage API Tokens).
 // Zero egress: reads are free.
