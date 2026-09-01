@@ -11,3 +11,5 @@ wrangler.local.jsonc
 coverage/
 apps/collector/wrangler.localcrawl.jsonc
 apps/web/wrangler.preview.jsonc
+tracked.local.json
+tracked.local.sql

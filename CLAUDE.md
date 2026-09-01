@@ -81,6 +81,14 @@ pnpm deploy        # collector then web
 
 `wrangler.jsonc` is committed with placeholder ids. Every script prefers `wrangler.local.jsonc` (gitignored) when present — that is where real `database_id` and `APP_URL` values live. Personal seeds live in `packages/core/seeds/local/` (also gitignored).
 
+## Adding an app or keywords
+
+`tracked.local.json` (gitignored) is how the tracked set is authored; `pnpm track` reconciles it against the database and prints the difference, and `pnpm track --apply` writes it. `tracked.example.json` shows the shape.
+
+The file is the authoring surface, not the source of truth — that stays in rows, because three things depend on it. `crawl_pair` is reference-counted, so two users tracking the same keyword in the same storefront share one row and one fetch a day. Ownership lives on `tracked_keyword.user_id`, which is what makes another operator's data a 404. And removing a keyword **retires** its pairs (`ref_count = 0`) rather than deleting them, because history cannot be backfilled and a deleted day is the same as an uncollected one.
+
+The planner is pure and tested (`pnpm test:scripts`); the two rules worth not breaking are that an unchanged config emits **no** statements — D1 charges for a conflicting upsert even when it changes nothing — and that a storefront missing from the reference data produces a warning rather than a guessed locale.
+
 ## Conventions
 
 - **pnpm only** (v11, workspace protocol). `pnpm-workspace.yaml` sets `minimumReleaseAge: 10080` — packages must be a week old, so pick versions accordingly or the install fails with `ERR_PNPM_NO_MATCHING_VERSION`.

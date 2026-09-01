@@ -27,3 +27,4 @@ jobs:
       # not committed, and without it every Workers global and binding is unknown.
       - run: pnpm typecheck
       - run: pnpm coverage
+      - run: pnpm test:scripts

@@ -14,7 +14,9 @@
     "migrate:remote": "pnpm --filter collector migrate:remote",
     "seed:local": "pnpm --filter collector seed:local",
     "seed:remote": "pnpm --filter collector seed:remote",
-    "deploy": "pnpm --filter collector deploy && pnpm --filter web deploy"
+    "deploy": "pnpm --filter collector deploy && pnpm --filter web deploy",
+    "track": "node scripts/track/track.mjs",
+    "test:scripts": "node --test \"scripts/**/*.test.mjs\""
   },
   "devDependencies": {
     "oxfmt": "latest",

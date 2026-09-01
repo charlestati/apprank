@@ -1,0 +1,9 @@
+{
+  "charles": {
+    "appId": 123456789,
+    "name": "Your App",
+    "language": "fr",
+    "storefronts": ["fr", "ca"],
+    "keywords": ["jeu de lettres", "mots croisés"]
+  }
+}
