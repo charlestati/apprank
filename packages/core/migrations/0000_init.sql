@@ -1,9 +1,14 @@
 -- The baseline schema.
 --
--- Regenerate with `wrangler d1 export apprank --remote --no-data`, never with
--- `drizzle-kit generate`: drizzle cannot express the partial unique index
--- `cr_unique_storefront_wide` and emits fourteen indexes where this has
--- fifteen.
+-- Regenerate with `wrangler d1 export apprank --remote --no-data`, then delete
+-- the `PRAGMA` line and the `d1_migrations` table it emits: wrangler creates
+-- that table itself, and a migration that also creates it fails on a fresh
+-- database.
+--
+-- Never regenerate from drizzle. It cannot express the partial unique index
+-- `cr_unique_storefront_wide`, so `drizzle-kit export` returns fourteen
+-- indexes where this file has fifteen, and the storefront-wide chart rows
+-- start duplicating.
 
 CREATE TABLE `genre` (
 	`id` integer PRIMARY KEY NOT NULL,
