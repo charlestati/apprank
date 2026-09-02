@@ -37,12 +37,12 @@ because a row per position would be 18× the write budget.
   the same guarantee, and was not taken.
 - **There is one migration, and it is a dump, not a generate.** `0000_init.sql`
   was produced by `wrangler d1 export apprank --remote --no-data`, which
-  serialises the live database rather than reconstructing it from `schema.ts`.
-  That is the only way it carries `cr_unique_storefront_wide`, the partial
-  unique index drizzle cannot express: `drizzle-kit export` emits fourteen
-  indexes where production has fifteen. If the baseline ever needs rebuilding,
-  rebuild it the same way and verify by applying it to an empty database and
-  diffing that database's own export against production's.
+  serialises the live database rather than reconstructing it from the schema
+  modules. That is the only way it carries `cr_unique_storefront_wide`, the
+  partial unique index drizzle cannot express: `drizzle-kit export` emits
+  fourteen indexes where production has fifteen. If the baseline ever needs
+  rebuilding, rebuild it the same way and verify by applying it to an empty
+  database and diffing that database's own export against production's.
 - **There is no user table, and no session tables.** Identity is the `userId` in
   the `BASIC_AUTH_ACCOUNTS` secret, and every `user_id` column is opaque text
   with no foreign key. A session-based auth library costs roughly 1.9 MB of

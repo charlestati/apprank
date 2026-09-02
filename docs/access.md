@@ -18,8 +18,7 @@ npx wrangler secret put BASIC_AUTH_ACCOUNTS
 
 Generate passwords with `openssl rand -base64 24`. `userId` is what ties an
 account to its data (`tracked_app.user_id`); leave it out and it defaults to the
-username. Use `admin` to match the key in `tracked.example.json`, or change
-both.
+username.
 
 Ownership is a second, separate check: a request for an app or keyword you do
 not track answers **404, not 403**, because a 403 would confirm that the id
@@ -30,10 +29,6 @@ exception: it is scoped per app and answers only for apps you track.
 
 Two known limits of Basic auth, both deliberate trades: there is no sign-out
 short of closing the browser, and rotating a password means updating the secret.
-In exchange the Worker is 84 KiB instead of 1.9 MB, with no session tables to
-maintain. If you want real sign-out, single sign-on, or self-service accounts,
-put Cloudflare Access in front of the Worker route. The `userId` plumbing stays
-exactly as it is.
 
 Passwords are compared as SHA-256 digests in constant time. That is deliberate
 rather than an oversight: a KDF would be the most expensive thing in the request

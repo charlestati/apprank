@@ -1,9 +1,10 @@
 # AppRank: working notes for agents
 
-Self-hosted App Store Optimization tracking on Cloudflare's free tier. It
-collects App Store keyword ranks, Apple Ads search popularity, app metadata
-changes, ratings and reviews, then presents them as a keyword-performance
-report. The repository is public, so nothing personal belongs in it.
+Self-hosted App Store Optimization tracking, free on Cloudflare Workers and
+GitHub Actions. It collects App Store keyword ranks, Apple Ads search
+popularity, app metadata changes, ratings and reviews, then presents them as a
+keyword-performance report. The repository is public, so nothing personal
+belongs in it.
 
 This file holds what applies everywhere. Anything that matters only in one part
 of the tree lives in `.claude/rules/`, which loads when you open a file it
@@ -26,13 +27,16 @@ covers:
 Everything in the design follows from these. Check a change against them before
 writing it.
 
-1. **History cannot be backfilled.** A day not collected is gone forever. The
-   collector ships and runs before any feature work; never break collection to
-   land UI.
-2. **R2 is the source of truth; D1 is a rebuildable materialised view.**
-   Pruning, retention and schema changes must stay performance choices, never
-   lossy ones. `scripts/rebuild-d1` reconstructs the observation tables from the
-   archive alone and is a first-class deliverable.
+1. **History cannot be backfilled.** Apple publishes no past ranks, so a day
+   nobody recorded is gone for good. Keep collection running through every
+   change: never take it down to land a feature, and never leave it broken
+   overnight.
+2. **R2 is the source of truth; D1 is a cache.** Pruning, retention and schema
+   changes must stay performance choices, never lossy ones, which means every
+   response is archived verbatim before anything is derived from it.
+   `scripts/rebuild-d1` today reconstructs `ranking` and nothing else, so
+   extending it to the other observation tables is owed work, not a nicety: the
+   invariant is only as true as the script that proves it.
 3. **Visible gaps beat silent garbage.** Every observation carries provenance
    (HTTP status, response time, result count, collector version, archive key).
    Apple's rate limit returns **HTTP 403 with an empty results array**. That is
@@ -54,12 +58,23 @@ pnpm lint          # ultracite (oxlint + oxfmt); must exit 0
 pnpm lint:fix      # autofix + format
 pnpm typecheck     # wrangler types, then tsc across every workspace
 pnpm types         # regenerate worker-configuration.d.ts after a wrangler.jsonc edit
-pnpm test          # vitest in the Workers runtime
+pnpm test          # vitest in the Workers runtime, then the script tests
+pnpm test:scripts  # node --test over scripts/, the half vitest cannot reach
 pnpm coverage      # enforces 80% statements/lines/functions, 70% branches per workspace
 pnpm generate      # drizzle-kit generate after editing the schema
 pnpm migrate:local # / migrate:remote, seed:local, seed:remote
+pnpm rebuild:d1    # R2 to D1 rebuild (not "rebuild": pnpm rebuild is a built-in)
 pnpm deploy        # collector then web
 ```
+
+CI runs `lint`, `typecheck`, `coverage` and `test:scripts` separately, so it
+never calls `test`. Two git hooks in `.githooks/` catch the same failures
+earlier: `pre-commit` runs `lint` (~1s) and `pre-push` runs `typecheck` and
+`test` (~10s together, which is why neither filters by changed file). The root
+`prepare` script points `core.hooksPath` at that directory, but **pnpm skips
+`prepare` when an install is a no-op**, so a clone that was already installed
+when this landed needs one `pnpm run prepare`. Both hooks are bypassable with
+`--no-verify`: they catch accidents, not policy.
 
 `wrangler.jsonc` is committed with placeholder ids. Every script prefers
 `wrangler.local.jsonc` (gitignored) when present. That is where real
@@ -105,7 +120,10 @@ pnpm deploy        # collector then web
   `@modelcontextprotocol/{server,client}@2.0.0`,
   `@modelcontextprotocol/sdk@1.30.0` (the peer `agents` names). Check publish
   dates before bumping any of them.
-- `config` cannot be a package.json script name: `pnpm config` is a built-in.
+- **A script name that collides with a pnpm built-in is shadowed silently.**
+  `config` and `rebuild` are both built-ins, so `pnpm rebuild` runs pnpm's own
+  native-dependency rebuild and never the script. The R2-to-D1 alias is
+  therefore `rebuild:d1`.
 - macOS is case-insensitive; renaming `Foo.tsx` → `foo.tsx` leaves the old path
   in the git index and breaks Linux CI. `git config core.ignorecase false` and
   re-add.

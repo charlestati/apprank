@@ -66,10 +66,15 @@ already spent, so a Worker gets HTTP 429 on **every** keyword search while the
 identical request from an ordinary connection succeeds. That is not a volume
 problem. It happens at one request per minute.
 
-The runner is not a second implementation. It starts `wrangler dev` with
-`remote: true` bindings, so the **same collector code** executes against the
-same D1 and R2, and observations carry the same normaliser, provenance and
-idempotent keys as the Worker's own. Only the source address differs.
+The runner is not a second implementation. It runs the **same collector source**
+under `wrangler dev`, with `remote: true` on the D1 and R2 bindings, so
+observations carry the same normaliser, provenance and idempotent keys as the
+Worker's own.
+
+Two processes, not one runtime in two places: the collector executes on the
+runner, and only the data bindings reach Cloudflare. The Durable Object is local
+to each, so the runner builds its own work queue, while the learned rate and the
+pause it obeys live in `collector_state` in the shared D1.
 
 Leaving the Worker in `all` mode is not free: every 429 it collects feeds the
 daily tally that halves the learned crawl rate, so a Worker attempting the

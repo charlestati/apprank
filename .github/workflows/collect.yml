@@ -8,10 +8,10 @@
 # every attempt while the identical request succeeds from an ordinary
 # connection.
 #
-# Not a second implementation: `wrangler dev` with remote bindings runs the
-# *same* collector code against the same D1 and R2, so observations carry the
-# same normaliser, provenance and idempotent keys as the Worker's own. Only the
-# source address differs.
+# Not a second implementation: `wrangler dev` runs the *same* collector source
+# here on the runner, with remote bindings on D1 and R2, so observations carry
+# the same normaliser, provenance and idempotent keys as the Worker's own. The
+# Durable Object is local to this process; only the data is shared.
 #
 # A runner's egress is not Cloudflare's, but it is still shared, and Apple
 # rate-limits whoever it is. Run this by hand once on a new deployment and

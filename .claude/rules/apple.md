@@ -45,6 +45,34 @@ paths:
   identical list five times per storefront. Popularity is stored against the
   parent genre id (Games = 6014); recording a GAMES-wide ranking under
   "Games/Word" would claim precision Apple does not provide.
+- **The genres worked in are the tracked apps' own, never a constant.** Both the
+  Ads pull and the chart pull derive from the distinct `app.primary_genre_id` of
+  tracked apps (`trackedGenreIds` in `index.ts`), overridable per deployment
+  through the `ads:focus_genres` and `chart_genres` `collector_state` keys. A
+  hardcoded list is wrong for every operator outside that category, and it was
+  hardcoded to five Games sub-genres once. Empty is a real answer: a fresh
+  deploy has looked nothing up yet, and under `COLLECTION_MODE=credentialed`
+  that lookup runs from the Actions runner, so the column stays null for a
+  while. The Ads pull is then skipped and only the storefront-wide chart
+  (`genreId: null`) runs, because guessing a category would write popularity for
+  terms nobody tracks.
+- **The genre table has to cover every category, or the derivation dead-ends.**
+  `buildAdsTask` resolves `primary_genre_id` through a `SELECT ... FROM genre`,
+  so an unseeded genre yields no rows, no Ads category, and a popularity table
+  that is silently empty rather than visibly unsupported. `reference.sql` seeds
+  the tree from Apple's live genre endpoint
+  (`MZStoreServices .../ws/genres?id=36`): all 27 top-level genres and the 18
+  Games children. Only Games, Magazines & Newspapers (28) and Stickers (15) have
+  children at all. Eleven top-level genres map to no Ads category at all
+  (Weather, Reference, Navigation, Music, Books, Medical, Magazines, Catalogs,
+  Stickers, Developer Tools, Graphics & Design), because Ads reports fifteen and
+  the App Store has twenty-seven; `resolveAdsCategory` returns null there, which
+  is recorded rather than guessed.
+- **Genre ids are worth checking against Apple, not against memory.** 7003 is
+  Games/Casual; the seed called it Games/Card, which is 7005, for as long as
+  nobody charted it. Ads never noticed because everything lifts to the parent,
+  but `chart_pull` takes a genre id directly, so the mislabel would have
+  collected Casual under the name Card.
 - The Platform API request body is
   `{ timeRange: { start, end, granularity }, filters: [{ field, operator, value }], sorting, pagination }`.
   The older Campaign Management

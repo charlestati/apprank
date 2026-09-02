@@ -3,26 +3,27 @@
 Two Workers (`apprank-collector`, `apprank-web`), one D1 database, one R2
 bucket.
 
-| Path                 | What it is                                                                                                                    |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `packages/core`      | Drizzle schema + migrations, SQL seeds, Apple clients (WebCrypto ES256 JWT for Ads and App Store Connect), iTunes normalisers |
-| `apps/collector`     | The crawler. Two crons drive one `SchedulerDO` work loop                                                                      |
-| `apps/web`           | Hono JSON API + React SPA on Workers Static Assets                                                                            |
-| `scripts/rebuild-d1` | Rebuild or verify D1 observations from the R2 archive                                                                         |
+| Path                    | What it is                                                                                                                    |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `packages/core`         | Drizzle schema + migrations, SQL seeds, Apple clients (WebCrypto ES256 JWT for Ads and App Store Connect), iTunes normalisers |
+| `apps/collector`        | The collector Worker. Two crons drive one `SchedulerDO` work loop, plus one admin route to trigger a job by hand              |
+| `apps/web`              | Hono JSON API, MCP endpoint, and the React SPA on Workers Static Assets                                                       |
+| `scripts/local-refresh` | Drives the collector from a runner or your own machine. This is what the GitHub Actions half runs                             |
+| `scripts/track`         | Reconciles the tracked set against `tracked.local.json`                                                                       |
+| `scripts/mcp-token`     | Issues an MCP credential and prints the SQL to apply it                                                                       |
+| `scripts/rebuild-d1`    | Rebuild or verify rank observations from the R2 archive                                                                       |
 
-## Four rules that shape the rest
+## Three rules that shape the rest
 
-- **History cannot be backfilled**, so the collector ships before the UI and
-  runs gap-free from day one.
+- **History cannot be backfilled.** Apple publishes no past ranks. Pairs carry a
+  `next_due_at`, so an outage runs late rather than never, but midnight UTC is
+  the deadline: an observation is keyed to its date.
 - **Visible gaps beat silent garbage.** Every observation carries provenance
   (HTTP status, response time, result count, collector version, archive key);
-  Apple's 403-with-empty-results rate limit is recorded as an error, never
-  stored as "not ranking".
-- **Politeness is a correctness requirement.** All Workers egress shares
-  Cloudflare IPs and Apple rate-limits by IP, so the crawler discovers its own
-  sustainable rate and backs off hard.
+  Apple's 403-with-empty-results rate limit is recorded as an error, not stored
+  as "not ranking".
 - **Reference data is rows, not code.** Adding a storefront, locale, genre or
-  keyword is an `INSERT`, never a migration or a redeploy.
+  keyword is an `INSERT`, not a migration or a redeploy.
 
 ## The work loop
 
@@ -87,9 +88,14 @@ ads/popularity/{week}/{storefront}/{genre}.json      Apple Ads, as fetched
 charts/… lookups/… reviews/…                         as fetched
 ```
 
-D1 holds a hot window; the archive holds everything. `scripts/rebuild-d1`
-reconstructs the observation tables from R2 alone, which is what makes pruning,
-retention and schema changes performance choices rather than lossy ones.
+D1 holds a hot window; the archive holds everything, which is what makes
+pruning, retention and schema changes performance choices rather than lossy
+ones. Run the rebuild with `pnpm rebuild:d1` (not `pnpm rebuild`, which is a
+pnpm built-in).
+
+It currently reads the `rankings/v1/` prefix and writes `ranking`. The other
+observation tables are recoverable from the archive in principle, but no script
+does it yet, so treat a D1 prune as reversible only for rank observations.
 
 ## Difficulty
 
