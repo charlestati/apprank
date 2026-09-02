@@ -39,51 +39,111 @@ INSERT OR IGNORE INTO locale (code, language) VALUES
   ('it',    'it'),
   ('nl-NL', 'nl'),
   ('es-ES', 'es'),
+  ('es-MX', 'es'),
+  ('ca-ES', 'ca'),
   ('ar-SA', 'ar');
 
 -- ── Storefront ↔ indexed locales (Apple cross-localization) ──────────────────
--- Verified 2026-08-31 against Apple's ASC "App Store localizations" table:
---   FR = French (default) + English (U.K.)
---   CA = English (Canada) default + French (Canada)
---   BE = English (U.K.) default + Dutch + French
---   CH = German default + English (U.K.) + French + Italian
--- Rows marked TODO are best-guess pending verification against the same table.
+-- Verified 2026-09-02, row for row, against Apple's public "App Store
+-- localizations" table (developer.apple.com/help/app-store-connect/reference/
+-- app-information/app-store-localizations), which gives each storefront one
+-- default language plus the additional indexed ones. No App Store Connect
+-- login is needed to read it, so re-check it here rather than guessing.
+-- Monaco is the one exception and is marked below.
 INSERT OR IGNORE INTO storefront_locale (storefront_code, locale_code, is_default) VALUES
   ('fr', 'fr-FR', 1), ('fr', 'en-GB', 0),
   ('ca', 'en-CA', 1), ('ca', 'fr-CA', 0),
   ('be', 'en-GB', 1), ('be', 'nl-NL', 0), ('be', 'fr-FR', 0),
   ('ch', 'de-DE', 1), ('ch', 'en-GB', 0), ('ch', 'fr-FR', 0), ('ch', 'it', 0),
-  -- TODO verify:
   ('lu', 'en-GB', 1), ('lu', 'fr-FR', 0), ('lu', 'de-DE', 0),
-  ('mc', 'en-GB', 1), ('mc', 'fr-FR', 0),
   ('ma', 'en-GB', 1), ('ma', 'fr-FR', 0), ('ma', 'ar-SA', 0),
   ('dz', 'en-GB', 1), ('dz', 'fr-FR', 0), ('dz', 'ar-SA', 0),
   ('tn', 'en-GB', 1), ('tn', 'fr-FR', 0), ('tn', 'ar-SA', 0),
   ('sn', 'en-GB', 1), ('sn', 'fr-FR', 0),
-  ('ci', 'en-GB', 1), ('ci', 'fr-FR', 0),
-  ('cm', 'en-GB', 1), ('cm', 'fr-FR', 0),
-  ('us', 'en-US', 1), ('us', 'fr-FR', 0), ('us', 'es-ES', 0), ('us', 'ar-SA', 0),
+  -- Cote d'Ivoire and Cameroon default to French. They are the only two
+  -- francophone storefronts here that do, so an English default is wrong.
+  ('ci', 'fr-FR', 1), ('ci', 'en-GB', 0),
+  ('cm', 'fr-FR', 1), ('cm', 'en-GB', 0),
+  -- Monaco has no row in Apple's table, nor do Andorra, Liechtenstein and San
+  -- Marino: the microstates are absent throughout. So this pair is a guess, and
+  -- it is why storefront.apple_storefront_id is still NULL for 'mc'. Confirm
+  -- Monaco is a storefront of its own before trusting anything collected here.
+  ('mc', 'en-GB', 1), ('mc', 'fr-FR', 0),
+  -- The US indexes Spanish (Mexico), never Spanish (Spain), and Spain itself
+  -- indexes Catalan. Both storefronts are inactive, so neither is collected yet.
+  ('us', 'en-US', 1), ('us', 'fr-FR', 0), ('us', 'es-MX', 0), ('us', 'ar-SA', 0),
   ('gb', 'en-GB', 1),
   ('de', 'de-DE', 1), ('de', 'en-GB', 0),
   ('it', 'it', 1),    ('it', 'en-GB', 0),
-  ('es', 'es-ES', 1), ('es', 'en-GB', 0),
+  ('es', 'es-ES', 1), ('es', 'ca-ES', 0), ('es', 'en-GB', 0),
   ('nl', 'nl-NL', 1), ('nl', 'en-GB', 0);
 
 -- ── Genres (iTunes genre ids) ────────────────────────────────────────────────
+-- The full App Store tree as Apple publishes it, taken from the live genre
+-- endpoint (MZStoreServices .../ws/genres?id=36), not from a blog post. All 27
+-- top-level genres are seeded because an operator in any category deploys this:
+-- buildAdsTask resolves a tracked app's primary_genre_id through this table, so
+-- an unseeded genre yields no rows, no Ads category, and a popularity table
+-- that is silently empty rather than visibly unsupported.
+--
+-- Only Games (18), Magazines & Newspapers (28) and Stickers (15) have
+-- sub-genres at all; every other top-level genre has none. The Games children
+-- are seeded so a games operator can chart at sub-genre resolution. The other
+-- two are an INSERT away if anyone needs them.
+--
+-- Eleven of these have no Apple Ads category (Weather, Reference, Navigation,
+-- Music, Books, Medical, Magazines, Catalogs, Stickers, Developer Tools,
+-- Graphics & Design): Ads reports only fifteen. resolveAdsCategory returns null
+-- for them, which is recorded rather than guessed.
 INSERT OR IGNORE INTO genre (id, name, parent_id) VALUES
-  (36,   'App Store',   NULL),
-  (6014, 'Games',       36),
-  (7019, 'Games/Word',        6014),
-  (7012, 'Games/Puzzle',      6014),
-  (7004, 'Games/Board',       6014),
-  (7018, 'Games/Trivia',      6014),
-  (7008, 'Games/Educational', 6014),
-  (7003, 'Games/Card',        6014),
-  (7002, 'Games/Adventure',   6014),
-  (7017, 'Games/Strategy',    6014),
-  (7001, 'Games/Action',      6014),
-  (7015, 'Games/Simulation',  6014),
-  (6017, 'Education',    36),
-  (6016, 'Entertainment',36),
-  (6007, 'Productivity', 36),
-  (6002, 'Utilities',    36);
+  (36,   'App Store', NULL),
+  (6000, 'Business',                36),
+  (6001, 'Weather',                 36),
+  (6002, 'Utilities',               36),
+  (6003, 'Travel',                  36),
+  (6004, 'Sports',                  36),
+  (6005, 'Social Networking',       36),
+  (6006, 'Reference',               36),
+  (6007, 'Productivity',            36),
+  (6008, 'Photo & Video',           36),
+  (6009, 'News',                    36),
+  (6010, 'Navigation',              36),
+  (6011, 'Music',                   36),
+  (6012, 'Lifestyle',               36),
+  (6013, 'Health & Fitness',        36),
+  (6014, 'Games',                   36),
+  (6015, 'Finance',                 36),
+  (6016, 'Entertainment',           36),
+  (6017, 'Education',               36),
+  (6018, 'Books',                   36),
+  (6020, 'Medical',                 36),
+  (6021, 'Magazines & Newspapers',  36),
+  (6022, 'Catalogs',                36),
+  (6023, 'Food & Drink',            36),
+  (6024, 'Shopping',                36),
+  (6025, 'Stickers',                36),
+  (6026, 'Developer Tools',         36),
+  (6027, 'Graphics & Design',       36),
+  (7001, 'Games/Action',            6014),
+  (7002, 'Games/Adventure',         6014),
+  (7003, 'Games/Casual',            6014),
+  (7004, 'Games/Board',             6014),
+  (7005, 'Games/Card',              6014),
+  (7006, 'Games/Casino',            6014),
+  (7007, 'Games/Dice',              6014),
+  (7008, 'Games/Educational',       6014),
+  (7009, 'Games/Family',            6014),
+  (7011, 'Games/Music',             6014),
+  (7012, 'Games/Puzzle',            6014),
+  (7013, 'Games/Racing',            6014),
+  (7014, 'Games/Roleplaying',       6014),
+  (7015, 'Games/Simulation',        6014),
+  (7016, 'Games/Sports',            6014),
+  (7017, 'Games/Strategy',          6014),
+  (7018, 'Games/Trivia',            6014),
+  (7019, 'Games/Word',              6014);
+
+-- 7003 is Casual, not Card (Card is 7005). Seeds written before the tree was
+-- checked against Apple carry the wrong name, and INSERT OR IGNORE will not
+-- correct an existing row.
+UPDATE genre SET name = 'Games/Casual' WHERE id = 7003 AND name = 'Games/Card';

@@ -18,7 +18,8 @@ npx wrangler secret put BASIC_AUTH_ACCOUNTS
 
 Generate passwords with `openssl rand -base64 24`. `userId` is what ties an
 account to its data (`tracked_app.user_id`); leave it out and it defaults to the
-username. Set it to `admin` to inherit rows created by the seed template.
+username. Use `admin` to match the key in `tracked.example.json`, or change
+both.
 
 Ownership is a second, separate check: a request for an app or keyword you do
 not track answers **404, not 403**, because a 403 would confirm that the id

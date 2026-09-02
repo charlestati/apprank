@@ -17,14 +17,8 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-
-      # minimumReleaseAge in pnpm-workspace.yaml holds new releases back for a
-      # week; --frozen-lockfile keeps CI on exactly what the lockfile pins.
       - run: pnpm install --frozen-lockfile
-
       - run: pnpm lint
-      # typecheck regenerates worker-configuration.d.ts first: it is generated,
-      # not committed, and without it every Workers global and binding is unknown.
       - run: pnpm typecheck
       - run: pnpm coverage
       - run: pnpm test:scripts
