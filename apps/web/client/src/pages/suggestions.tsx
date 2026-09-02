@@ -30,19 +30,12 @@ export function Suggestions() {
 			</header>
 			{rows.length === 0 && <p className="empty">{t.suggestionsEmpty}</p>}
 			{rows.map((s) => (
-				<div className="card" key={s.id} style={{ marginBottom: 8 }}>
-					<strong>{s.type}</strong>
-					<pre
-						style={{
-							color: "var(--ink-2)",
-							fontSize: 12,
-							margin: "6px 0 0",
-							whiteSpace: "pre-wrap",
-						}}
-					>
+				<article className="card suggestion" key={s.id}>
+					<h2 className="section-title">{s.type}</h2>
+					<pre aria-label={t.suggestionPayload} className="suggestion-payload">
 						{s.payload}
 					</pre>
-				</div>
+				</article>
 			))}
 		</>
 	);

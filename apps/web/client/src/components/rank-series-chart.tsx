@@ -16,28 +16,39 @@
    the same reason: a value a sighted mouse user can read has to be reachable
    without a mouse, and there is no interactive element to hang that on. */
 
-import { useId, useMemo, useState } from "react";
+import { useCallback, useId, useMemo, useState } from "react";
 
 import type { KeywordRow, MetadataMarker } from "../api";
 import { useFormat } from "../format";
 import { fmt, useT } from "../i18n";
 import type { Dictionary } from "../i18n";
 
-const W = 960;
+// The viewBox is measured in CSS pixels, not in an arbitrary design unit, so
+// one unit is one pixel at every container width. A fixed 960-unit box scaled
+// to fit rendered the axis labels at 14 * (width / 960): oversized on a wide
+// screen, under 10px in a narrow column, and never the size the token asks
+// for. `FALLBACK_W` only covers the first paint, before the box is measured.
+const FALLBACK_W = 960;
 const H = 360;
 // The right pad holds the direct labels: a reader should not have to travel to
 // a legend to name a line.
-const PAD = { bottom: 26, left: 46, right: 132, top: 16 };
-// Rails below the plot floor, in viewBox units: one for observations that
-// landed outside the top 200, one for days the fetch failed.
+const PAD = { bottom: 26, left: 46, right: 132, top: 32 };
+// Release pins live above the plot, not on it: at the old top pad the pin for a
+// keyword sitting at rank 1 was drawn straight through its own line.
+const MARKER_ROW = 13;
+// Rails below the plot floor, in pixels: one for observations that landed
+// outside the top 200, one for days the fetch failed.
 const RAIL_UNRANKED = 20;
 const RAIL_ERROR = 38;
 const PLOT_BOTTOM = H - PAD.bottom - 46;
 const DAY_MS = 86_400_000;
 const READOUT_LIMIT = 8;
-/** Label line-height plus a little air, in viewBox units. */
+/** Label line-height plus a little air, in pixels. */
 const MIN_TICK_GAP = 18;
-const MIN_LABEL_GAP = 13;
+/** Direct labels are one 20px line each; below that they collide. */
+const MIN_LABEL_GAP = 20;
+/** Date ticks below this spacing start to abut at four-character labels. */
+const MIN_DATE_TICK_PX = 110;
 const LABEL_MAX_CHARS = 16;
 const GRID_CANDIDATES = [1, 5, 10, 25, 50, 100, 150, 200];
 
@@ -183,6 +194,37 @@ export function RankSeriesChart({
 	const [hoverSeries, setHoverSeries] = useState<number | null>(null);
 	const hatchId = useId();
 	const active = focusedPairId ?? hoverSeries;
+	const [w, setW] = useState(FALLBACK_W);
+
+	// The chart is as wide as the card gives it, and its own coordinate space is
+	// that width in pixels. Without this the graphic keeps its aspect ratio and
+	// scales its type with it.
+	//
+	// A callback ref, not an effect on mount: the empty state renders no chart
+	// at all, so an effect keyed on `[]` would run once against a null node and
+	// never see the box that appears when the first report lands.
+	const measure = useCallback((el: HTMLDivElement | null) => {
+		if (!el) {
+			return;
+		}
+		// Measured synchronously first: a ResizeObserver only reports on the next
+		// frame, and a backgrounded tab has no next frame, so the chart would sit
+		// at the fallback width until something forced a paint.
+		setW(Math.round(el.getBoundingClientRect().width) || FALLBACK_W);
+		// jsdom and happy-dom ship no ResizeObserver; the chart is then correct at
+		// its first measurement and simply does not follow later resizes.
+		if (typeof ResizeObserver === "undefined") {
+			return;
+		}
+		const observer = new ResizeObserver(([entry]) => {
+			const measured = entry?.contentRect.width ?? 0;
+			if (measured > 0) {
+				setW(Math.round(measured));
+			}
+		});
+		observer.observe(el);
+		return () => observer.disconnect();
+	}, []);
 
 	const dates = useMemo(() => {
 		const observed = series.flatMap((s) => [
@@ -206,7 +248,7 @@ export function RankSeriesChart({
 		const ceiling = Math.max(10, ...ranks);
 		const xOf = (i: number) =>
 			PAD.left +
-			(i * (W - PAD.left - PAD.right)) / Math.max(1, dates.length - 1);
+			(i * (w - PAD.left - PAD.right)) / Math.max(1, dates.length - 1);
 		const yOf = (r: number) =>
 			PAD.top + ((r - 1) * (PLOT_BOTTOM - PAD.top)) / Math.max(1, ceiling - 1);
 
@@ -246,7 +288,7 @@ export function RankSeriesChart({
 		});
 
 		return { lines: built, maxRank: ceiling, x: xOf, y: yOf };
-	}, [dates, series]);
+	}, [dates, series, w]);
 
 	const labels = useMemo(() => {
 		const wanted = lines.flatMap(({ row, segments }) => {
@@ -271,9 +313,9 @@ export function RankSeriesChart({
 
 	function onMove(e: React.MouseEvent<SVGSVGElement>) {
 		const rect = e.currentTarget.getBoundingClientRect();
-		const px = ((e.clientX - rect.left) / rect.width) * W;
+		const px = ((e.clientX - rect.left) / rect.width) * w;
 		const i = Math.round(
-			((px - PAD.left) / (W - PAD.left - PAD.right)) * (dates.length - 1)
+			((px - PAD.left) / (w - PAD.left - PAD.right)) * (dates.length - 1)
 		);
 		setHover(Math.max(0, Math.min(dates.length - 1, i)));
 	}
@@ -345,18 +387,36 @@ export function RankSeriesChart({
 							(b.position ?? Number.POSITIVE_INFINITY)
 					);
 
+	// As many date ticks as the axis can hold without them touching. The old
+	// rule was first, middle, last regardless of width, which left a 90-day
+	// window with two labelled months and no way to place anything between.
+	const plotW = w - PAD.left - PAD.right;
+	const tickStep = Math.max(
+		1,
+		Math.ceil(
+			(dates.length - 1) / Math.max(1, Math.floor(plotW / MIN_DATE_TICK_PX))
+		)
+	);
 	const tickIndexes = [
-		0,
-		Math.floor((dates.length - 1) / 2),
+		...Array.from(
+			{ length: Math.floor((dates.length - 1) / tickStep) + 1 },
+			(_, n) => n * tickStep
+		),
 		dates.length - 1,
-	].filter((v, i, a) => a.indexOf(v) === i);
+	].filter(
+		(v, i, a) =>
+			a.indexOf(v) === i &&
+			// The last tick is pinned to the window end, so a step landing just
+			// short of it would print two labels on top of each other.
+			(v === dates.length - 1 || dates.length - 1 - v >= tickStep / 2)
+	);
 
 	const errorRailY = PLOT_BOTTOM + RAIL_ERROR;
 	const unrankedRailY = PLOT_BOTTOM + RAIL_UNRANKED;
-	const slot = Math.max(3, (W - PAD.left - PAD.right) / dates.length);
+	const slot = Math.max(3, plotW / dates.length);
 
 	return (
-		<div className="chart">
+		<div className="chart" ref={measure}>
 			<svg
 				aria-label={`Rank history for ${series.length} ${
 					series.length === 1 ? "keyword" : "keywords"
@@ -370,7 +430,9 @@ export function RankSeriesChart({
 				onMouseMove={onMove}
 				role="img"
 				tabIndex={0}
-				viewBox={`0 0 ${W} ${H}`}
+				height={H}
+				viewBox={`0 0 ${w} ${H}`}
+				width={w}
 			>
 				<defs>
 					<pattern
@@ -388,7 +450,7 @@ export function RankSeriesChart({
 						<line
 							className="grid-line"
 							x1={PAD.left}
-							x2={W - PAD.right}
+							x2={w - PAD.right}
 							y1={y(r)}
 							y2={y(r)}
 						/>
@@ -407,7 +469,7 @@ export function RankSeriesChart({
 				<line
 					className="rail-line"
 					x1={PAD.left}
-					x2={W - PAD.right}
+					x2={w - PAD.right}
 					y1={unrankedRailY}
 					y2={unrankedRailY}
 				/>
@@ -449,17 +511,17 @@ export function RankSeriesChart({
 								className="marker-line"
 								x1={x(i)}
 								x2={x(i)}
-								y1={PAD.top + 8}
+								y1={MARKER_ROW + 8}
 								y2={PLOT_BOTTOM}
 							/>
-							<circle className="marker-pin" cx={x(i)} cy={PAD.top} r="7">
+							<circle className="marker-pin" cx={x(i)} cy={MARKER_ROW} r="8">
 								<title>{markerTitle(marker, t, f.day)}</title>
 							</circle>
 							<text
 								className="marker-index"
 								textAnchor="middle"
 								x={x(i)}
-								y={PAD.top + 3.5}
+								y={MARKER_ROW + 4}
 							>
 								{n + 1}
 							</text>
@@ -550,7 +612,7 @@ export function RankSeriesChart({
 								: label.color
 						}
 						key={label.pairId}
-						x={W - PAD.right + 8}
+						x={w - PAD.right + 8}
 						y={label.y}
 					>
 						{label.text}
@@ -571,7 +633,7 @@ export function RankSeriesChart({
 			{hoveredDate && readout.length > 0 && (
 				<div
 					className="chart-tip"
-					style={{ left: `${(x(hover ?? 0) / W) * 100}%` }}
+					style={{ left: `${(x(hover ?? 0) / w) * 100}%` }}
 				>
 					<div className="chart-tip-date">{hoveredDate}</div>
 					{readout.slice(0, READOUT_LIMIT).map((r) => (

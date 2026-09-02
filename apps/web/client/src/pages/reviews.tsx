@@ -54,7 +54,7 @@ export function Reviews({ app }: { app: TrackedApp | null }) {
 						{r.author} · {r.storefront_code.toUpperCase()} · v{r.app_version} ·{" "}
 						{r.reviewed_at ? f.dayAt(r.reviewed_at) : ""}
 					</div>
-					<p style={{ margin: "6px 0 0" }}>{r.body}</p>
+					<p className="review-body">{r.body}</p>
 				</article>
 			))}
 		</>

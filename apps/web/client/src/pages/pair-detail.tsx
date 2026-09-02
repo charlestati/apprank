@@ -97,8 +97,9 @@ export function PairDetail({ app }: { app: TrackedApp | null }) {
 				<div>
 					<h1>{label}</h1>
 					<p className="page-sub">
-						Rank of {app?.current_name ?? "the tracked app"} in the top 200,
-						daily. Gaps are missing observations, not flat ranks.
+						{fmt(t.pairDetailSub, {
+							app: app?.current_name ?? t.theTrackedApp,
+						})}
 					</p>
 				</div>
 			</header>
@@ -117,7 +118,7 @@ export function PairDetail({ app }: { app: TrackedApp | null }) {
 							<th className="num">#</th>
 							<th>{t.app}</th>
 							<th className="num" title={t.top10ShareTitle}>
-								Top-10 presence
+								{t.top10Presence}
 							</th>
 						</tr>
 					</thead>

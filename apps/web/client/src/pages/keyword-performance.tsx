@@ -328,7 +328,20 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 						</div>
 
 						<div className="table-scroll">
-							<table className="grid">
+							<table className="report grid">
+								{/* The ration the fixed layout hands out. Only the keyword
+                    column is left unsized, so every spare pixel goes to the
+                    one cell whose content is unbounded. */}
+								<colgroup>
+									<col />
+									<col className="col-position" />
+									<col className="col-change" />
+									<col className="col-meter" />
+									<col className="col-meter" />
+									<col className="col-range" />
+									<col className="col-results" />
+									<col className="col-total" />
+								</colgroup>
 								<thead>
 									<tr className="group-row">
 										<th aria-label={t.keyword} />
@@ -400,25 +413,27 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 												</button>
 											</td>
 											<td className="num">
-												<span
-													className={rankBand(row.position)}
-													title={
-														row.verdict
-															? reasonText(
-																	t,
-																	row.verdict.reasonKey,
-																	row.verdict.reason
-																)
-															: undefined
-													}
-												>
-													{row.position ?? "—"}
+												<span className="rank-cell">
+													<span
+														className={rankBand(row.position)}
+														title={
+															row.verdict
+																? reasonText(
+																		t,
+																		row.verdict.reasonKey,
+																		row.verdict.reason
+																	)
+																: undefined
+														}
+													>
+														{row.position ?? "—"}
+													</span>
+													{row.verdict?.unproven ? (
+														<sup className="unproven" title={t.unprovenTitle}>
+															~
+														</sup>
+													) : null}
 												</span>
-												{row.verdict?.unproven ? (
-													<sup className="unproven" title={t.unprovenTitle}>
-														~
-													</sup>
-												) : null}
 											</td>
 											<td className="num">
 												<Delta
@@ -427,7 +442,7 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 												/>
 											</td>
 											<td>
-												<Meter label="Popularity" value={row.popularity} />
+												<Meter label={t.popularity} value={row.popularity} />
 											</td>
 											<td>
 												<Difficulty value={row.difficulty} />
@@ -458,7 +473,7 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 															onClick={() => setResultsFor(row)}
 															type="button"
 														>
-															View
+															{t.view}
 														</button>
 													) : null}
 												</div>
@@ -468,7 +483,9 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 												{row.resultCountChange && row.resultCountChange > 20 ? (
 													<span
 														className="contested"
-														title={`${row.resultCountChange} more results than at the start of the window, so the term is getting more contested`}
+														title={fmt(t.contestedTitle, {
+															n: row.resultCountChange,
+														})}
 													>
 														↑
 													</span>
@@ -478,7 +495,7 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 									))}
 									{rows.length === 0 ? (
 										<tr>
-											<td className="empty" colSpan={7}>
+											<td className="empty" colSpan={8}>
 												{fmt(t.noKeywordMatch, { filter })}
 											</td>
 										</tr>

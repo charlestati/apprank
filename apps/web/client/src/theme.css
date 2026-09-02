@@ -76,6 +76,7 @@
 	--ds-font-mono:
 		"Atlassian Mono", ui-monospace, Menlo, "Segoe UI Mono", "Ubuntu Mono",
 		monospace;
+	--ds-weight-medium: 500;
 	--ds-weight-bold: 653;
 
 	/* Typography, as the `font` shorthand @atlaskit/tokens emits. Two steps of
@@ -708,8 +709,20 @@ h1 {
 	white-space: nowrap;
 }
 
+/* The unproven mark rides in a slot of its own, present on every row. Hung
+   directly off the badge it was extra width on some rows only, and the whole
+   right-aligned rank column stepped in and out by three pixels. */
+.rank-cell {
+	position: relative;
+	display: inline-block;
+	/* The slot the mark occupies, reserved on every row whether or not the row
+	   carries one. */
+	padding-right: 10px;
+}
 .unproven {
-	margin-left: var(--ds-space-025);
+	position: absolute;
+	top: 0;
+	right: 0;
 	color: var(--ds-text-subtlest);
 }
 .contested {
@@ -928,18 +941,28 @@ h1 {
 	font: var(--ds-font-body);
 }
 
+/* The report table is its own scrollport in both axes, which is what makes the
+   sticky header stick. It cannot stick to the page instead: a container with
+   `overflow-x: auto` computes `overflow-y` to `auto` as well, so it becomes the
+   nearest scrollport whether or not it ever scrolls vertically, and a header
+   bound to a container that never scrolls simply leaves with the rows. The cap
+   is generous enough that a short keyword set never scrolls at all. */
 .table-scroll {
-	overflow-x: auto;
+	overflow: auto;
+	max-height: calc(100dvh - 13rem);
+	overscroll-behavior: contain;
 }
 
 table.grid {
 	width: 100%;
-	border-collapse: collapse;
+	border-collapse: separate;
+	border-spacing: 0;
 }
 
 table.grid th {
 	padding: var(--ds-space-100) var(--ds-space-150);
 	text-align: left;
+	white-space: nowrap;
 	color: var(--ds-text-subtle);
 	/* Sentence case, not uppercase: 14px small caps needed the letter-spacing to stay
      legible, and at this size that tracking only makes the header noisier than
@@ -949,13 +972,20 @@ table.grid th {
 	border-bottom: 1px solid var(--ds-border);
 	position: sticky;
 	top: 0;
+	z-index: 1;
+}
+
+/* Both header rows pin, the column row parked under the group row it belongs
+   to. `top` is the group row's own height: 20px of line plus its padding. */
+.table-scroll thead tr:last-child th {
+	top: 36px;
 }
 
 .group-row th {
 	color: var(--ds-text-subtle);
 	border-bottom: 1px solid var(--ds-border);
 	background: var(--ds-surface-sunken);
-	position: static;
+	z-index: 2;
 }
 .group-row th + th {
 	border-left: 1px solid var(--ds-border);
@@ -966,11 +996,46 @@ table.grid td {
      a rank table is scanned column-wise, and 16px rows push the comparison a
      keyword wants off the fold. */
 	font: var(--ds-font-body);
-	height: 48px;
+	height: 44px;
 	padding: var(--ds-space-100) var(--ds-space-150);
 	border-bottom: 1px solid var(--ds-border);
 	vertical-align: middle;
 	white-space: nowrap;
+}
+
+/* A ration, not an auction. Under auto layout the two meters, being the only
+   cells that can grow, took every spare pixel while the keyword itself, the
+   identity of the row, stayed at its text width and truncated first. The
+   keyword column is the one left unsized, so the slack lands there. */
+table.report {
+	table-layout: fixed;
+	min-width: 980px;
+}
+.report .col-position {
+	width: 96px;
+}
+.report .col-change {
+	width: 104px;
+}
+.report .col-meter {
+	width: 164px;
+}
+.report .col-range {
+	width: 120px;
+}
+.report .col-results {
+	width: 148px;
+}
+.report .col-total {
+	width: 96px;
+}
+/* A long keyword ends in an ellipsis rather than pushing the row wider than
+   its ration. A flex item needs the explicit `min-width` to be allowed to
+   shrink below its content at all. */
+.report .kw .link {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 table.grid tbody tr:hover {
@@ -1071,7 +1136,8 @@ table.grid tbody tr:hover {
 .kw {
 	display: flex;
 	align-items: center;
-	gap: var(--ds-space-100);
+	gap: var(--ds-space-050);
+	min-width: 0;
 	white-space: nowrap;
 }
 
@@ -1116,6 +1182,9 @@ table.grid tbody tr:hover {
 	color: var(--ds-text-subtlest);
 }
 
+/* Direction and magnitude first, then how stale the move is. Led by the age,
+   the column right-aligned on a variable-width "3d" and no two arrows in it
+   shared an x. */
 .delta {
 	display: inline-flex;
 	align-items: baseline;
@@ -1123,7 +1192,17 @@ table.grid tbody tr:hover {
 	font-variant-numeric: tabular-nums;
 	font-weight: 600;
 }
+
+/* The table's change cell, which carries an age the summary tiles do not. The
+   age's slot is reserved whether or not the row has one, so the arrows down
+   the column all share an x. */
+.delta-cell {
+	position: relative;
+	padding-right: 28px;
+}
 .delta-age {
+	position: absolute;
+	right: 0;
 	color: var(--ds-text-subtlest);
 	font: var(--ds-font-body);
 	font-weight: 400;
@@ -1139,11 +1218,11 @@ table.grid tbody tr:hover {
 	font-weight: 400;
 }
 
+/* The track fills the column it was given; it no longer sets the column. */
 .meter {
 	display: flex;
 	align-items: center;
 	gap: var(--ds-space-100);
-	min-width: 140px;
 }
 .meter-track {
 	flex: 1;
@@ -1244,13 +1323,21 @@ table.grid tbody tr:hover {
 	background: var(--ds-neutral-subtle-hovered);
 }
 
+/* The glyph is 20x8; the button around it is the row's height, so the toggle
+   is reachable by a pointer that lands anywhere near it. */
 .swatch-button {
 	display: inline-flex;
 	align-items: center;
-	padding: 0;
+	flex: none;
+	height: 32px;
+	padding: 0 var(--ds-space-050);
 	border: 0;
+	border-radius: var(--ds-radius-small);
 	background: none;
 	cursor: pointer;
+}
+.swatch-button:hover {
+	background: var(--ds-neutral-subtle-hovered);
 }
 
 /* ── Sign in ───────────────────────────────────────────────────────────── */
@@ -1319,6 +1406,23 @@ table.grid tbody tr:hover {
 	font: var(--ds-font-body);
 }
 
+/* ── Suggestions ───────────────────────────────────────────────────────── */
+
+.suggestion {
+	padding: var(--ds-space-200);
+	margin-bottom: var(--ds-space-150);
+}
+/* The payload is a stored JSON blob, so it is read rather than glanced at and
+   keeps the mono face and the body step everything else read at. */
+.suggestion-payload {
+	margin: var(--ds-space-100) 0 0;
+	color: var(--ds-text-subtle);
+	font: var(--ds-font-body);
+	font-family: var(--ds-font-mono);
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
 /* ── Reviews ───────────────────────────────────────────────────────────── */
 
 .review {
@@ -1333,6 +1437,10 @@ table.grid tbody tr:hover {
 .review .meta {
 	color: var(--ds-text-subtlest);
 	font: var(--ds-font-body);
+}
+.review-body {
+	margin: var(--ds-space-075) 0 0;
+	max-width: 72ch;
 }
 .stars {
 	color: var(--ds-chart-4);

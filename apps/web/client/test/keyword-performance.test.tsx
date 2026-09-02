@@ -485,6 +485,16 @@ describe(Delta, () => {
 		render(<Delta change={3} daysAgo={null} />);
 		expect(document.querySelector(".delta-age")).toBeNull();
 	});
+
+	it("leads with the movement, not with how stale it is", () => {
+		// The column is right-aligned on the number. Led by a variable-width age,
+		// no two arrows in it shared an x.
+		render(<Delta change={-6} daysAgo={12} />);
+		const el = document.querySelector(".delta") as HTMLElement;
+		expect(el.textContent?.indexOf("6")).toBeLessThan(
+			el.textContent?.indexOf("12d") as number
+		);
+	});
 });
 
 describe(Meter, () => {

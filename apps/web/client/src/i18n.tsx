@@ -129,6 +129,14 @@ const en = {
 	wentUp: "Went up",
 
 	// Table & filters
+	view: "View",
+	contestedTitle:
+		"{n} more results than at the start of the window, so the term is getting more contested",
+	pairDetailSub:
+		"Rank of {app} in the top 200, daily. Gaps are missing observations, not flat ranks.",
+	theTrackedApp: "the tracked app",
+	top10Presence: "Top-10 presence",
+	suggestionPayload: "Payload",
 	best: "Best",
 	change: "Change",
 	difficulty: "Difficulty",
@@ -303,6 +311,15 @@ const fr: Dictionary = {
 	total: "Total",
 	unprovenTitle:
 		"a bougé dans les dernières 48 h ; Apple rebrasse, ce rang n'est pas stabilisé",
+
+	view: "Voir",
+	contestedTitle:
+		"{n} résultats de plus qu'au début de la période : le terme se dispute davantage",
+	pairDetailSub:
+		"Rang de {app} dans le top 200, chaque jour. Un trou est une observation manquante, pas un rang stable.",
+	theTrackedApp: "l'application suivie",
+	top10Presence: "Présence top 10",
+	suggestionPayload: "Contenu",
 
 	app: "Application",
 	averageRank: "Rang moyen",

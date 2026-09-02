@@ -39,6 +39,24 @@ the tooltip uses. The graphic carries `aria-describedby` to a `<figcaption>`
 that says what a gap means, and the dense table below it is the numeric
 alternative the caption points at.
 
+**The chart's coordinate space is CSS pixels, measured, never a fixed design
+unit.** A `960 x 360` viewBox stretched to `width: 100%` scales its own text
+with the card: every SVG label renders at `14 * (width / 960)`, which is 17px on
+a wide screen and under 10px in a narrow column, and never the size the type
+token asks for. The `.chart` box is measured (synchronously on attach, then by a
+`ResizeObserver`) and the viewBox width follows it, so one unit is one pixel at
+every width and the chart keeps a constant height instead of ballooning.
+`FALLBACK_W` covers the case where the box reports nothing.
+
+**The report table rations its columns and is its own scrollport.** Under auto
+layout the two meters were the only cells that could grow, so they took every
+spare pixel while the keyword, the identity of the row, truncated first; the
+`colgroup` sizes everything except the keyword column, which takes the slack.
+The header sticks to `.table-scroll`, not to the page, and it has to: a
+container with `overflow-x: auto` computes `overflow-y` to `auto` too, so it
+becomes the nearest scrollport whether or not it scrolls, and a header bound to
+a container that never scrolls simply leaves with the rows.
+
 **The rank chart's x axis is the calendar, never the list of observed days.**
 One slot per observed date draws a seven-day cadence gap at the same width as an
 overnight step, so every slope across a stretched rung reads wrong and the gap

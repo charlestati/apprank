@@ -18,12 +18,19 @@ export function Delta({ change, daysAgo }: Props) {
 		);
 	}
 	const improved = change > 0;
+	// Direction, then magnitude, then age. The age led before, which put a
+	// variable-width token at the start of a right-aligned column and left no
+	// two arrows in it sharing an x.
 	return (
-		<span className={improved ? "delta delta-up" : "delta delta-down"}>
-			{daysAgo ? <span className="delta-age">{daysAgo}d</span> : null}
+		<span
+			className={
+				improved ? "delta delta-cell delta-up" : "delta delta-cell delta-down"
+			}
+		>
 			<span aria-hidden="true">{improved ? "↑" : "↓"}</span>
 			<span className="sr-only">{improved ? "up " : "down "}</span>
 			{Math.abs(change)}
+			{daysAgo ? <span className="delta-age">{daysAgo}d</span> : null}
 		</span>
 	);
 }

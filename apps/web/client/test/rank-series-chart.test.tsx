@@ -2,7 +2,7 @@
    file-wide precondition shared by the suites below. */
 
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { KeywordRow } from "../src/api";
 import { RankSeriesChart } from "../src/components/rank-series-chart";
@@ -229,6 +229,41 @@ describe("Rank series chart", () => {
 		expect(container.querySelector(".marker-index")?.textContent).toBe("1");
 		expect(container.querySelector(".marker-pin title")?.textContent).toBe(
 			"2 Jan 2026 · version 3.2 · title, screenshots"
+		);
+	});
+
+	it("draws in CSS pixels, so the axis type is the size the token asks for", () => {
+		// A fixed design-unit viewBox scaled to fit renders every label at
+		// 14 * (width / 960): oversized on a wide card, illegible in a narrow one.
+		const width = 720;
+		const measured = vi
+			.spyOn(HTMLElement.prototype, "getBoundingClientRect")
+			.mockReturnValue({ width } as DOMRect);
+		const { container } = render(
+			<RankSeriesChart
+				series={[row({ points: [{ date: "2026-01-01", position: 4 }] })]}
+				styleOf={solid}
+				window={{ from: "2026-01-01", to: "2026-01-03" }}
+			/>
+		);
+		expect(container.querySelector("svg")?.getAttribute("viewBox")).toBe(
+			`0 0 ${width} 360`
+		);
+		measured.mockRestore();
+	});
+
+	it("keeps a drawable width when the box measures nothing", () => {
+		// happy-dom, a display:none ancestor and a first paint all report zero;
+		// a zero-width viewBox would collapse the whole graphic.
+		const { container } = render(
+			<RankSeriesChart
+				series={[row({ points: [{ date: "2026-01-01", position: 4 }] })]}
+				styleOf={solid}
+				window={{ from: "2026-01-01", to: "2026-01-03" }}
+			/>
+		);
+		expect(container.querySelector("svg")?.getAttribute("viewBox")).toBe(
+			"0 0 960 360"
 		);
 	});
 
