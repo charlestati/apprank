@@ -42,7 +42,7 @@ SPACING="${APPRANK_REFRESH_SPACING:-15}"
 # starves the lowest-weighted storefront every run rather than sharing the
 # shortfall. Nothing is lost when it does bind, since an uncrawled pair stays
 # due, but it is silent, so keep this above the pair count.
-MAX_UNITS="${APPRANK_REFRESH_MAX_UNITS:-140}"
+MAX_UNITS="${APPRANK_REFRESH_MAX_UNITS:-300}"
 # Consecutive stalls that mean the dev session is wedged rather than slow.
 MAX_MISSES="${APPRANK_REFRESH_MAX_MISSES:-3}"
 MAX_STEPS="${APPRANK_REFRESH_MAX_STEPS:-80}"
