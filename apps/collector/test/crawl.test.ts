@@ -128,6 +128,39 @@ describe(crawlPair, () => {
 		weight: 1,
 	};
 
+	it("archives to R2 before it records anything in D1", async () => {
+		// R2 is the source of truth and D1 the view, so the order is the
+		// guarantee: interrupted between the two, a spare object is harmless
+		// while a ranking row whose body was never archived cannot be repaired,
+		// because Apple will not serve that result page again.
+		await insertPair(1);
+		stubFetch(() => Response.json(fakeSearchResponse(200)));
+
+		const order: string[] = [];
+		const put = vi.spyOn(env.ARCHIVE, "put").mockImplementation(((
+			key: string
+		) => {
+			if (String(key).startsWith("staging/rankings/")) {
+				order.push("archive");
+			}
+			return Promise.resolve(null);
+		}) as never);
+		const batch = vi
+			.spyOn(env.DB, "batch")
+			.mockImplementation(async (stmts: unknown) => {
+				order.push("d1");
+				batch.mockRestore();
+				const out = await env.DB.batch(stmts as never);
+				return out as never;
+			});
+
+		await crawlPair(env, pair, 3);
+		put.mockRestore();
+
+		expect(order[0]).toBe("archive");
+		expect(order).toContain("d1");
+	});
+
 	it("persists the full 200-deep ordered list plus indexed top-10 rows", async () => {
 		await insertPair(1);
 		stubFetch(() => Response.json(fakeSearchResponse(200)));

@@ -229,6 +229,28 @@ export async function crawlPair(
 		);
 	}
 
+	// Archive before recording. R2 is the source of truth and D1 the view, so an
+	// interruption between the two must leave a spare object, never an
+	// observation whose body can no longer be fetched: Apple will not serve this
+	// page again. A re-run overwrites the object harmlessly.
+	// Staging is compacted into daily NDJSON overnight.
+	await env.ARCHIVE.put(
+		`staging/rankings/${date}/${pair.id}.json`,
+		JSON.stringify({
+			collectorVersion: COLLECTOR_VERSION,
+			date,
+			fetchedAt: now,
+			httpStatus: outcome.status,
+			keyword: pair.keyword_text,
+			locale: pair.locale_code,
+			pairId: pair.id,
+			responseMs: outcome.responseMs,
+			resultCount,
+			resultIds,
+			storefront: pair.storefront_code,
+		})
+	);
+
 	stmts.push(
 		env.DB.prepare(
 			`INSERT INTO ranking (pair_id, observed_date, fetched_at, http_status, response_ms, result_count, result_ids, collector_version, r2_key, valid)
@@ -296,24 +318,6 @@ export async function crawlPair(
 			await env.DB.batch(entryStmts);
 		}
 	}
-
-	// Normalised observation to staging (compacted into daily NDJSON overnight).
-	await env.ARCHIVE.put(
-		`staging/rankings/${date}/${pair.id}.json`,
-		JSON.stringify({
-			collectorVersion: COLLECTOR_VERSION,
-			date,
-			fetchedAt: now,
-			httpStatus: outcome.status,
-			keyword: pair.keyword_text,
-			locale: pair.locale_code,
-			pairId: pair.id,
-			responseMs: outcome.responseMs,
-			resultCount,
-			resultIds,
-			storefront: pair.storefront_code,
-		})
-	);
 
 	return { throttled: false };
 }

@@ -43,6 +43,8 @@ SPACING="${APPRANK_REFRESH_SPACING:-15}"
 # shortfall. Nothing is lost when it does bind, since an uncrawled pair stays
 # due, but it is silent, so keep this above the pair count.
 MAX_UNITS="${APPRANK_REFRESH_MAX_UNITS:-140}"
+# Consecutive stalls that mean the dev session is wedged rather than slow.
+MAX_MISSES="${APPRANK_REFRESH_MAX_MISSES:-3}"
 MAX_STEPS="${APPRANK_REFRESH_MAX_STEPS:-80}"
 
 mkdir -p "$LOG_DIR" "$STATE_DIR"
@@ -130,16 +132,21 @@ for _ in $(seq 1 "$MAX_UNITS"); do
       break ;;
     *'"empty":false'*)
       crawled=$((crawled + 1))
+      # A crawl that worked clears the miss count: only *consecutive* stalls
+      # mean the session is wedged. Without this, two unrelated timeouts half an
+      # hour apart abandon a window that was collecting fine.
+      misses=0
       # The pair id, never the keyword (see redact), because an id means nothing
       # without the database.
       say "crawled pair $(printf '%s' "$r" | sed -n 's/.*"pairId":\([0-9]*\).*/\1/p')"
       sleep "$SPACING" ;;
     "")
-      # An empty body is a timeout, not an answer. Retry once before giving up,
-      # so one slow request does not abandon a window we cannot collect later.
+      # An empty body is a timeout, not an answer. `wrangler dev` occasionally
+      # stalls a request for the full --max-time; retry rather than give up on
+      # a window that cannot be collected later.
       misses=$((misses + 1))
-      say "empty response (miss $misses)"
-      [ "$misses" -ge 2 ] && { say "stopping after repeated empty responses"; break; }
+      say "empty response (miss $misses of $MAX_MISSES)"
+      [ "$misses" -ge "$MAX_MISSES" ] && { say "stopping after $misses consecutive empty responses"; break; }
       sleep "$SPACING" ;;
     *)
       say "UNEXPECTED response, stopping: $(redact "$r")"
