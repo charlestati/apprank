@@ -45,11 +45,17 @@ beforeEach(async () => {
 		env.DB.prepare("DELETE FROM asc_report_instance"),
 		env.DB.prepare("DELETE FROM crawl_pair"),
 		env.DB.prepare("DELETE FROM app_language"),
+		// Miniflare's D1 enforces foreign keys, so children go before parents:
+		// tracked_keyword points at app and would block the delete below.
+		env.DB.prepare("DELETE FROM tracked_keyword"),
 		env.DB.prepare("DELETE FROM tracked_app"),
 		env.DB.prepare("DELETE FROM app"),
 		env.DB.prepare(
 			"INSERT OR IGNORE INTO storefront (code, name, weight, active) VALUES ('fr', 'France', 1.0, 1)"
 		),
+		// storefront rows outlive a test, so retire anything an earlier one turned
+		// on. Otherwise chart and ads counts depend on file order.
+		env.DB.prepare("UPDATE storefront SET active = 0 WHERE code <> 'fr'"),
 		env.DB.prepare(
 			"INSERT OR IGNORE INTO locale (code, language) VALUES ('fr-FR', 'fr')"
 		),
@@ -136,6 +142,148 @@ describe("scheduled handler", () => {
 		// Two genre slots (the tracked app's own genre + storefront-wide) × three
 		// charts. The genre is not hardcoded: an app in any category gets its own.
 		expect((charts as { queue: unknown[] }).queue).toHaveLength(6);
+	});
+
+	it("pulls a storefront tracked by crawl pair alone, in the pair's locale", async () => {
+		// Spain indexes Spanish, Catalan and English, never French, so the content
+		// language can never reach it. Tracking it is a deliberate act: somebody
+		// switched on a crawl pair. Before this was a union, that bought keyword
+		// ranks and nothing else, permanently.
+		await env.DB.batch([
+			env.DB.prepare(
+				"INSERT OR IGNORE INTO storefront (code, name, weight, active) VALUES ('es', 'Spain', 0.6, 1)"
+			),
+			env.DB.prepare("UPDATE storefront SET active = 1 WHERE code = 'es'"),
+			env.DB.prepare(
+				"INSERT OR IGNORE INTO locale (code, language) VALUES ('es-ES', 'es')"
+			),
+			env.DB.prepare(
+				"INSERT OR IGNORE INTO storefront_locale (storefront_code, locale_code, is_default) VALUES ('es', 'es-ES', 1)"
+			),
+			env.DB.prepare(
+				"INSERT INTO app (id, current_name, primary_genre_id, first_seen_at, last_seen_at) VALUES (?, 'Tracked App', 6013, 0, 0)"
+			).bind(APP_ID),
+			env.DB.prepare(
+				"INSERT INTO tracked_app (user_id, app_id, created_at) VALUES ('admin', ?, 0)"
+			).bind(APP_ID),
+			env.DB.prepare(
+				"INSERT INTO app_language (app_id, language) VALUES (?, 'fr')"
+			).bind(APP_ID),
+			env.DB.prepare(
+				"INSERT OR IGNORE INTO keyword (id, text, normalized, language) VALUES (1, 'kw', 'kw', 'fr')"
+			),
+			env.DB.prepare(
+				"INSERT OR IGNORE INTO tracked_keyword (user_id, app_id, keyword_id, created_at) VALUES ('admin', ?, 1, 0)"
+			).bind(APP_ID),
+			env.DB.prepare(
+				"INSERT OR IGNORE INTO crawl_pair (id, keyword_id, storefront_code, locale_code, tier, ref_count, interval_hours, next_due_at) VALUES (1, 1, 'es', 'es-ES', 1, 1, 24, 0)"
+			),
+		]);
+
+		await runCron("0 3 * * *");
+		const tasks = await drainQueue();
+
+		const lookup = tasks.find((t) => t.type === "lookup_pull") as {
+			queue: { appId: number; localeCode: string; storefront: string }[];
+		};
+		// France still arrives via the language join, in its own locale.
+		expect(lookup.queue).toContainEqual({
+			appId: APP_ID,
+			localeCode: "fr-FR",
+			storefront: "fr",
+		});
+		expect(lookup.queue).toContainEqual({
+			appId: APP_ID,
+			localeCode: "es-ES",
+			storefront: "es",
+		});
+		const review = tasks.find((t) => t.type === "review_pull") as {
+			queue: unknown[];
+		};
+		expect(review.queue).toContainEqual({ appId: APP_ID, storefront: "es" });
+		const charts = tasks.find((t) => t.type === "chart_pull") as {
+			queue: { storefront: string }[];
+		};
+		expect(charts.queue.some((c) => c.storefront === "es")).toBeTruthy();
+	});
+
+	it("uses the storefront's own default locale for a multi-language app", async () => {
+		// app_language is a set with no primary, so a French *and* English app
+		// matches both fr-FR and en-GB in France. Picking by name alone would take
+		// en-GB and file the English listing as France's, and Apple does honour the
+		// lang parameter where the app is really localised, so the stored metadata
+		// would be wrong rather than merely mislabelled.
+		await env.DB.batch([
+			env.DB.prepare(
+				"INSERT OR IGNORE INTO locale (code, language) VALUES ('en-GB', 'en')"
+			),
+			env.DB.prepare(
+				"INSERT OR IGNORE INTO storefront_locale (storefront_code, locale_code, is_default) VALUES ('fr', 'en-GB', 0)"
+			),
+			env.DB.prepare(
+				"INSERT INTO app (id, current_name, primary_genre_id, first_seen_at, last_seen_at) VALUES (?, 'Bilingual App', 6013, 0, 0)"
+			).bind(APP_ID),
+			env.DB.prepare(
+				"INSERT INTO tracked_app (user_id, app_id, created_at) VALUES ('admin', ?, 0)"
+			).bind(APP_ID),
+			env.DB.prepare(
+				"INSERT INTO app_language (app_id, language) VALUES (?, 'fr'), (?, 'en')"
+			).bind(APP_ID, APP_ID),
+		]);
+
+		await runCron("0 3 * * *");
+		const tasks = await drainQueue();
+
+		const lookup = tasks.find((t) => t.type === "lookup_pull") as {
+			queue: { appId: number; localeCode: string; storefront: string }[];
+		};
+		expect(lookup.queue).toStrictEqual([
+			{ appId: APP_ID, localeCode: "fr-FR", storefront: "fr" },
+		]);
+	});
+
+	it("retiring a pair drops its storefront back out of the pulls", async () => {
+		// ref_count is how a pair is retired without losing its history, so a
+		// retired pair must stop pulling metadata too, or coverage only ever grows.
+		await env.DB.batch([
+			env.DB.prepare(
+				"INSERT OR IGNORE INTO storefront (code, name, weight, active) VALUES ('es', 'Spain', 0.6, 1)"
+			),
+			env.DB.prepare("UPDATE storefront SET active = 1 WHERE code = 'es'"),
+			env.DB.prepare(
+				"INSERT OR IGNORE INTO locale (code, language) VALUES ('es-ES', 'es')"
+			),
+			env.DB.prepare(
+				"INSERT OR IGNORE INTO storefront_locale (storefront_code, locale_code, is_default) VALUES ('es', 'es-ES', 1)"
+			),
+			env.DB.prepare(
+				"INSERT INTO app (id, current_name, primary_genre_id, first_seen_at, last_seen_at) VALUES (?, 'Tracked App', 6013, 0, 0)"
+			).bind(APP_ID),
+			env.DB.prepare(
+				"INSERT INTO tracked_app (user_id, app_id, created_at) VALUES ('admin', ?, 0)"
+			).bind(APP_ID),
+			env.DB.prepare(
+				"INSERT INTO app_language (app_id, language) VALUES (?, 'fr')"
+			).bind(APP_ID),
+			env.DB.prepare(
+				"INSERT OR IGNORE INTO keyword (id, text, normalized, language) VALUES (1, 'kw', 'kw', 'fr')"
+			),
+			env.DB.prepare(
+				"INSERT OR IGNORE INTO tracked_keyword (user_id, app_id, keyword_id, created_at) VALUES ('admin', ?, 1, 0)"
+			).bind(APP_ID),
+			env.DB.prepare(
+				"INSERT OR IGNORE INTO crawl_pair (id, keyword_id, storefront_code, locale_code, tier, ref_count, interval_hours, next_due_at) VALUES (1, 1, 'es', 'es-ES', 1, 0, 24, 0)"
+			),
+		]);
+
+		await runCron("0 3 * * *");
+		const tasks = await drainQueue();
+
+		const lookup = tasks.find((t) => t.type === "lookup_pull") as {
+			queue: { storefront: string }[];
+		};
+		expect(lookup.queue.some((u) => u.storefront === "es")).toBeFalsy();
+		expect(lookup.queue.some((u) => u.storefront === "fr")).toBeTruthy();
 	});
 
 	it("charts storefront-wide only until an app's genre is known", async () => {

@@ -161,20 +161,58 @@ async function runDailyJobs(env: Env): Promise<{
 		}
 	}
 
-	// Tracked-app pulls: metadata lookup (per storefront × its default indexed
-	// locale for our language), reviews, charts. All three hit the public iTunes
-	// endpoints, so a deployment that cannot reach them skips queueing work whose
-	// only outcome is a throttle and an abandoned batch.
-	// The storefront set follows each app's content language (language ≠
-	// storefront).
+	// Tracked-app pulls: metadata lookup (per storefront × the locale we query it
+	// in), reviews, charts. All three hit the public iTunes endpoints, so a
+	// deployment that cannot reach them skips queueing work whose only outcome is
+	// a throttle and an abandoned batch.
+	//
+	// Coverage is the union of two sources because neither alone is right.
+	// Content language (language ≠ storefront) gives the storefronts Apple
+	// cross-localises the app into, which is what an app tracked before it has
+	// any keywords should still get. Live crawl pairs give the storefronts
+	// somebody actually chose, and they are the only way a storefront indexing
+	// nothing in the app's language is reached at all: Spain for a French app
+	// indexes Spanish, Catalan and English, so the language join can never
+	// produce it, and on its own that storefront yields keyword ranks with no
+	// metadata, reviews or charts for as long as it runs.
+	//
+	// Locale preference, in order: the storefront's own default among the app's
+	// languages, then any locale in one of them, then the pair's. The first rung
+	// is what makes a multi-language app correct, and app_language is a set with
+	// no primary: a French *and* English app indexes both fr-FR and en-GB in
+	// France, and picking by name alone would fetch the English listing and store
+	// it as France's. Apple honours the lang parameter whenever the app really is
+	// localised in that storefront, so that metadata would be wrong, not merely
+	// mislabelled. Belgium is why the second rung exists: it indexes French, but
+	// its default is English, so a French-only app has no default to match.
+	//
+	// Every branch is an aggregate rather than a bare column on purpose: SQLite
+	// only pins a bare column to the min()/max() row when there is exactly one
+	// such aggregate, and on ties it picks among them arbitrarily.
 	const targets = await env.DB.prepare(
-		`SELECT ta.app_id, sl.storefront_code AS code, MIN(sl.locale_code) AS locale_code
-     FROM tracked_app ta
-     JOIN app_language al ON al.app_id = ta.app_id
-     JOIN locale l ON l.language = al.language
-     JOIN storefront_locale sl ON sl.locale_code = l.code
-     JOIN storefront s ON s.code = sl.storefront_code AND s.active = 1
-     GROUP BY ta.app_id, sl.storefront_code`
+		`SELECT app_id, code,
+            COALESCE(
+              MIN(CASE WHEN pref = 0 AND is_default = 1 THEN locale_code END),
+              MIN(CASE WHEN pref = 0 THEN locale_code END),
+              MIN(CASE WHEN pref = 1 THEN locale_code END)
+            ) AS locale_code
+       FROM (
+         SELECT ta.app_id AS app_id, sl.storefront_code AS code,
+                sl.locale_code AS locale_code, sl.is_default AS is_default,
+                0 AS pref
+           FROM tracked_app ta
+           JOIN app_language al ON al.app_id = ta.app_id
+           JOIN locale l ON l.language = al.language
+           JOIN storefront_locale sl ON sl.locale_code = l.code
+           JOIN storefront s ON s.code = sl.storefront_code AND s.active = 1
+         UNION ALL
+         SELECT tk.app_id AS app_id, cp.storefront_code AS code,
+                cp.locale_code AS locale_code, 0 AS is_default, 1 AS pref
+           FROM tracked_keyword tk
+           JOIN crawl_pair cp ON cp.keyword_id = tk.keyword_id AND cp.ref_count > 0
+           JOIN storefront s ON s.code = cp.storefront_code AND s.active = 1
+       )
+      GROUP BY app_id, code`
 	).all<{ app_id: number; code: string; locale_code: string }>();
 
 	if (targets.results.length > 0 && collectsPublicEndpoints(env)) {

@@ -83,7 +83,12 @@ async function measureOverhead(env: Env): Promise<number> {
           JOIN locale l ON l.language = al.language
           JOIN storefront_locale sl ON sl.locale_code = l.code
           JOIN storefront s ON s.code = sl.storefront_code AND s.active = 1
-          GROUP BY ta.app_id, sl.storefront_code)) AS app_storefronts,
+          UNION
+          SELECT tk.app_id, cp.storefront_code
+          FROM tracked_keyword tk
+          JOIN crawl_pair cp ON cp.keyword_id = tk.keyword_id AND cp.ref_count > 0
+          JOIN storefront s ON s.code = cp.storefront_code AND s.active = 1))
+         AS app_storefronts,
        (SELECT COUNT(DISTINCT cp.storefront_code) FROM crawl_pair cp
          WHERE cp.ref_count > 0 AND cp.tier = 1) AS storefronts`
 	).first<{ app_storefronts: number; storefronts: number }>();
