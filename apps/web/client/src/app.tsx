@@ -10,6 +10,7 @@ import {
 
 import { api } from "./api";
 import type { DataHealth, TrackedApp } from "./api";
+import { Select } from "./components/select";
 import { I18nProvider, LanguagePicker, useT } from "./i18n";
 import { Health } from "./pages/health";
 import { KeywordPerformance } from "./pages/keyword-performance";
@@ -53,24 +54,21 @@ function AppPicker({
 	const { pathname } = useLocation();
 
 	return (
-		<label className="app-picker">
-			<span className="sr-only">{t.application}</span>
-			<select
-				onChange={(e) => {
-					onSelect(Number(e.target.value));
-					if (pathname.startsWith("/pairs/")) {
-						navigate("/");
-					}
-				}}
-				value={appId ?? ""}
-			>
-				{apps.map((a) => (
-					<option key={a.id} value={a.id}>
-						{a.current_name ?? `#${a.id}`}
-					</option>
-				))}
-			</select>
-		</label>
+		<Select
+			hiddenLabel
+			label={t.application}
+			onValueChange={(id) => {
+				onSelect(id);
+				if (pathname.startsWith("/pairs/")) {
+					navigate("/");
+				}
+			}}
+			options={apps.map((a) => ({
+				label: a.current_name ?? `#${a.id}`,
+				value: a.id,
+			}))}
+			value={appId ?? apps[0]?.id ?? 0}
+		/>
 	);
 }
 

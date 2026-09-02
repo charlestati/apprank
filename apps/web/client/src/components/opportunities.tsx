@@ -11,38 +11,16 @@ import type { KeywordRow, Report } from "../api";
 import { fmt, plural, useT } from "../i18n";
 import type { Dictionary } from "../i18n";
 
+// No lane carries a colour. The label already says which lane it is, so a
+// tinted panel behind a coloured rule was decoration standing in for a
+// distinction the words had already made.
 const lanesFor = (t: Dictionary) =>
 	[
-		{
-			hint: t.laneWinningHint,
-			key: "winning",
-			label: t.laneWinning,
-			tone: "lane-good",
-		},
-		{
-			hint: t.laneCloseHint,
-			key: "close",
-			label: t.laneClose,
-			tone: "lane-focus",
-		},
-		{
-			hint: t.laneBlockedHint,
-			key: "blocked",
-			label: t.laneBlocked,
-			tone: "lane-warn",
-		},
-		{
-			hint: t.laneVanityHint,
-			key: "vanity",
-			label: t.laneVanity,
-			tone: "lane-muted",
-		},
-		{
-			hint: t.laneUnknownHint,
-			key: "unknown",
-			label: t.laneUnknown,
-			tone: "lane-muted",
-		},
+		{ hint: t.laneWinningHint, key: "winning", label: t.laneWinning },
+		{ hint: t.laneCloseHint, key: "close", label: t.laneClose },
+		{ hint: t.laneBlockedHint, key: "blocked", label: t.laneBlocked },
+		{ hint: t.laneVanityHint, key: "vanity", label: t.laneVanity },
+		{ hint: t.laneUnknownHint, key: "unknown", label: t.laneUnknown },
 	] as const;
 
 function pickExamples(rows: KeywordRow[], key: string): KeywordRow[] {
@@ -102,9 +80,11 @@ export function Opportunities({
 
 			<div className="lanes">
 				{lanes.map((lane) => (
-					<div className={`lane ${lane.tone}`} key={lane.key}>
-						<div className="lane-count">{counts[lane.key] ?? 0}</div>
-						<div className="lane-label">{lane.label}</div>
+					<div className="lane" key={lane.key}>
+						<h3 className="lane-head">
+							<span className="lane-count">{counts[lane.key] ?? 0}</span>
+							<span className="lane-label">{lane.label}</span>
+						</h3>
 						<p className="lane-hint">{lane.hint}</p>
 						<ul className="lane-examples">
 							{pickExamples(rows, lane.key).map((row) => (

@@ -14,6 +14,8 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
+import { Select } from "./components/select";
+
 export type Lang = "en" | "fr";
 
 const STORAGE_KEY = "apprank.lang";
@@ -550,15 +552,13 @@ export function reasonText(
 export function LanguagePicker() {
 	const { lang, setLang, t } = useI18n();
 	return (
-		<label className="lang-picker">
-			<span className="sr-only">{t.language}</span>
-			<select onChange={(e) => setLang(e.target.value as Lang)} value={lang}>
-				{LANGUAGES.map((l) => (
-					<option key={l.code} value={l.code}>
-						{l.label}
-					</option>
-				))}
-			</select>
-		</label>
+		<Select
+			hiddenLabel
+			label={t.language}
+			onValueChange={(next) => setLang(next as Lang)}
+			options={LANGUAGES.map((l) => ({ label: l.label, value: l.code }))}
+			tone="quiet"
+			value={lang}
+		/>
 	);
 }

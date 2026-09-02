@@ -309,36 +309,99 @@ main {
 	text-decoration: none;
 	color: var(--ds-text-subtle);
 }
-/* Language picker: a quiet control in the top bar. It changes how the page
-   reads, never what it reports, so it should not compete with the data. */
-.lang-picker select,
-.app-picker select {
-	appearance: none;
-	background: transparent;
-	border: 1px solid var(--ds-border);
-	border-radius: var(--ds-radius-small);
-	color: var(--ds-text-subtle);
-	cursor: pointer;
+/* ── Controls ──────────────────────────────────────────────────────────────
+   Every select, in the top bar and in the page, is one Base UI trigger at one
+   height. A native `<select>` cannot be styled past its own border, so the
+   dark surface used to stop at the popup edge and the control never matched
+   the buttons beside it. `quiet` is the top bar and the table toolbar: a
+   control that changes how the page reads, never what it reports. */
+
+.ui-trigger {
+	display: inline-flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--ds-space-100);
+	/* The ADS medium control. The segmented group matches it exactly. */
+	height: 40px;
+	min-width: 0;
+	padding: 0 var(--ds-space-150);
+	border: 1px solid var(--ds-border-input);
+	border-radius: var(--ds-radius-medium);
+	background: var(--ds-surface);
+	color: var(--ds-text);
 	font: inherit;
-	font: var(--ds-font-body);
-	padding: 2px 8px;
+	text-align: left;
+	cursor: pointer;
 }
-.lang-picker select:hover,
-.app-picker select:hover {
+.ui-trigger:hover {
+	background: var(--ds-surface-hovered);
+}
+.ui-trigger[data-popup-open] {
+	border-color: var(--ds-border-selected);
+}
+.ui-trigger-icon {
+	display: inline-flex;
+	flex: none;
+	color: var(--ds-text-subtlest);
+}
+
+.ui-trigger-quiet {
+	height: 28px;
+	padding: 0 var(--ds-space-100);
+	border-color: var(--ds-border);
+	background: transparent;
+	color: var(--ds-text-subtle);
+	font: var(--ds-font-body);
+}
+.ui-trigger-quiet:hover {
 	background: var(--ds-background-neutral);
 	color: var(--ds-text);
 }
-.lang-picker select:focus-visible,
-.app-picker select:focus-visible {
-	outline: 2px solid var(--ds-border-focused);
-	outline-offset: 1px;
+
+.ui-popup {
+	box-sizing: border-box;
+	min-width: var(--anchor-width);
+	max-height: var(--available-height);
+	padding: var(--ds-space-050);
+	overflow-y: auto;
+	background: var(--ds-surface-overlay);
+	border: 1px solid var(--ds-border);
+	border-radius: var(--ds-radius-medium);
+	box-shadow: var(--ds-shadow-overlay);
+	color: var(--ds-text);
+	font: var(--ds-font-body);
 }
 
-/* Must follow the shared rule above: same specificity, so order decides.
-   The app name is the page's subject, not a preference like the language. */
-.app-picker select {
-	color: var(--ds-text);
-	font-weight: 500;
+.ui-option {
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-100);
+	padding: var(--ds-space-075) var(--ds-space-100);
+	border-radius: var(--ds-radius-small);
+	cursor: pointer;
+	outline: none;
+	white-space: nowrap;
+}
+/* `data-highlighted` is the roving cursor, keyboard and pointer alike, which
+   is the state that has to read as "this one" — not `:hover`. */
+.ui-option[data-highlighted] {
+	background: var(--ds-neutral-subtle-hovered);
+}
+.ui-option[data-selected] {
+	color: var(--ds-text-selected);
+	font-weight: 600;
+}
+.ui-option-check {
+	display: inline-flex;
+	width: 12px;
+	flex: none;
+}
+
+.ui-backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 9;
+	background: #0b0d1259;
 }
 
 .who {
@@ -424,12 +487,16 @@ h1 {
 
 /* ── Filter bar ────────────────────────────────────────────────────────── */
 
+/* Every field is a label row over a 40px control, so the bar aligns on the
+   grid rather than on whatever height each control happened to be. The time
+   range was a `<fieldset>`, whose user-agent margin and padding is what sat it
+   below the select no matter what the bar aligned on. */
 .filter-bar {
 	display: flex;
 	flex-wrap: wrap;
-	align-items: flex-end;
+	align-items: flex-start;
 	gap: var(--ds-space-300);
-	padding: var(--ds-space-150) var(--ds-space-200);
+	padding: var(--ds-space-200);
 	margin-bottom: var(--ds-space-250);
 	background: var(--ds-surface-raised);
 	border: 1px solid var(--ds-border);
@@ -439,18 +506,20 @@ h1 {
 .field {
 	display: flex;
 	flex-direction: column;
+	align-items: flex-start;
 	gap: var(--ds-space-050);
 }
 
 .field-label {
+	display: block;
+	/* Fixed, so a one-word label and a two-word label put their controls on the
+	   same line. */
+	height: 20px;
 	color: var(--ds-text-subtle);
 	font: var(--ds-font-heading-xsmall);
 }
 
-.field select,
 .search {
-	/* ADS medium control: 40px tall. The old 32px was sized around 14px text and
-     clips the descenders of the 16px body step. */
 	height: 40px;
 	padding: 0 var(--ds-space-150);
 	border: 1px solid var(--ds-border-input);
@@ -459,23 +528,26 @@ h1 {
 	color: var(--ds-text);
 	font: inherit;
 }
-.field select:hover,
 .search:hover {
 	background: var(--ds-surface-hovered);
 }
 
 .segmented {
 	display: inline-flex;
+	height: 40px;
+	padding: 0;
+	margin: 0;
 	border: 1px solid var(--ds-border-input);
 	border-radius: var(--ds-radius-medium);
 	overflow: hidden;
 }
 .seg {
-	height: 38px;
+	height: 100%;
 	padding: 0 var(--ds-space-200);
 	border: 0;
 	background: var(--ds-surface);
 	color: var(--ds-text-subtle);
+	font: inherit;
 	cursor: pointer;
 }
 .seg + .seg {
@@ -484,7 +556,7 @@ h1 {
 .seg:hover {
 	background: var(--ds-neutral-subtle-hovered);
 }
-.seg-on {
+.seg[data-pressed] {
 	background: var(--ds-background-selected);
 	color: var(--ds-text-selected);
 	font-weight: 600;
@@ -643,37 +715,36 @@ h1 {
 /* ── Opportunities ─────────────────────────────────────────────────────── */
 
 .insights {
-	padding: var(--ds-space-200);
+	padding: 0;
 }
 .insights-head {
-	margin-bottom: var(--ds-space-200);
+	padding: var(--ds-space-200) var(--ds-space-200) var(--ds-space-200);
 }
 .insights-sub {
 	margin: var(--ds-space-050) 0 0;
 	color: var(--ds-text-subtle);
 }
+/* Columns divided by a hairline, not five tinted panels behind five coloured
+   rules. A lane that happens to be empty then reads as a short column rather
+   than as a card with a hole in it, and the accent bar stops standing in for
+   a distinction the label already makes. */
 .lanes {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-	gap: var(--ds-space-200);
+	grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+	border-top: 1px solid var(--ds-border);
 }
 .lane {
-	padding: var(--ds-space-150);
-	border-radius: var(--ds-radius-medium);
-	border-left: 3px solid var(--ds-border-bold);
-	background: var(--ds-background-neutral);
+	padding: var(--ds-space-200) var(--ds-space-200) var(--ds-space-100);
 }
-.lane-good {
-	border-left-color: var(--ds-chart-success);
+.lane + .lane {
+	border-left: 1px solid var(--ds-border);
 }
-.lane-focus {
-	border-left-color: var(--ds-chart-1);
-}
-.lane-warn {
-	border-left-color: var(--ds-chart-4);
-}
-.lane-muted {
-	border-left-color: var(--ds-chart-neutral);
+.lane-head {
+	display: flex;
+	align-items: baseline;
+	gap: var(--ds-space-100);
+	margin: 0;
+	font: var(--ds-font-body-large);
 }
 .lane-count {
 	font: var(--ds-font-heading-large);
@@ -1236,6 +1307,9 @@ table.grid tbody tr:hover {
 	height: 100%;
 	background: var(--ds-chart-1);
 }
+.meter-empty {
+	justify-content: flex-end;
+}
 .meter-value {
 	width: 28px;
 	/* The `font` shorthand resets font-variant, so it must come first or the
@@ -1298,20 +1372,13 @@ table.grid tbody tr:hover {
 	background: var(--ds-chart-success);
 }
 
-.toolbar-field select {
-	height: 32px;
-	padding: 0 var(--ds-space-100);
-	border: 1px solid var(--ds-border-input);
-	border-radius: var(--ds-radius-medium);
-	background: var(--ds-surface);
-	color: var(--ds-text);
-	font: inherit;
-}
-
+/* The toolbar is one row of 40px controls: search, band, export. Three
+   heights in one strip is what made the bar read as assembled rather than
+   designed. */
 .button {
 	display: inline-flex;
 	align-items: center;
-	height: 32px;
+	height: 40px;
 	padding: 0 var(--ds-space-150);
 	border: 1px solid var(--ds-border-input);
 	border-radius: var(--ds-radius-medium);
@@ -1351,6 +1418,7 @@ table.grid tbody tr:hover {
 	bottom: 0;
 	width: min(420px, 100vw);
 	z-index: 10;
+	margin: 0;
 	display: flex;
 	flex-direction: column;
 	padding: var(--ds-space-200);
@@ -1366,7 +1434,7 @@ table.grid tbody tr:hover {
 	gap: var(--ds-space-200);
 	margin-bottom: var(--ds-space-200);
 }
-.drawer-head h2 {
+.drawer-title {
 	margin: 0;
 	font: var(--ds-font-heading-medium);
 	line-height: 20px;

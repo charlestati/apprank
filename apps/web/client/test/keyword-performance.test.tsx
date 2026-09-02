@@ -10,7 +10,7 @@ import { Delta } from "../src/components/delta";
 import { Meter } from "../src/components/meter";
 import { SummaryTiles } from "../src/components/summary-tiles";
 import { KeywordPerformance } from "../src/pages/keyword-performance";
-import { stubFetch, trackedApp } from "./harness";
+import { chooseOption, stubFetch, trackedApp } from "./harness";
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -140,10 +140,13 @@ describe("Keyword performance page", () => {
 			.map((c) => c.textContent);
 		expect(cells[1]).toBe("4");
 		expect(cells[2]).toContain("1d");
-		expect([cells[4], cells[5], cells[7]]).toStrictEqual([
+		expect([cells[5], cells[7]]).toStrictEqual(["3 / 12", "212"]);
+		// The two meter cells carry the reading on the element itself, which is
+		// what `role="meter"` is for, so the score is read off the value.
+		const meters = within(row).getAllByRole("meter");
+		expect(meters.map((m) => m.getAttribute("aria-valuenow"))).toStrictEqual([
+			"55",
 			"62",
-			"3 / 12",
-			"212",
 		]);
 	});
 
@@ -189,9 +192,7 @@ describe("Keyword performance page", () => {
 		const calls = renderPage({ report: report(), storefronts });
 		await screen.findAllByText("example keyword");
 
-		fireEvent.change(screen.getByLabelText("Storefront"), {
-			target: { value: "be" },
-		});
+		chooseOption("Storefront", "Belgium (25)");
 		await vi.waitFor(() =>
 			expect(calls.some((c) => c.includes("storefront=be"))).toBeTruthy()
 		);
@@ -326,7 +327,9 @@ describe("Opportunities panel", () => {
 			storefronts,
 		});
 		await screen.findByText("What to work on");
-		const lane = document.querySelector(".lane-focus") as HTMLElement;
+		const lane = screen
+			.getByRole("heading", { name: /Within reach/u })
+			.closest(".lane") as HTMLElement;
 		expect(within(lane).getByText("reachable term")).toBeDefined();
 	});
 });
@@ -441,9 +444,7 @@ describe("Popularity filter", () => {
 		});
 		await screen.findAllByText("example keyword");
 
-		fireEvent.change(screen.getByLabelText("Filter by popularity"), {
-			target: { value: "1" },
-		});
+		chooseOption("Filter by popularity", "Very high (85–100)");
 		const table = screen.getByRole("table");
 		expect(within(table).getByText("example keyword")).toBeDefined();
 		expect(within(table).queryByText("quiet term")).toBeNull();

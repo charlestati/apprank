@@ -2,6 +2,8 @@
 // the number, the band it falls in, and on hover the inputs that produced it
 // and how many of the top ten we actually hold ratings for.
 
+import { Meter as BaseMeter } from "@base-ui/react/meter";
+
 import type { Difficulty as DifficultyValue } from "../api";
 import { fmt, useT } from "../i18n";
 
@@ -55,19 +57,22 @@ export function Difficulty({ value }: { value: DifficultyValue | null }) {
 	].join(" · ");
 
 	return (
-		<span className="meter" title={explanation}>
-			<span className="meter-track">
-				<span
-					className={bandClass(value.score)}
-					style={{ width: `${value.score}%` }}
-				/>
-			</span>
+		<BaseMeter.Root
+			aria-label={t.difficulty}
+			className="meter"
+			getAriaValueText={(_formatted, current) => String(current)}
+			title={explanation}
+			value={value.score}
+		>
+			<BaseMeter.Track className="meter-track">
+				<BaseMeter.Indicator className={bandClass(value.score)} />
+			</BaseMeter.Track>
 			<span className="meter-value">
-				{value.score}
+				<BaseMeter.Value>{(_formatted, score) => score}</BaseMeter.Value>
 				{value.sampleSize < 5 ? (
 					<sup title={t.difficultyFewIncumbents}>*</sup>
 				) : null}
 			</span>
-		</span>
+		</BaseMeter.Root>
 	);
 }

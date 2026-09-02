@@ -1,6 +1,7 @@
 // Shared client-test helpers: a routing table for the stubbed `fetch` and
 // neutral fixtures. Nothing here talks to a real server.
 
+import { fireEvent, screen, within } from "@testing-library/dom";
 import { vi } from "vitest";
 
 import type {
@@ -145,4 +146,27 @@ export function dataHealth(over: Partial<DataHealth> = {}): DataHealth {
 		tier1Pairs: 10,
 		...over,
 	};
+}
+
+/**
+ * Drives a Base UI select: open the listbox, then pick the option by its text.
+ *
+ * The trigger is a combobox button and the list is portalled, so `fireEvent
+ * .change` has nothing to change and a query scoped to the render container
+ * cannot see the options. The listbox is opened with the key a keyboard user
+ * would press, because happy-dom's synthetic pointer events do not carry
+ * enough for the trigger's own press handling.
+ */
+export function chooseOption(controlName: string | RegExp, option: string) {
+	const trigger = screen.getByLabelText(controlName);
+	fireEvent.keyDown(trigger, { key: "ArrowDown" });
+	fireEvent.keyUp(trigger, { key: "ArrowDown" });
+	const item = within(screen.getByRole("listbox")).getByRole("option", {
+		name: option,
+	});
+	fireEvent.pointerDown(item, { button: 0, pointerType: "mouse" });
+	fireEvent.mouseDown(item, { button: 0 });
+	fireEvent.pointerUp(item, { button: 0, pointerType: "mouse" });
+	fireEvent.mouseUp(item, { button: 0 });
+	fireEvent.click(item, { button: 0 });
 }

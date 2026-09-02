@@ -11,6 +11,8 @@ import { Opportunities } from "../components/opportunities";
 import { RankSeriesChart } from "../components/rank-series-chart";
 import type { SeriesStyle } from "../components/rank-series-chart";
 import { ResultsDrawer } from "../components/results-drawer";
+import { Segmented } from "../components/segmented";
+import { Select } from "../components/select";
 import { SeriesGlyph } from "../components/series-glyph";
 import { SummaryTiles } from "../components/summary-tiles";
 import { useFormat } from "../format";
@@ -179,35 +181,29 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 			</header>
 
 			<div className="filter-bar">
-				<label className="field">
-					<span className="field-label">{t.storefront}</span>
-					<select
-						onChange={(e) => setStorefront(e.target.value)}
+				<div className="field">
+					<Select
+						label={t.storefront}
+						onValueChange={setStorefront}
+						options={storefronts.map((s) => ({
+							label: `${f.region(s.code, s.name)} (${f.number(s.keywords)})`,
+							value: s.code,
+						}))}
 						value={storefront}
-					>
-						{storefronts.map((s) => (
-							<option key={s.code} value={s.code}>
-								{f.region(s.code, s.name)} ({f.number(s.keywords)})
-							</option>
-						))}
-					</select>
-				</label>
+					/>
+				</div>
 
 				<div className="field">
 					<span className="field-label">{t.timePeriod}</span>
-					<fieldset className="segmented">
-						{RANGES.map((r) => (
-							<button
-								aria-pressed={days === r.days}
-								className={days === r.days ? "seg seg-on" : "seg"}
-								key={r.days}
-								onClick={() => setDays(r.days)}
-								type="button"
-							>
-								{fmt(t.rangeDays, { n: r.days })}
-							</button>
-						))}
-					</fieldset>
+					<Segmented
+						label={t.timePeriod}
+						onValueChange={(next) => setDays(Number(next))}
+						options={RANGES.map((r) => ({
+							label: fmt(t.rangeDays, { n: r.days }),
+							value: String(r.days),
+						}))}
+						value={String(days)}
+					/>
 				</div>
 			</div>
 
@@ -296,19 +292,16 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 								type="search"
 								value={filter}
 							/>
-							<label className="toolbar-field">
-								<span className="sr-only">{t.filterByPopularity}</span>
-								<select
-									onChange={(e) => setBand(Number(e.target.value))}
-									value={band}
-								>
-									{POPULARITY_BANDS.map((b, i) => (
-										<option key={b.key} value={i}>
-											{t[b.key]}
-										</option>
-									))}
-								</select>
-							</label>
+							<Select
+								hiddenLabel
+								label={t.filterByPopularity}
+								onValueChange={setBand}
+								options={POPULARITY_BANDS.map((b, i) => ({
+									label: t[b.key],
+									value: i,
+								}))}
+								value={band}
+							/>
 							<span className="spacer" />
 							<span className="toolbar-meta">
 								{fmt(t.nOfMShown, {

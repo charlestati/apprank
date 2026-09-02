@@ -1,7 +1,7 @@
 /* oxlint-disable vitest/require-top-level-describe -- the storage reset is a
    file-wide precondition shared by every suite below. */
 
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 import {
@@ -13,6 +13,7 @@ import {
 	useT,
 } from "../src/i18n";
 import type { Dictionary } from "../src/i18n";
+import { chooseOption } from "./harness";
 
 beforeEach(() => {
 	// Unstub first: a previous test may have replaced localStorage with one that
@@ -102,7 +103,7 @@ describe(LanguagePicker, () => {
 		);
 		expect(screen.getByText("What to work on")).toBeTruthy();
 
-		fireEvent.change(screen.getByRole("combobox"), { target: { value: "fr" } });
+		chooseOption("Language", "Français");
 
 		expect(screen.getByText("Sur quoi travailler")).toBeTruthy();
 		expect(localStorage.getItem("apprank.lang")).toBe("fr");
@@ -115,7 +116,7 @@ describe(LanguagePicker, () => {
 				<LanguagePicker />
 			</I18nProvider>
 		);
-		fireEvent.change(screen.getByRole("combobox"), { target: { value: "fr" } });
+		chooseOption("Language", "Français");
 		expect(document.documentElement.lang).toBe("fr");
 	});
 });
