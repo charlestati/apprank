@@ -7,8 +7,9 @@
 # GitHub runner, so the observations carry the same normaliser, provenance and
 # idempotent keys as the scheduler's own; only the source address differs.
 #
-# Whether Azure's egress fares better than Cloudflare's is the open question
-# this workflow exists to answer. Run it once by hand before trusting the cron.
+# A runner's egress is not Cloudflare's, but it is still shared, and Apple
+# rate-limits whoever it is. Run this by hand once on a new deployment and
+# check `throttled=` in the summary before trusting the cron.
 name: Collect
 
 on:
