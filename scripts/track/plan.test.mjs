@@ -57,18 +57,18 @@ test("falls back to the storefront default when the language is not indexed", ()
 });
 
 test("normalizes the way the keyword table stores", () => {
-	assert.equal(normalize("  Mots Croisés  "), "mots croisés");
+	assert.equal(normalize("  Terme Accentué  "), "terme accentué");
 });
 
 test("creates app, track and pair rows for a new user", () => {
 	const { statements, summary } = planChanges(
 		{
-			friend: {
+			operator: {
 				appId: 42,
-				name: "His App",
+				name: "App",
 				language: "fr",
 				storefronts: ["fr", "ca"],
-				keywords: ["jeu de lettres"],
+				keywords: ["terme un"],
 			},
 		},
 		EMPTY
@@ -93,20 +93,20 @@ test("a second user tracking the same keyword adds no new pair", () => {
 				ref_count: 1,
 				storefront_code: "fr",
 				locale_code: "fr-FR",
-				normalized: "jeu de lettres",
+				normalized: "terme un",
 				language: "fr",
 			},
 		],
-		keywords: [{ id: 5, normalized: "jeu de lettres", language: "fr" }],
+		keywords: [{ id: 5, normalized: "terme un", language: "fr" }],
 	};
 	const { summary } = planChanges(
 		{
-			friend: {
+			other: {
 				appId: 2,
 				name: "Another",
 				language: "fr",
 				storefronts: ["fr"],
-				keywords: ["jeu de lettres"],
+				keywords: ["terme un"],
 			},
 		},
 		state
@@ -174,18 +174,18 @@ test("an unchanged config writes nothing at all", () => {
 				ref_count: 1,
 				storefront_code: "fr",
 				locale_code: "fr-FR",
-				normalized: "mots",
+				normalized: "terme deux",
 				language: "fr",
 			},
 		],
-		keywords: [{ id: 3, normalized: "mots", language: "fr" }],
+		keywords: [{ id: 3, normalized: "terme deux", language: "fr" }],
 		trackedApps: [{ user_id: "operator", app_id: 1 }],
 		trackedKeywords: [
 			{
 				user_id: "operator",
 				app_id: 1,
 				keyword_id: 3,
-				normalized: "mots",
+				normalized: "terme deux",
 				language: "fr",
 			},
 		],
@@ -197,7 +197,7 @@ test("an unchanged config writes nothing at all", () => {
 				name: "App",
 				language: "fr",
 				storefronts: ["fr"],
-				keywords: ["mots"],
+				keywords: ["terme deux"],
 			},
 		},
 		state
@@ -213,7 +213,7 @@ test("warns instead of guessing when a storefront is unknown", () => {
 				name: "App",
 				language: "fr",
 				storefronts: ["zz"],
-				keywords: ["mots"],
+				keywords: ["terme deux"],
 			},
 		},
 		EMPTY
@@ -277,14 +277,14 @@ test("two apps sharing a keyword still share one crawl pair", () => {
 						name: "A",
 						language: "fr",
 						storefronts: ["fr"],
-						keywords: ["mots"],
+						keywords: ["terme deux"],
 					},
 					{
 						appId: 2,
 						name: "B",
 						language: "fr",
 						storefronts: ["fr"],
-						keywords: ["mots"],
+						keywords: ["terme deux"],
 					},
 				],
 			},
@@ -395,14 +395,14 @@ test("tracks two languages for one app as two entries", () => {
 						name: "A",
 						language: "fr",
 						storefronts: ["fr", "es"],
-						keywords: ["jeu"],
+						keywords: ["terme fr"],
 					},
 					{
 						appId: 1,
 						name: "A",
 						language: "es",
 						storefronts: ["es"],
-						keywords: ["juego"],
+						keywords: ["termino es"],
 					},
 				],
 			},
