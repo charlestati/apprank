@@ -193,8 +193,8 @@ async function runDailyJobs(env: Env): Promise<{
  * The daily job, bracketed by a `collector_run` row.
  *
  * The bracket is the point: everything below writes observations only when it
- * succeeds, so a throw halfway, before `enqueue` say, used to leave no trace
- * at all and surfaced a day later as missing coverage.
+ * succeeds, so a throw halfway, before `enqueue` say, would otherwise leave no
+ * trace at all and surface a day later as missing coverage.
  */
 async function dailyJobs(
 	env: Env,

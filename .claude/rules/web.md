@@ -99,9 +99,9 @@ When adding a route that takes an `:appId` or `:pairId`, add the `ownsApp` /
 one is missed.
 
 Basic auth has no sign-out: the browser holds the credentials until it is
-closed. That is the trade for having no session tables and no auth dependency.
-The alternative measured 1.9 MB of Worker bundle to serve a handful of accounts
-that never change.
+closed. That is the trade for having no session tables and no auth dependency. A
+session library costs roughly 1.9 MB of Worker bundle to serve a handful of
+accounts that never change.
 
 ## Traps
 

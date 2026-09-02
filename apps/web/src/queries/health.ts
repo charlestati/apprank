@@ -140,7 +140,8 @@ export async function dataHealth(
 	return {
 		ascAnomalies: anomalies.results,
 		// NULL finished_at on the newest row means the last daily job started and
-		// never completed, the failure mode that used to be invisible.
+		// never completed. No observation table records that: a job that dies
+		// before it writes looks the same as a quiet day.
 		lastDailyRun: lastDaily
 			? {
 					finishedAt: lastDaily.finished_at,

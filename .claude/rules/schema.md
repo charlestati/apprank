@@ -42,9 +42,9 @@ because a row per position would be 18× the write budget.
   unique index drizzle cannot express: `drizzle-kit export` emits fourteen
   indexes where production has fifteen. If the baseline ever needs rebuilding,
   rebuild it the same way and verify by applying it to an empty database and
-  diffing that database's own export against production's. The nine incremental
-  migrations it replaced were flattened before the repository went public. Among
-  them was a create-then-drop pair for a session-based auth library that was
-  tried and abandoned, because it took the web Worker from 84 KiB to 1,939 KiB
-  to serve a handful of accounts that never change. Do not reach for one again
-  unless self-service signup becomes a real requirement.
+  diffing that database's own export against production's.
+- **There is no user table, and no session tables.** Identity is the `userId` in
+  the `BASIC_AUTH_ACCOUNTS` secret, and every `user_id` column is opaque text
+  with no foreign key. A session-based auth library costs roughly 1.9 MB of
+  Worker bundle to serve a handful of accounts that never change, so do not
+  reach for one unless self-service signup becomes a real requirement.

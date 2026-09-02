@@ -166,14 +166,12 @@ describe(classify, () => {
 
 describe(isBrandTerm, () => {
 	it("matches the brand token out of a marketing app name", () => {
-		expect(isBrandTerm("codex", "Codex - Le jeu de lettres")).toBeTruthy();
-		expect(isBrandTerm("codex jeu", "Codex - Le jeu de lettres")).toBeTruthy();
+		expect(isBrandTerm("acme", "Acme - Habit Tracker")).toBeTruthy();
+		expect(isBrandTerm("acme tracker", "Acme - Habit Tracker")).toBeTruthy();
 	});
 
 	it("does not treat generic terms from the name tail as brand", () => {
-		expect(
-			isBrandTerm("jeu de lettres", "Codex - Le jeu de lettres")
-		).toBeFalsy();
+		expect(isBrandTerm("habit tracker", "Acme - Habit Tracker")).toBeFalsy();
 	});
 
 	it("copes with a missing or too-short app name", () => {

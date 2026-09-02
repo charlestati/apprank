@@ -4,7 +4,8 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2026-08-01",
 	// The MCP server is built on the Agents SDK, which imports node:async_hooks.
-	// This flag was deliberately avoided while Better Auth was in the tree, since that dependency took the bundle from 84 KiB to 1.9 MB, but the flag itself costs nothing; the bundle did. Keep an eye on the deploy size below.
+	// Without this flag the deploy fails outright with `No such module`. The flag
+	// itself costs nothing; watch the deploy size instead.
 	"compatibility_flags": ["nodejs_compat"],
 	"assets": {
 		"directory": "./dist/client",

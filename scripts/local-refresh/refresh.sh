@@ -1,4 +1,5 @@
 #!/bin/bash
+
 # One local collection cycle, run from a machine Apple will actually answer.
 #
 # Why this exists: Apple rate-limits the public iTunes endpoints per IP, and

@@ -82,7 +82,7 @@ day App Store Connect still retains, and that window shrinks daily.
 
 ## Apple Ads key
 
-Two traps here, and both cost an evening if you meet them the hard way.
+Two traps here, either of which will cost you an evening.
 
 **An Account Admin cannot mint API credentials.** The public-key field only
 appears for a user holding an API role. Create one first: Apple Ads → **Account

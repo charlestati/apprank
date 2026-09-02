@@ -172,14 +172,14 @@ describe("Apple Ads client", () => {
 			countryOrRegion: "FR",
 			end: "2026-08-15",
 			genre: "Word",
-			searchTerms: ["mots"],
+			searchTerms: ["terme un"],
 			start: "2026-08-09",
 		});
 		const body = JSON.parse(String(calls.at(-1)?.init?.body));
 		expect(body.filters).toContainEqual({
 			field: "searchTerm",
 			operator: "IN",
-			value: ["mots"],
+			value: ["terme un"],
 		});
 		expect(body.filters).toContainEqual({
 			field: "genre",

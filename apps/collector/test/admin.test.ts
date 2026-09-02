@@ -203,7 +203,7 @@ describe("POST /admin/run", () => {
 				return Response.json({ data: { acls: [{ adAccount: { id: 1 } }] } });
 			}
 			return Response.json({
-				result: { rows: [{ rankInGenre: 1, searchTerm: "mots" }] },
+				result: { rows: [{ rankInGenre: 1, searchTerm: "terme un" }] },
 			});
 		});
 		await worker.fetch(post("ads"), configured({ ADS_CLIENT_ID: "client" }));

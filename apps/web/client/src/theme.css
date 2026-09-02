@@ -232,7 +232,8 @@ body {
 	color: var(--ds-text-subtle);
 }
 
-/* Letter tiles: the word game the tool was built for, used once. */
+/* Wordmark: one tile per letter, so the mark scales with the type instead
+   of shipping a bitmap. Used once, in the topbar. */
 .wordmark {
 	display: flex;
 	gap: var(--ds-space-025);

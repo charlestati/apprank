@@ -1,19 +1,9 @@
 -- The baseline schema.
 --
--- This replaced nine incremental migrations, which existed only as the shape
--- drizzle-kit happens to emit. A cloner never consumed them, because wrangler
--- applies whatever is in this directory and the end state is all that reaches
--- a fresh database.
---
--- Produced by `wrangler d1 export apprank --remote --no-data`, not by
--- `drizzle-kit generate`, and the difference matters: this is a dump of the
--- live database rather than a reconstruction from the schema definition, so it
--- carries `cr_unique_storefront_wide`, the partial unique index drizzle cannot
--- express and would silently drop. Verified by applying this file to an empty
--- database and diffing its own export against production's: identical.
---
--- Regenerate the same way if it ever needs rebuilding. Do not regenerate it
--- from drizzle, which emits fourteen indexes where production has fifteen.
+-- Regenerate with `wrangler d1 export apprank --remote --no-data`, never with
+-- `drizzle-kit generate`: drizzle cannot express the partial unique index
+-- `cr_unique_storefront_wide` and emits fourteen indexes where this has
+-- fifteen.
 
 CREATE TABLE `genre` (
 	`id` integer PRIMARY KEY NOT NULL,

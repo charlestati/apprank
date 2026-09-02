@@ -22,8 +22,8 @@
 		"test:scripts": "node --test \"scripts/**/*.test.mjs\""
 	},
 	"devDependencies": {
-		"oxfmt": "latest",
-		"oxlint": "latest",
+		"oxfmt": "0.65.0",
+		"oxlint": "1.80.0",
 		"typescript": "7.0.2",
 		"ultracite": "7.10.6"
 	},

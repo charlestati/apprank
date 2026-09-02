@@ -21,13 +21,12 @@ paths:
   recorded; do not treat either as normal.
 - **ASC bookkeeping is per app, and that column is load-bearing.** Report
   requests are created per app, so `asc_report_instance.app_id` is known at
-  write time; it was originally dropped on insert. Without it both anomaly
-  detectors answer for the union of tracked apps: one app's published day
-  satisfies another app's `NOT EXISTS` gap check, and a second app's legitimate
-  report is flagged as the first app's `duplicate_date`. There is also no column
-  for `ownsApp` to check, so first-party analytics has no owner. The archive key
-  carries the app for the same reason: the dimension has to exist in R2 or it
-  cannot be rebuilt into D1.
+  write time, and it must be stored. Without it both anomaly detectors answer
+  for the union of tracked apps: one app's published day satisfies another app's
+  `NOT EXISTS` gap check, and a second app's legitimate report is flagged as the
+  first app's `duplicate_date`. There is also no column for `ownsApp` to check,
+  so first-party analytics has no owner. The archive key carries the app for the
+  same reason: the dimension has to exist in R2 or it cannot be rebuilt into D1.
 - **ASC carries no per-search-term report.** Verified against the live report
   list (156 reports for one app, archived at
   `asc/{appId}/report-list-{requestId}.json`): 103 `FRAMEWORK_USAGE`, 23

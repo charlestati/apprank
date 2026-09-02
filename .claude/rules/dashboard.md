@@ -39,12 +39,12 @@ the tooltip uses. The graphic carries `aria-describedby` to a `<figcaption>`
 that says what a gap means, and the dense table below it is the numeric
 alternative the caption points at.
 
-**The rank chart's x axis is the calendar, never the list of observed days.** It
-was originally one slot per observed date, which drew a seven-day cadence gap at
-the same width as an overnight step: every slope across a stretched rung was
-wrong, and the gap the ladder deliberately creates disappeared. `report.window`
-carries the requested window so the axis can span it; `report.dates` stays the
-sparse observed set and is not an axis.
+**The rank chart's x axis is the calendar, never the list of observed days.**
+One slot per observed date draws a seven-day cadence gap at the same width as an
+overnight step, so every slope across a stretched rung reads wrong and the gap
+the ladder deliberately creates disappears. `report.window` carries the
+requested window so the axis can span it; `report.dates` stays the sparse
+observed set and is not an axis.
 
 The chart separates four states, and collapsing any two of them re-creates the
 failure invariant 3 exists to prevent: **ranked** (a point on the line),

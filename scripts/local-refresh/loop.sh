@@ -1,4 +1,5 @@
 #!/bin/bash
+
 # Hourly supervisor for refresh.sh.
 #
 # Deliberately not a launchd agent: `wrangler dev` never completes its remote

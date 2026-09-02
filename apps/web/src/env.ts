@@ -5,7 +5,7 @@ export interface Env {
 	ASSETS: Fetcher;
 
 	// Vars
-	APP_URL: string; // e.g. https://apprank.dev
+	APP_URL: string; // e.g. https://apprank.example
 	/**
 	 * Local development only. With no accounts configured the Worker fails
 	 * closed; setting this to "true" serves the data to anyone, so it must never

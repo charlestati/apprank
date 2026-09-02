@@ -126,12 +126,12 @@ describe("GET /apps/:appId/report.csv", () => {
 
 	it("quotes values that contain a comma", async () => {
 		await env.DB.prepare(
-			"UPDATE keyword SET text = 'mots, croisés' WHERE id = 1"
+			"UPDATE keyword SET text = 'terme, accentué' WHERE id = 1"
 		).run();
 		const res = await worker.fetch(
 			apiRequest(`/apps/${APP_ID}/report.csv?storefront=fr`),
 			env
 		);
-		await expect(res.text()).resolves.toContain('"mots, croisés"');
+		await expect(res.text()).resolves.toContain('"terme, accentué"');
 	});
 });

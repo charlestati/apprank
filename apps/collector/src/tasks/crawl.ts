@@ -265,9 +265,9 @@ export async function crawlPair(
 			.map((r, i) => ({ appId: r.trackId, position: i + 1 }))
 			.filter((e, i) => i < 10 || trackedIds.has(e.appId));
 
-		// Rewrite only when the indexed page actually moved. A board that held its
-		// order, the common case between two consecutive days, used to cost a
-		// delete plus eleven inserts for an identical result.
+		// Rewrite only when the indexed page actually moved. A board that holds
+		// its order, the common case between two consecutive days, would
+		// otherwise cost a delete plus eleven inserts for an identical result.
 		const existing = await env.DB.prepare(
 			"SELECT position, app_id FROM rank_entry WHERE ranking_id = ? ORDER BY position"
 		)

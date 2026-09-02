@@ -1,4 +1,5 @@
-// The signature element: a word-game letter tile carrying a rank.
+// The signature element: a lettered tile carrying one keyword rank, so a
+// board of them reads as positions rather than as a table of numbers.
 // Band by threshold that matters (top-10 strong, top-50 mid, rest quiet).
 
 import { fmt, useT } from "../i18n";

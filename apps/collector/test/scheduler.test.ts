@@ -29,7 +29,7 @@ function seedReference() {
 			"INSERT OR IGNORE INTO storefront_locale (storefront_code, locale_code, is_default) VALUES ('fr', 'fr-FR', 1)"
 		),
 		env.DB.prepare(
-			"INSERT OR IGNORE INTO keyword (id, text, normalized, language) VALUES (1, 'jeu de lettres', 'jeu de lettres', 'fr')"
+			"INSERT OR IGNORE INTO keyword (id, text, normalized, language) VALUES (1, 'terme un', 'terme un', 'fr')"
 		),
 		env.DB.prepare(
 			"INSERT OR IGNORE INTO app (id, current_name, first_seen_at, last_seen_at) VALUES (424242, 'Tracked App', 0, 0)"

@@ -174,7 +174,7 @@ export function classify(row: KeywordRow): KeywordVerdict {
 export function isBrandTerm(keyword: string, appName: string | null): boolean {
 	const tokens = (appName ?? "")
 		.toLowerCase()
-		// Split off the marketing tail: "Codex - Le jeu de lettres" → "codex".
+		// Split off the marketing tail: "Acme - Habit Tracker" → "acme".
 		.split(/[\s\-–—:|,]+/u)
 		.filter((t) => t.length >= 3);
 	if (tokens.length === 0) {

@@ -1,4 +1,5 @@
 #!/bin/bash
+
 # Post-cycle consistency check against the live database.
 #
 # Every check here is a claim the collector's invariants make, phrased so that

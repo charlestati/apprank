@@ -11,8 +11,9 @@ import {
 import { app } from "./apps";
 import { storefront, locale } from "./reference";
 
-// userId columns are plain text (no FK): the user table is generated and owned
-// by Better Auth in a later milestone; the collector must not depend on it.
+// userId columns are plain text with no foreign key. There is no user table:
+// identity comes from the BASIC_AUTH_ACCOUNTS secret, so a userId is an opaque
+// string the collector must not try to resolve.
 
 export const keyword = sqliteTable(
 	"keyword",
