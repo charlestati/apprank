@@ -54,13 +54,18 @@ beforeEach(async () => {
 		env.DB.prepare(
 			"INSERT OR IGNORE INTO storefront_locale (storefront_code, locale_code, is_default) VALUES ('fr', 'fr-FR', 1)"
 		),
-		// buildAdsTask resolves each tracked genre up to its Apple Ads category,
-		// so the genre rows are a precondition for the ads job existing at all.
+		// The genres worked in are the tracked apps' own, resolved up to their
+		// Apple Ads category, so both the genre row and a tracked app carrying it
+		// are preconditions for the ads job existing at all. Health & Fitness
+		// rather than Games: nothing here may assume the operator's category.
 		env.DB.prepare(
-			"INSERT OR IGNORE INTO genre (id, name, parent_id) VALUES (6014, 'Games', NULL)"
+			"INSERT OR IGNORE INTO genre (id, name, parent_id) VALUES (6013, 'Health & Fitness', NULL)"
 		),
 		env.DB.prepare(
-			"INSERT OR IGNORE INTO genre (id, name, parent_id) VALUES (7019, 'Games/Word', 6014)"
+			"INSERT INTO app (id, current_name, primary_genre_id, first_seen_at, last_seen_at) VALUES (424242, 'Tracked App', 6013, 0, 0)"
+		),
+		env.DB.prepare(
+			"INSERT INTO tracked_app (user_id, app_id, created_at) VALUES ('admin', 424242, 0)"
 		),
 	]);
 	await drainQueue();

@@ -44,7 +44,10 @@ export const storefrontLocale = sqliteTable(
 );
 
 export const genre = sqliteTable("genre", {
-	id: integer("id").primaryKey(), // iTunes genre id: 7019 Word, 7012 Puzzle, ...
+	// iTunes genre id: 6013 Health & Fitness, 6015 Finance, 7019 Games/Word.
+	// Top-level ids are 60xx and their children 70xx; only Games, Magazines and
+	// Stickers have children at all.
+	id: integer("id").primaryKey(),
 	name: text("name").notNull(),
 	parentId: integer("parent_id"),
 });

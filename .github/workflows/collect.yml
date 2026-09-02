@@ -1,11 +1,17 @@
-# Rank collection from GitHub's runners.
+# Half of the collector. The other half is the Cloudflare Worker.
 #
-# Apple rate-limits the public iTunes endpoints per IP, and every Cloudflare
-# Worker egresses from a shared pool Apple already rejects, so the deployed
-# collector gets HTTP 429 on every attempt while the identical request succeeds
-# from an ordinary connection. This runs the *same* collector code from a
-# GitHub runner, so the observations carry the same normaliser, provenance and
-# idempotent keys as the scheduler's own; only the source address differs.
+# The two are split by which APIs each can reach. The Worker takes App Store
+# Connect and Apple Ads, which are credentialed and served to it without
+# complaint. This takes the public iTunes endpoints: keyword ranks, metadata,
+# ratings, reviews and charts. Apple rate-limits those per IP and every Worker
+# egresses from a pool it has already rejected, so a Worker gets HTTP 429 on
+# every attempt while the identical request succeeds from an ordinary
+# connection.
+#
+# Not a second implementation: `wrangler dev` with remote bindings runs the
+# *same* collector code against the same D1 and R2, so observations carry the
+# same normaliser, provenance and idempotent keys as the Worker's own. Only the
+# source address differs.
 #
 # A runner's egress is not Cloudflare's, but it is still shared, and Apple
 # rate-limits whoever it is. Run this by hand once on a new deployment and

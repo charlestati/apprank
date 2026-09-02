@@ -42,17 +42,17 @@ Two things adapt, and they are separate:
   apps or keywords therefore costs resolution, never coverage; the plan is
   stored as `cadence_plan` and shown on the data-health page.
 
-`COLLECTION_MODE` decides which half of that runs where. It defaults to `all`;
-the deployed collector sets `credentialed` in the gitignored
-`wrangler.local.jsonc`, so it queues only App Store Connect and Apple Ads, the
-two APIs Cloudflare's egress can actually reach. Rank crawls, metadata lookups,
-reviews and charts run from a borrowed IP instead (`scripts/local-refresh`,
-`.github/workflows/collect.yml`, whose generated config forces `all`).
-Attempting them from a Worker was never free: each 429 fed `windowErrorCount`,
-and once that passed tolerance it halved the learned rate, a known-broken path
-quietly degrading the signal that sets crawl cadence. Manual triggers stay
-exempt: `crawlNow` fetches whatever it is asked to, which is what makes "is
-Apple still blocking this IP?" answerable in one request.
+**Collection is split across two execution environments by design, and
+`COLLECTION_MODE` is what divides it.** The deployed Worker sets `credentialed`
+in the gitignored `wrangler.local.jsonc` and queues only App Store Connect and
+Apple Ads. Rank crawls, metadata lookups, reviews and charts run from
+`.github/workflows/collect.yml` and `scripts/local-refresh`, whose generated
+config forces `all`. The default is `all`, which suits those two callers and
+would be wrong on a Worker. Attempting them from a Worker was never free: each
+429 fed `windowErrorCount`, and once that passed tolerance it halved the learned
+rate, a known-broken path quietly degrading the signal that sets crawl cadence.
+Manual triggers stay exempt: `crawlNow` fetches whatever it is asked to, which
+is what makes "is Apple still blocking this IP?" answerable in one request.
 
 Alarms are **at-least-once with automatic retries**, so every write must be
 idempotent (`ranking` is unique on `(pair_id, observed_date)`; reviews key on

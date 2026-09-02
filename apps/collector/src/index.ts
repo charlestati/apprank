@@ -20,8 +20,29 @@ import type {
 
 export { SchedulerDO } from "./scheduler";
 
-const FOCUS_GENRES_DEFAULT = [7019, 7012, 7004, 7018, 7008]; // Word, Puzzle, Board, Trivia, Educational
-const CHART_GENRES_DEFAULT: (number | null)[] = [7019, null]; // Word + storefront-wide
+/**
+ * The genres to work in: the distinct primary genre of every tracked app.
+ *
+ * A hardcoded list here is wrong for every operator whose app is in another
+ * category, and invariant 5 keeps reference data in rows. Apple already tells
+ * us the answer: primary_genre_id is written on every app the collector sees,
+ * so no extra fetch is needed.
+ *
+ * Empty is a real answer rather than a failure. On a fresh deploy no app has
+ * been looked up yet, and under COLLECTION_MODE=credentialed that lookup runs
+ * from the Actions runner rather than this Worker, so the column stays null
+ * until the first run lands. Guessing a category then would write popularity
+ * for terms nobody tracks.
+ */
+async function trackedGenreIds(env: Env): Promise<number[]> {
+	const rows = await env.DB.prepare(
+		`SELECT DISTINCT a.primary_genre_id AS id
+       FROM tracked_app t
+       JOIN app a ON a.id = t.app_id
+      WHERE a.primary_genre_id IS NOT NULL`
+	).all<{ id: number }>();
+	return rows.results.map((r) => r.id);
+}
 
 /**
  * The week's Ads popularity pull, or null when there is nothing to ask for.
@@ -36,7 +57,10 @@ async function buildAdsTask(
 ): Promise<Extract<Task, { type: "ads_pull" }> | null> {
 	const genres =
 		(await getStateJson<number[]>(env.DB, "ads:focus_genres")) ??
-		FOCUS_GENRES_DEFAULT;
+		(await trackedGenreIds(env));
+	if (genres.length === 0) {
+		return null;
+	}
 	const overrides =
 		(await getStateJson<Record<number, string>>(
 			env.DB,
@@ -52,9 +76,10 @@ async function buildAdsTask(
 		.bind(...genres)
 		.all<GenreRow>();
 
-	// Word, Puzzle, Board, Trivia and Educational all resolve to GAMES and would
-	// otherwise fetch the same ranked list five times over. Dedupe on the pair
-	// that actually varies the response.
+	// Ads reports per top-level category, so every sub-genre of one parent
+	// resolves to the same ranked list: five tracked Games sub-genres would
+	// otherwise fetch it five times. Dedupe on the pair that actually varies
+	// the response.
 	const weekStart = latestCompleteWeekStart();
 	const seen = new Set<string>();
 	const queue: AdsPullUnit[] = [];
@@ -170,9 +195,12 @@ async function runDailyJobs(env: Env): Promise<{
 			{ type: "review_pull", queue: reviews }
 		);
 
-		const chartGenres =
-			(await getStateJson<(number | null)[]>(env.DB, "chart_genres")) ??
-			CHART_GENRES_DEFAULT;
+		// null is the storefront-wide chart, which needs no genre, so charts still
+		// work on day one when no app has been looked up yet.
+		const chartGenres = (await getStateJson<(number | null)[]>(
+			env.DB,
+			"chart_genres"
+		)) ?? [...(await trackedGenreIds(env)), null];
 		const charts: ChartUnit[] = [];
 		for (const code of storefrontSet) {
 			for (const g of chartGenres) {
@@ -248,7 +276,14 @@ async function runJob(
 			}
 			const task = await buildAdsTask(env, true);
 			if (!task) {
-				return json({ error: "no active storefronts to pull", job }, 412);
+				return json(
+					{
+						error:
+							"nothing to pull: needs an active storefront and a tracked app with a known genre",
+						job,
+					},
+					412
+				);
 			}
 			const result = await stub.runNow({
 				...task,

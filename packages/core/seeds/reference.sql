@@ -12,13 +12,20 @@ INSERT OR IGNORE INTO storefront (code, name, apple_storefront_id, weight, activ
   ('ch', 'Switzerland',    143459, 0.6, 1),
   ('ca', 'Canada',         143455, 0.6, 1),
   ('lu', 'Luxembourg',     143451, 0.3, 1),
-  ('mc', 'Monaco',         NULL,   0.2, 1),
+  ('lb', 'Lebanon',        143497, 0.3, 1),
   ('ma', 'Morocco',        NULL,   0.3, 1),
   ('dz', 'Algeria',        NULL,   0.3, 1),
   ('tn', 'Tunisia',        NULL,   0.3, 1),
   ('sn', 'Senegal',        NULL,   0.2, 1),
   ('ci', 'Côte d''Ivoire', NULL,   0.2, 1),
   ('cm', 'Cameroon',       NULL,   0.2, 1),
+  -- Monaco is not an App Store storefront of its own. Apple's localization
+  -- table has no MCO row, and neither do Andorra, Liechtenstein or San Marino:
+  -- the microstates are absent throughout. A search with country=mc answers
+  -- HTTP 200 and an empty result set, which no collector can tell apart from
+  -- "ranks nowhere", so leaving it active would bank clean-looking rows that
+  -- are all false. Retired rather than deleted, so it is not tried again.
+  ('mc', 'Monaco',         NULL,   0.2, 0),
   -- Inactive but pre-seeded for Tier 2 sweeps / a future English localization.
   ('us', 'United States',  143441, 1.0, 0),
   ('gb', 'United Kingdom', 143444, 0.8, 0),
@@ -49,13 +56,13 @@ INSERT OR IGNORE INTO locale (code, language) VALUES
 -- app-information/app-store-localizations), which gives each storefront one
 -- default language plus the additional indexed ones. No App Store Connect
 -- login is needed to read it, so re-check it here rather than guessing.
--- Monaco is the one exception and is marked below.
 INSERT OR IGNORE INTO storefront_locale (storefront_code, locale_code, is_default) VALUES
   ('fr', 'fr-FR', 1), ('fr', 'en-GB', 0),
   ('ca', 'en-CA', 1), ('ca', 'fr-CA', 0),
   ('be', 'en-GB', 1), ('be', 'nl-NL', 0), ('be', 'fr-FR', 0),
   ('ch', 'de-DE', 1), ('ch', 'en-GB', 0), ('ch', 'fr-FR', 0), ('ch', 'it', 0),
   ('lu', 'en-GB', 1), ('lu', 'fr-FR', 0), ('lu', 'de-DE', 0),
+  ('lb', 'en-GB', 1), ('lb', 'fr-FR', 0), ('lb', 'ar-SA', 0),
   ('ma', 'en-GB', 1), ('ma', 'fr-FR', 0), ('ma', 'ar-SA', 0),
   ('dz', 'en-GB', 1), ('dz', 'fr-FR', 0), ('dz', 'ar-SA', 0),
   ('tn', 'en-GB', 1), ('tn', 'fr-FR', 0), ('tn', 'ar-SA', 0),
@@ -64,10 +71,8 @@ INSERT OR IGNORE INTO storefront_locale (storefront_code, locale_code, is_defaul
   -- francophone storefronts here that do, so an English default is wrong.
   ('ci', 'fr-FR', 1), ('ci', 'en-GB', 0),
   ('cm', 'fr-FR', 1), ('cm', 'en-GB', 0),
-  -- Monaco has no row in Apple's table, nor do Andorra, Liechtenstein and San
-  -- Marino: the microstates are absent throughout. So this pair is a guess, and
-  -- it is why storefront.apple_storefront_id is still NULL for 'mc'. Confirm
-  -- Monaco is a storefront of its own before trusting anything collected here.
+  -- Monaco is retired above and this pair is inert. It stays only so the row
+  -- survives, carrying its reason with it, if anyone reactivates the storefront.
   ('mc', 'en-GB', 1), ('mc', 'fr-FR', 0),
   -- The US indexes Spanish (Mexico), never Spanish (Spain), and Spain itself
   -- indexes Catalan. Both storefronts are inactive, so neither is collected yet.

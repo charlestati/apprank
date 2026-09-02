@@ -111,7 +111,7 @@ describe("scheduled handler", () => {
 	it("derives lookup, review and chart pulls from the tracked apps in D1", async () => {
 		await env.DB.batch([
 			env.DB.prepare(
-				"INSERT INTO app (id, current_name, first_seen_at, last_seen_at) VALUES (?, 'Tracked App', 0, 0)"
+				"INSERT INTO app (id, current_name, primary_genre_id, first_seen_at, last_seen_at) VALUES (?, 'Tracked App', 6013, 0, 0)"
 			).bind(APP_ID),
 			env.DB.prepare(
 				"INSERT INTO tracked_app (user_id, app_id, created_at) VALUES ('admin', ?, 0)"
@@ -133,8 +133,37 @@ describe("scheduled handler", () => {
 			queue: [{ appId: APP_ID, storefront: "fr" }],
 		});
 		const charts = tasks.find((t) => t.type === "chart_pull");
-		// Two genre slots (Word + storefront-wide) × three charts.
+		// Two genre slots (the tracked app's own genre + storefront-wide) × three
+		// charts. The genre is not hardcoded: an app in any category gets its own.
 		expect((charts as { queue: unknown[] }).queue).toHaveLength(6);
+	});
+
+	it("charts storefront-wide only until an app's genre is known", async () => {
+		// A fresh deploy has looked nothing up yet, and under
+		// COLLECTION_MODE=credentialed that lookup runs from the Actions runner
+		// rather than this Worker, so primary_genre_id stays null for a while.
+		// Guessing a category would write popularity for terms nobody tracks, so
+		// the genre-keyed work is skipped and the storefront-wide chart, which
+		// needs no genre, still runs.
+		await env.DB.batch([
+			env.DB.prepare(
+				"INSERT INTO app (id, current_name, first_seen_at, last_seen_at) VALUES (?, 'Tracked App', 0, 0)"
+			).bind(APP_ID),
+			env.DB.prepare(
+				"INSERT INTO tracked_app (user_id, app_id, created_at) VALUES ('admin', ?, 0)"
+			).bind(APP_ID),
+			env.DB.prepare(
+				"INSERT INTO app_language (app_id, language) VALUES (?, 'fr')"
+			).bind(APP_ID),
+		]);
+
+		await runCron("0 3 * * *", { ADS_CLIENT_ID: "x" });
+		const tasks = await drainQueue();
+
+		expect(tasks.some((t) => t.type === "ads_pull")).toBeFalsy();
+		const charts = tasks.find((t) => t.type === "chart_pull");
+		// One genre slot (storefront-wide) × three charts.
+		expect((charts as { queue: unknown[] }).queue).toHaveLength(3);
 	});
 
 	it("queues no app-level pulls when nothing is tracked", async () => {
@@ -207,7 +236,7 @@ describe("collection mode", () => {
 		// each one feeds the daily tally that halves the learned rate.
 		await env.DB.batch([
 			env.DB.prepare(
-				"INSERT INTO app (id, current_name, first_seen_at, last_seen_at) VALUES (?, 'Tracked App', 0, 0)"
+				"INSERT INTO app (id, current_name, primary_genre_id, first_seen_at, last_seen_at) VALUES (?, 'Tracked App', 6013, 0, 0)"
 			).bind(APP_ID),
 			env.DB.prepare(
 				"INSERT INTO tracked_app (user_id, app_id, created_at) VALUES ('admin', ?, 0)"
@@ -229,7 +258,7 @@ describe("collection mode", () => {
 	it("still queues them when the deployment can reach Apple", async () => {
 		await env.DB.batch([
 			env.DB.prepare(
-				"INSERT INTO app (id, current_name, first_seen_at, last_seen_at) VALUES (?, 'Tracked App', 0, 0)"
+				"INSERT INTO app (id, current_name, primary_genre_id, first_seen_at, last_seen_at) VALUES (?, 'Tracked App', 6013, 0, 0)"
 			).bind(APP_ID),
 			env.DB.prepare(
 				"INSERT INTO tracked_app (user_id, app_id, created_at) VALUES ('admin', ?, 0)"
@@ -256,10 +285,13 @@ describe("ads weekly gate", () => {
 		vi.setSystemTime(MONDAY);
 		await env.DB.batch([
 			env.DB.prepare(
-				"INSERT OR IGNORE INTO genre (id, name, parent_id) VALUES (6014, 'Games', NULL)"
+				"INSERT OR IGNORE INTO genre (id, name, parent_id) VALUES (6013, 'Health & Fitness', NULL)"
 			),
 			env.DB.prepare(
-				"INSERT OR IGNORE INTO genre (id, name, parent_id) VALUES (7019, 'Games/Word', 6014)"
+				"INSERT OR IGNORE INTO app (id, current_name, primary_genre_id, first_seen_at, last_seen_at) VALUES (424242, 'Tracked App', 6013, 0, 0)"
+			),
+			env.DB.prepare(
+				"INSERT OR IGNORE INTO tracked_app (user_id, app_id, created_at) VALUES ('admin', 424242, 0)"
 			),
 		]);
 	});
@@ -277,7 +309,11 @@ describe("ads weekly gate", () => {
 	it("skips a storefront whose week is already held", async () => {
 		// Apple publishes WEEKLY_SUN_SAT: a second pull of the same week fetches
 		// identical data and re-walks 500 terms per unit for nothing.
-		await setState(env.DB, "ads:pulled:fr:GAMES", latestCompleteWeekStart());
+		await setState(
+			env.DB,
+			"ads:pulled:fr:HEALTH_FITNESS",
+			latestCompleteWeekStart()
+		);
 		await runCron("0 3 * * *", { ADS_CLIENT_ID: "x" });
 		const queued = await drainQueue();
 		expect(queued.find((t) => t.type === "ads_pull")).toBeUndefined();

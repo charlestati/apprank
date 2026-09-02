@@ -38,19 +38,22 @@ That is the whole configuration surface. Storefronts, locales and keywords are
 rows in a database, so adding one is an `INSERT`. Never a migration, never a
 redeploy.
 
-## Before you deploy
+## The collector runs in two places
 
-**Apple blocks Cloudflare's egress.** Every Worker shares an IP pool that
-Apple's iTunes endpoints have already rate-limited, so the deployed collector
-gets HTTP 429 on _every_ keyword search, at one request per minute. The fetching
-therefore runs from GitHub Actions, executing the same collector code against
-the same D1 and R2 with only the source address different. Cloudflare still runs
-App Store Connect and Apple Ads, which are credentialed and work fine from a
-Worker.
+Both halves are required, and they are split by which APIs each can reach.
 
-Deploy the Workers without wiring up the workflow and you get a dashboard and
-429s.
-[Details](docs/deploy.md#apple-blocks-cloudflare-so-collection-runs-from-github-actions).
+| Where                        | Collects                                          | Why there                                                                                                                                                                     |
+| ---------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cloudflare Worker, on a cron | App Store Connect, Apple Ads                      | Credentialed, and reached over infrastructure Apple serves fine from a Worker                                                                                                 |
+| GitHub Actions, daily        | Keyword ranks, metadata, ratings, reviews, charts | Apple rate-limits the public iTunes endpoints per IP, and every Worker egresses from a pool Apple has already rejected: HTTP 429 on _every_ search, at one request per minute |
+
+The runner executes the **same collector code** against the same D1 and R2, so
+observations carry the same normaliser, provenance and idempotent keys wherever
+they were fetched. Only the source address differs.
+
+So wire up the workflow: deploying the Workers alone gives you a dashboard with
+no rank data in it.
+[How both halves are set up](docs/deploy.md#collection-runs-in-two-places).
 
 ## Quick start
 
