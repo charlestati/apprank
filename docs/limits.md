@@ -3,26 +3,33 @@
 The unit is the **crawl pair**: one keyword in one storefront. 20 keywords
 across 5 storefronts is 100 pairs, and pairs are what every limit below counts.
 
-## The binding constraint is the collection window, not Cloudflare
+## What binds is the fetch rate, not Cloudflare
 
-Collection runs from a GitHub Actions job, at the rate the collector has learned
-it can fetch without being throttled. The job's `timeout-minutes` is the real
-ceiling: one unit is one keyword crawl or one queued task step, and each costs
-about 21 seconds, the 15-second spacing plus the round-trip on top of it.
+Collection runs from a GitHub Actions job at the rate the collector has learned
+it can fetch without being throttled. Apple documents the Search API at
+"approximately 20 calls per minute (subject to change)" and answers a breach
+with **403**, not 429. The collector runs at 16/min, so one unit — a keyword
+crawl or a queued task step — costs about 10 seconds, the 3.75-second spacing
+plus the round-trip on top of it.
 
-| Budget                                                           | Units    |
-| ---------------------------------------------------------------- | -------- |
-| One 210-minute run                                               | ~600     |
-| Less checkout, install, warm-up and the post-run verify          | ~30      |
-| Less the daily task steps (compaction, lookups, reviews, charts) | ~40      |
-| **Pair crawls per run**                                          | **~530** |
+| Budget                                      | Units   |
+| ------------------------------------------- | ------- |
+| One 210-minute run                          | ~1,260  |
+| Less setup, warm-up and the post-run verify | ~60     |
+| Less the daily task steps                   | ~40     |
+| Capped by `APPRANK_REFRESH_MAX_UNITS`       | **420** |
 
-Two things cap it below that. `APPRANK_REFRESH_MAX_UNITS` in
-`scripts/local-refresh/refresh.sh` stops the crawl loop at 420, and it has to
-stay above your pair count or the lowest-weighted storefront is starved every
-run rather than sharing the shortfall. And the cadence planner budgets against
-the _learned_ rate, which falls to 1/min after a throttled day; at that rate the
-same set is re-spaced across slower rungs until the rate recovers.
+So the run window no longer binds; the unit ceiling in
+`scripts/local-refresh/refresh.sh` does, and it has to stay above your pair
+count or the lowest-weighted storefront is starved every run rather than sharing
+the shortfall. Raise it and the window absorbs a good deal more.
+
+The other cap is the _learned_ rate, which halves after a throttled day and
+floors at 1/min. At the floor the same set is re-spaced across slower rungs
+until it recovers, 10% a day. That is a feature on a shared egress IP, where
+reputation binds harder than the published number: developers report 403s at 4
+calls a minute from poor-reputation addresses and clean runs at 20 from good
+ones.
 
 Beyond the budget nothing breaks: the ladder re-spaces pairs across 1, 2, 3 and
 7-day rungs so the daily load still fits, and a few hundred more stay trackable

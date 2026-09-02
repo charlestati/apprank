@@ -38,7 +38,13 @@ const DEFAULTS: PacingState = {
 const KEY = "pacing";
 
 const RATE_FLOOR = 1;
-const RATE_CEILING = 6;
+// Apple states the Search API is "limited to approximately 20 calls per minute
+// (subject to change)" and answers a breach with 403, not 429. Twenty is the
+// documented edge, so the learned rate stops just under it; what actually binds
+// is the reputation of the egress IP, which is why the rate is discovered
+// rather than set. Cold start stays at DEFAULTS.ratePerMin, well below this: a
+// fresh clone must not open at the ceiling.
+const RATE_CEILING = 18;
 
 /**
  * Throttles in a day that count as the shared IP's background level rather

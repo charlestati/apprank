@@ -19,11 +19,11 @@ Two things adapt, and they are separate:
   exponential backoff (30m → 1h → 2h → 4h cap). The **rate** is a per-day trend:
   it starts at 4 fetches/min, halves **once** on the throttle that takes a day
   past `DAILY_THROTTLE_TOLERANCE` (floor 1/min), and recovers 10% per day that
-  stayed within it (ceiling 6/min). Once per day, not once per throttle:
-  applying it to every subsequent hit turned the rate back into a one-way
-  ratchet (4 → 2 → 1 in three hits), which is the failure the two-brake split
-  exists to prevent. Persisted in `collector_state`, so a redeploy does not
-  restart discovery.
+  stayed within it (ceiling 18/min, just under Apple's documented 20). Once per
+  day, not once per throttle: applying it to every subsequent hit turned the
+  rate back into a one-way ratchet (4 → 2 → 1 in three hits), which is the
+  failure the two-brake split exists to prevent. Persisted in `collector_state`,
+  so a redeploy does not restart discovery.
 
   Recovery is judged on the closed day, **not** on a throttle-free 24h.
   Requiring a clean 24h made the raise unreachable on a shared egress IP that

@@ -29,14 +29,18 @@ PORT="${APPRANK_REFRESH_PORT:-8799}"
 BASE="http://localhost:$PORT/admin/run"
 LOG_DIR="${APPRANK_LOG_DIR:-$HOME/Library/Logs/apprank}"
 STATE_DIR="$LOG_DIR/state"
-# 15s between fetches = 4/min, the rate lib/pacing.ts starts at. A residential
-# IP is not a licence to rush.
-SPACING="${APPRANK_REFRESH_SPACING:-15}"
-# Ceilings on one cycle, in units. Both are sized against SPACING, since the
-# sleep dominates, and the measured cost is nearer 21s a unit than 15s because
-# the POST round-trip lands on top of the sleep. At that rate these two are
-# about 145 and 28 minutes of wall clock, which is what the workflow's
-# timeout-minutes has to clear.
+# Seconds between fetches. Apple documents the Search API at "approximately 20
+# calls per minute (subject to change)", so 3.75s is 16/min: inside the stated
+# limit with room to spare, and above the 3s spacing developers report as
+# reliable. Reputation of the egress IP binds harder than the number does, so
+# treat this as the operating point to walk back from, not a target: the first
+# 403 pauses the loop for 30 minutes anyway.
+SPACING="${APPRANK_REFRESH_SPACING:-3.75}"
+# Ceilings on one cycle, in units. Both are sized against SPACING, plus the
+# ~6s POST round-trip that lands on top of every sleep: at 3.75s that is about
+# 10s a unit, so these two are roughly 70 and 13 minutes of wall clock. The
+# workflow's timeout-minutes keeps far more than that, because a single 403
+# parks the loop for 30 minutes and the ladder goes to four hours.
 #
 # The pair ceiling has to clear the tracked set or the tail is never reached:
 # ordering is overdue-age x storefront weight, so a cap below the set count

@@ -210,17 +210,17 @@ describe(maybeRaise, () => {
 
 	it("recovers from the floor instead of staying pinned there", () => {
 		let p = { ...defaultPacing(), ratePerMin: 1 };
-		for (let i = 0; i < 30; i += 1) {
+		for (let i = 0; i < 40; i += 1) {
 			p = maybeRaise({ ...p, lastRollDay: "" }, day);
 		}
-		expect(p.ratePerMin).toBe(6);
+		expect(p.ratePerMin).toBe(18);
 	});
 
-	it("stops raising at the 6/min ceiling", () => {
-		let p = { ...defaultPacing(), ratePerMin: 5.9 };
+	it("stops raising below Apple's documented 20 calls a minute", () => {
+		let p = { ...defaultPacing(), ratePerMin: 17.9 };
 		for (let i = 0; i < 5; i += 1) {
 			p = maybeRaise({ ...p, lastRollDay: "" }, day);
 		}
-		expect(p.ratePerMin).toBe(6);
+		expect(p.ratePerMin).toBe(18);
 	});
 });
