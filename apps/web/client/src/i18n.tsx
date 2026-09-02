@@ -52,14 +52,10 @@ const en = {
 	laneWinning: "Winning",
 	laneWinningHint: "Top 10 on a term with real volume. Defend these.",
 	whatToWorkOn: "What to work on",
-	genericProgress:
-		"{inZone} of {total} generic keywords are in the top 10, the honest read on ASO progress.",
-	brandCounted:
-		"{n} brand terms are counted separately, since that demand is already yours.",
-	brandCountedOne:
-		"1 brand term is counted separately, since that demand is already yours.",
-	coverageNote:
-		"Apple publishes no search volume for {n} of {total} tracked keywords, so those are judged on rank and difficulty alone. Absent from Apple's list is not the same as unsearched.",
+	genericProgress: "{inZone} of {total} generic keywords are in the top 10.",
+	brandCounted: "{n} brand terms are counted separately.",
+	brandCountedOne: "1 brand term is counted separately.",
+	coverageNote: "Apple publishes no volume for {n} of {total}.",
 
 	// Verdict reasons, keyed to the server's ReasonKey.
 	reasonBlocked:
@@ -260,14 +256,10 @@ const fr: Dictionary = {
 	laneWinning: "Gagnants",
 	laneWinningHint: "Top 10 sur un terme à volume réel. À défendre.",
 	whatToWorkOn: "Sur quoi travailler",
-	genericProgress:
-		"{inZone} mots-clés génériques sur {total} sont dans le top 10, la lecture honnête de la progression ASO.",
-	brandCounted:
-		"{n} termes de marque sont comptés à part, puisque cette demande vous appartient déjà.",
-	brandCountedOne:
-		"1 terme de marque est compté à part, puisque cette demande vous appartient déjà.",
-	coverageNote:
-		"Apple ne publie aucun volume de recherche pour {n} des {total} mots-clés suivis ; ils sont donc jugés sur le rang et la difficulté seuls. Absent de la liste d'Apple ne veut pas dire sans recherches.",
+	genericProgress: "{inZone} mots-clés génériques sur {total} dans le top 10.",
+	brandCounted: "{n} termes de marque comptés à part.",
+	brandCountedOne: "1 terme de marque compté à part.",
+	coverageNote: "Aucun volume Apple pour {n} des {total}.",
 
 	reasonBlocked:
 		"Volume réel, mais le haut de la page est verrouillé ; les métadonnées seules n'y suffiront pas.",

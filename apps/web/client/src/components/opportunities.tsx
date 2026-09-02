@@ -44,38 +44,29 @@ export function Opportunities({
 		vanity: insights.vanity,
 		winning: insights.winning,
 	};
-	// Apple lists only the top ~500 terms per country and genre, so a niche app
-	// has no volume for most of its keywords. Saying so is the difference between
-	// a thin read and a misleading one.
-	const coverage =
-		insights.unmeasuredKeywords > 0 ? (
-			<p className="insights-sub">
-				{fmt(t.coverageNote, {
-					n: insights.unmeasuredKeywords,
-					total: insights.brandKeywords + insights.genericKeywords,
-				})}
-			</p>
-		) : null;
-
 	return (
 		<section className="card insights">
 			<header className="insights-head">
 				<h2 className="section-title">{t.whatToWorkOn}</h2>
+				{/* One line of counts. The reasoning behind them, why brand terms sit
+            apart and why an absent volume is not a zero, is written down once
+            in the dashboard rule; repeating it on every visit was fifty words
+            of justification above the five numbers that carry it. */}
 				<p className="insights-sub">
 					{fmt(t.genericProgress, {
 						inZone: insights.genericInTapZone,
 						total: insights.genericKeywords,
 					})}{" "}
 					{insights.brandKeywords > 0
-						? plural(
-								t,
-								insights.brandKeywords,
-								"brandCountedOne",
-								"brandCounted"
-							)
+						? `${plural(t, insights.brandKeywords, "brandCountedOne", "brandCounted")} `
+						: null}
+					{insights.unmeasuredKeywords > 0
+						? fmt(t.coverageNote, {
+								n: insights.unmeasuredKeywords,
+								total: insights.brandKeywords + insights.genericKeywords,
+							})
 						: null}
 				</p>
-				{coverage}
 			</header>
 
 			<div className="lanes">

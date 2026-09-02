@@ -227,9 +227,14 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 								styleOf={(pairId) => styleIndex.get(pairId) ?? FALLBACK_STYLE}
 								window={report.window}
 							/>
-							{/* The prose alternative the graphic points at, and the pointer to
-                  the table that carries the numbers themselves. */}
-							<figcaption id="chart-caption">
+							{/* The prose alternative the graphic points at, and the pointer
+                  to the table that carries the numbers themselves. It is not
+                  drawn: a sighted reader already has the subject in the page
+                  heading, the window on the x axis, rank 1 at the top of the
+                  y axis, and both rails labelled where they sit, so on screen
+                  the paragraph restated the chart at sixty words. A reader
+                  who cannot see any of that still needs every one of them. */}
+							<figcaption className="sr-only" id="chart-caption">
 								{fmt(t.chartCaption, {
 									app: app.current_name ?? "",
 									from: report.window.from,
