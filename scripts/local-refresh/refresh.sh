@@ -36,11 +36,19 @@ STATE_DIR="$LOG_DIR/state"
 # treat this as the operating point to walk back from, not a target: the first
 # 403 pauses the loop for 30 minutes anyway.
 SPACING="${APPRANK_REFRESH_SPACING:-3.75}"
-# Ceilings on one cycle, in units. Both are sized against SPACING, plus the
-# ~6s POST round-trip that lands on top of every sleep: at 3.75s that is about
-# 10s a unit, so these two are roughly 70 and 13 minutes of wall clock. The
-# workflow's timeout-minutes keeps far more than that, because a single 403
-# parks the loop for 30 minutes and the ladder goes to four hours.
+# The step loop gets its own, slower value. The two loops look alike and are
+# not: a keyword search takes Apple ~2.7s to answer, so the crawl loop is paced
+# largely by its own latency and lands near 10s a unit whatever this is set to.
+# The app-level pulls (lookup, reviews, charts) return small bodies fast, so
+# there the sleep is the whole interval, and at 3.75s they drew a 403 and an
+# abandoned batch within five minutes. Slow the loop that actually throttles,
+# not the one that does not.
+STEP_SPACING="${APPRANK_REFRESH_STEP_SPACING:-10}"
+# Ceilings on one cycle, in units. Measured: a crawl costs ~10s (Apple's own
+# latency, mostly) and a step ~13s, so these two are roughly 70 and 17 minutes
+# of wall clock. The workflow's timeout-minutes keeps far more than that,
+# because a single 403 parks the loop for 30 minutes and the ladder goes to
+# four hours.
 #
 # The pair ceiling has to clear the tracked set or the tail is never reached:
 # ordering is overdue-age x storefront weight, so a cap below the set count
@@ -187,19 +195,19 @@ for _ in $(seq 1 "$MAX_STEPS"); do
     *'"ok":true'*)
       steps=$((steps + 1)); step_fails=0
       say "step: $r"
-      sleep "$SPACING" ;;
+      sleep "$STEP_SPACING" ;;
     "")
       step_fails=$((step_fails + 1))
       say "step: empty response ($step_fails)"
       [ "$step_fails" -ge 2 ] && { say "stopping drain after repeated empty responses"; break; }
-      sleep "$SPACING" ;;
+      sleep "$STEP_SPACING" ;;
     *)
       # A step that records a fetch_error still returns and still advances the
       # queue, so one bad unit must not end the drain, only a run of them.
       steps=$((steps + 1)); step_fails=$((step_fails + 1))
       say "step (recorded an error): $r"
       [ "$step_fails" -ge 4 ] && { say "stopping drain after $step_fails failing steps"; break; }
-      sleep "$SPACING" ;;
+      sleep "$STEP_SPACING" ;;
   esac
 done
 
