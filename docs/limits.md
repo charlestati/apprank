@@ -1,31 +1,33 @@
 # How much can you track?
 
-The unit is the **crawl pair**: one (keyword, storefront, locale) triple. Ten
-keywords in five storefronts is fifty pairs, not ten, and fifty is the number
-every limit below applies to.
+The unit is the **crawl pair**: one keyword in one storefront. 20 keywords
+across 5 storefronts is 100 pairs, and pairs are what every limit below counts.
 
 ## The binding constraint is the collection window, not Cloudflare
 
-Collection runs from a GitHub Actions job with a 45-minute timeout, at the rate
-the collector has learned it can fetch without being throttled. Measured on a
-real run: **2.6 units a minute**, where a unit is one keyword crawl or one
-queued task step. The learned rate moves between 1 and 6 fetches a minute, so
-treat 2.6 as the middle of the range rather than a constant.
+Collection runs from a GitHub Actions job, at the rate the collector has learned
+it can fetch without being throttled. The job's `timeout-minutes` is the real
+ceiling: one unit is one keyword crawl or one queued task step, and each costs
+about 21 seconds, the 15-second spacing plus the round-trip on top of it.
 
-|                                                                  |          |
+| Budget                                                           | Units    |
 | ---------------------------------------------------------------- | -------- |
-| Units in one 45-minute run                                       | ~115     |
-| Less the daily task steps (compaction, lookups, reviews, charts) | ~15      |
-| **Pair crawls per run**                                          | **~100** |
+| One 210-minute run                                               | ~600     |
+| Less checkout, install, warm-up and the post-run verify          | ~30      |
+| Less the daily task steps (compaction, lookups, reviews, charts) | ~40      |
+| **Pair crawls per run**                                          | **~530** |
 
-So roughly **100 pairs at daily resolution**: 20 keywords across 5 storefronts,
-or 50 keywords in 2.
+Two things cap it below that. `APPRANK_REFRESH_MAX_UNITS` in
+`scripts/local-refresh/refresh.sh` stops the crawl loop at 420, and it has to
+stay above your pair count or the lowest-weighted storefront is starved every
+run rather than sharing the shortfall. And the cadence planner budgets against
+the _learned_ rate, which falls to 1/min after a throttled day; at that rate the
+same set is re-spaced across slower rungs until the rate recovers.
 
-Beyond that the cadence ladder takes over rather than anything breaking. Pairs
-are re-spaced across 1, 2, 3 and 7-day rungs so the daily load still fits, which
-means a few hundred pairs are trackable at lower resolution. Adding keywords
-costs _frequency on the least informative pairs_, never coverage. A dropped pair
-would lose its history permanently, so the collector never drops one.
+Beyond the budget nothing breaks: the ladder re-spaces pairs across 1, 2, 3 and
+7-day rungs so the daily load still fits, and a few hundred more stay trackable
+at lower resolution. Adding keywords costs frequency on the least informative
+pairs, never coverage, because a dropped pair loses its history permanently.
 
 ## Cloudflare's free tier is not what runs out
 
@@ -36,35 +38,33 @@ would lose its history permanently, so the collector never drops one.
 | R2 storage       | 10 GB         | NDJSON, one file per storefront per month                                                        |
 | Workers requests | 100,000/day   | Asset requests included, since the Worker gates the whole origin                                 |
 
-The 21 writes per pair is measured on a **cold** crawl, where every app and
-every metadata row is new: 50 pairs produced 50 `ranking` rows, 512 `rank_entry`
-rows, 225 `app` rows and 270 `app_metadata_version` rows. In steady state most
-of that disappears. `rank_entry` is only rewritten when the indexed page
-actually moved, and the app and metadata upserts carry guards that skip an
-unchanged row.
+That 21 is a **cold** crawl, where every app and metadata row is new: 50 pairs
+produced 50 `ranking`, 512 `rank_entry`, 225 `app` and 270
+`app_metadata_version` rows. Steady state is far cheaper, since `rank_entry` is
+rewritten only when the page moved and the upserts skip unchanged rows.
 
 ## Private repositories have a second ceiling
 
 GitHub gives free accounts **2,000 Actions minutes a month** on private
 repositories, and **unlimited** minutes on public ones.
 
-|                                       | Minutes/month |
-| ------------------------------------- | ------------- |
-| Observed run today (26 min × 30 days) | ~780          |
-| A run using the full 45-minute window | ~1,350        |
+| Daily run                       | Minutes/month |
+| ------------------------------- | ------------- |
+| Median observed here, 8 minutes | ~240          |
+| Slowest observed, 26 minutes    | ~780          |
+| A full 210-minute window        | ~6,300        |
 
-Both fit inside 2,000, but the second leaves little room for manual runs or
-retries. If you expect to fill the window daily, make the repository public or
-budget for the minutes.
+Only the first two fit inside 2,000. A tracked set large enough to fill the
+window needs a public repository, where minutes are unlimited.
 
 ## Practical shapes
 
-| Setup                                   | Pairs | Fits in one daily run?     |
-| --------------------------------------- | ----- | -------------------------- |
-| 1 app, 20 keywords, 5 storefronts       | 100   | Yes, everything daily      |
-| 1 app, 40 keywords, 5 storefronts       | 200   | Yes, on 1–2 day rungs      |
-| 2 apps, 30 keywords each, 3 storefronts | 180   | Yes, on 1–2 day rungs      |
-| 1 app, 100 keywords, 5 storefronts      | 500   | Yes, but much of it weekly |
+| Setup                                   | Pairs | Resolution        |
+| --------------------------------------- | ----- | ----------------- |
+| 1 app, 20 keywords, 5 storefronts       | 100   | All daily         |
+| 1 app, 130 keywords, 3 storefronts      | 390   | All daily         |
+| 2 apps, 80 keywords each, 3 storefronts | 480   | All daily         |
+| 1 app, 200 keywords, 5 storefronts      | 1,000 | Much of it weekly |
 
 The data-health page shows the plan the collector actually chose ("340 pairs
 every 1d, 260 every 2d"), which is the real answer for your set.

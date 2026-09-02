@@ -145,6 +145,8 @@ describe(crawlPair, () => {
 			}
 			return Promise.resolve(null);
 		}) as never);
+		// The put is mocked away, so nothing is really there to read back.
+		const head = vi.spyOn(env.ARCHIVE, "head").mockResolvedValue({} as never);
 		const batch = vi
 			.spyOn(env.DB, "batch")
 			.mockImplementation(async (stmts: unknown) => {
@@ -156,9 +158,36 @@ describe(crawlPair, () => {
 
 		await crawlPair(env, pair, 3);
 		put.mockRestore();
+		head.mockRestore();
 
 		expect(order[0]).toBe("archive");
 		expect(order).toContain("d1");
+	});
+
+	it("records no ranking when the archive does not persist", async () => {
+		// A `put` that resolves is not proof the object landed: through the
+		// remote-binding proxy the rank crawl runs behind, one resolved silently
+		// without persisting and left a ranking row that `rebuild-d1` could never
+		// reproduce. A visible gap is the correct outcome.
+		await insertPair(1);
+		stubFetch(() => Response.json(fakeSearchResponse(200)));
+
+		const put = vi.spyOn(env.ARCHIVE, "put").mockResolvedValue(null as never);
+		const head = vi.spyOn(env.ARCHIVE, "head").mockResolvedValue(null);
+
+		await crawlPair(env, pair, 3);
+		put.mockRestore();
+		head.mockRestore();
+
+		const ranking = await env.DB.prepare(
+			"SELECT COUNT(*) AS n FROM ranking WHERE pair_id = 1"
+		).first<{ n: number }>();
+		expect(ranking?.n).toBe(0);
+
+		const error = await env.DB.prepare(
+			"SELECT error_class FROM fetch_error ORDER BY id DESC LIMIT 1"
+		).first<{ error_class: string }>();
+		expect(error?.error_class).toBe("task_threw");
 	});
 
 	it("persists the full 200-deep ordered list plus indexed top-10 rows", async () => {

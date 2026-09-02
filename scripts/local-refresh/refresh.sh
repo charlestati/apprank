@@ -33,16 +33,17 @@ STATE_DIR="$LOG_DIR/state"
 # IP is not a licence to rush.
 SPACING="${APPRANK_REFRESH_SPACING:-15}"
 # Ceilings on one cycle, in units. Both are sized against SPACING, since the
-# sleep dominates: at 4/min these are 35 and 20 minutes of wall clock, and the
-# measured cost is nearer 21s a unit than 15s because the POST round-trip lands
-# on top of the sleep. So a full cycle is ~55 minutes, not 55/60 * 45.
+# sleep dominates, and the measured cost is nearer 21s a unit than 15s because
+# the POST round-trip lands on top of the sleep. At that rate these two are
+# about 145 and 28 minutes of wall clock, which is what the workflow's
+# timeout-minutes has to clear.
 #
 # The pair ceiling has to clear the tracked set or the tail is never reached:
 # ordering is overdue-age x storefront weight, so a cap below the set count
 # starves the lowest-weighted storefront every run rather than sharing the
 # shortfall. Nothing is lost when it does bind, since an uncrawled pair stays
 # due, but it is silent, so keep this above the pair count.
-MAX_UNITS="${APPRANK_REFRESH_MAX_UNITS:-300}"
+MAX_UNITS="${APPRANK_REFRESH_MAX_UNITS:-420}"
 # Consecutive stalls that mean the dev session is wedged rather than slow.
 MAX_MISSES="${APPRANK_REFRESH_MAX_MISSES:-3}"
 MAX_STEPS="${APPRANK_REFRESH_MAX_STEPS:-80}"

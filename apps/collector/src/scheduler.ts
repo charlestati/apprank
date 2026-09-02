@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 
 import type { Env } from "./env";
-import { collectsPublicEndpoints } from "./lib/mode";
+import { collectsPublicEndpoints, dropsTask } from "./lib/mode";
 import {
 	loadPacing,
 	savePacing,
@@ -355,6 +355,13 @@ export class SchedulerDO extends DurableObject<Env> {
 		pacing: PacingState,
 		source: "loop" | "admin"
 	): Promise<Task[]> {
+		if (dropsTask(this.env, task.type, source)) {
+			console.log(
+				`dropped ${task.type}: this deployment collects credentialed endpoints only`
+			);
+			return [];
+		}
+
 		switch (task.type) {
 			case "asc_poll": {
 				return ascPollStep(this.env, task);

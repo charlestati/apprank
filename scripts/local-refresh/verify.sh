@@ -8,7 +8,8 @@
 #   1. No observation was stored from a throttled or failed fetch. Apple
 #      answers a rate limit with an *empty result array*, so a 403/429 that
 #      reached `ranking` would read as "the app is not ranking", the exact
-#      silent-garbage failure invariant 3 forbids.
+#      silent-garbage failure invariant 3 forbids. An empty array behind a 200
+#      is the opposite: a real answer, and it stays a note.
 #   2. Every ranking carries its provenance (status, collector version, count).
 #   3. Every ranking has its indexed rank_entry rows, or the top-10 index and
 #      the stored result list disagree.
@@ -49,8 +50,9 @@ row="$(q "SELECT
   (SELECT COUNT(*) FROM ranking WHERE observed_date='$TODAY') AS today,
   (SELECT COUNT(*) FROM ranking WHERE observed_date='$TODAY' AND (http_status!=200 OR valid!=1)) AS bad_status,
   (SELECT COUNT(*) FROM ranking WHERE observed_date='$TODAY' AND (collector_version IS NULL OR result_count IS NULL OR response_ms IS NULL)) AS no_provenance,
-  (SELECT COUNT(*) FROM ranking WHERE observed_date='$TODAY' AND result_count=0) AS empty_results,
-  (SELECT COUNT(*) FROM ranking r WHERE r.observed_date='$TODAY' AND NOT EXISTS (SELECT 1 FROM rank_entry re WHERE re.ranking_id=r.id)) AS no_entries,
+  (SELECT COUNT(*) FROM ranking WHERE observed_date='$TODAY' AND result_count=0 AND http_status!=200) AS empty_results,
+  (SELECT COUNT(*) FROM ranking WHERE observed_date='$TODAY' AND result_count=0 AND http_status=200) AS empty_pages,
+  (SELECT COUNT(*) FROM ranking r WHERE r.observed_date='$TODAY' AND r.result_count>0 AND NOT EXISTS (SELECT 1 FROM rank_entry re WHERE re.ranking_id=r.id)) AS no_entries,
   (SELECT COUNT(*) FROM crawl_pair WHERE ref_count>0) AS active_pairs,
   (SELECT COUNT(*) FROM crawl_pair WHERE ref_count>0 AND next_due_at < (strftime('%s','now')-86400)*1000) AS overdue,
   (SELECT COUNT(*) FROM fetch_error WHERE fetched_at > (strftime('%s','now')-3600)*1000) AS errors_1h,
@@ -66,6 +68,7 @@ get() { printf '%s' "$row" | python3 -c "import json,sys; print(json.load(sys.st
 
 today=$(get today); bad=$(get bad_status); noprov=$(get no_provenance)
 empty=$(get empty_results); noent=$(get no_entries); pairs=$(get active_pairs)
+empty_pages=$(get empty_pages)
 overdue=$(get overdue); err1h=$(get errors_1h)
 ratings=$(get ratings); charts=$(get charts); reviews=$(get reviews)
 empty_ratings=$(get empty_ratings); empty_charts=$(get empty_charts)
@@ -74,7 +77,12 @@ abandoned=$(get abandoned)
 note "rankings today: $today / $pairs active pairs"
 [ "$bad" -eq 0 ]    || { note "FAIL $bad ranking(s) stored from a non-200 or invalid fetch"; fail=1; }
 [ "$noprov" -eq 0 ] || { note "FAIL $noprov ranking(s) missing provenance"; fail=1; }
-[ "$empty" -eq 0 ]  || { note "FAIL $empty ranking(s) with zero results, a throttle stored as an observation"; fail=1; }
+[ "$empty" -eq 0 ]  || { note "FAIL $empty ranking(s) with zero results behind a non-200, a throttle stored as an observation"; fail=1; }
+# A 200 that returns nothing is a real answer: Apple's adult-content filter
+# empties `jeu adulte` in every storefront at 200 in under 200ms. Failing on it
+# made the whole check permanently red, which is how a genuine single-pair loss
+# stayed unnoticed for two days.
+[ "$empty_pages" -eq 0 ] || note "note: $empty_pages keyword(s) returned an empty page at 200"
 [ "$noent" -eq 0 ]  || { note "FAIL $noent ranking(s) with no rank_entry rows"; fail=1; }
 [ "$overdue" -eq 0 ] || { note "WARN $overdue pair(s) overdue by more than a day"; }
 [ "$err1h" -eq 0 ]  || note "note: $err1h fetch_error row(s) in the last hour"
@@ -92,11 +100,24 @@ note "today: ratings=$ratings charts=$charts · reviews (all time)=$reviews"
 
 # R2 is the rebuild source, so a D1 row without its archive object is the one
 # failure that cannot be repaired later.
+# One `wrangler` invocation per pair, which is a whole node start-up each: at a
+# few hundred pairs a serial loop costs more wall clock than the crawl it is
+# checking, and the job's timeout is the collection window. wrangler has no
+# object-list command, so parallelise instead of sampling -- a partial check
+# would miss exactly the single-pair loss this exists to catch.
+export CFG TODAY
+check_pair() {
+  npx wrangler r2 object get "apprank-archive/staging/rankings/$TODAY/$1.json" \
+    --remote -c "$CFG" --file /dev/null >/dev/null 2>&1 || printf '%s\n' "$1"
+}
+export -f check_pair
+absent="$(q "SELECT pair_id FROM ranking WHERE observed_date='$TODAY' ORDER BY pair_id" \
+  | python3 -c 'import json,sys; [print(r["pair_id"]) for r in json.load(sys.stdin)]' \
+  | xargs -P 8 -I{} bash -c 'check_pair {}')"
 missing=0
-for pid in $(q "SELECT pair_id FROM ranking WHERE observed_date='$TODAY' ORDER BY pair_id" \
-             | python3 -c 'import json,sys; [print(r["pair_id"]) for r in json.load(sys.stdin)]'); do
-  npx wrangler r2 object get "apprank-archive/staging/rankings/$TODAY/$pid.json" \
-    --remote -c "$CFG" --file /dev/null >/dev/null 2>&1 || { missing=$((missing+1)); note "FAIL no R2 record for pair $pid"; }
+for pid in $absent; do
+  missing=$((missing + 1))
+  note "FAIL no R2 record for pair $pid"
 done
 [ "$missing" -eq 0 ] || fail=1
 [ "$today" -eq 0 ] || note "R2 archive: $((today - missing))/$today present"

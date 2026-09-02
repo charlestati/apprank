@@ -42,7 +42,7 @@ jobs:
     # hard ceiling is GitHub's 6 hours for one job. Raise this before adding
     # keywords, never after: a run that times out loses the day for whatever it
     # had not reached yet.
-    timeout-minutes: 150
+    timeout-minutes: 210
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

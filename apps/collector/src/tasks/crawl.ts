@@ -77,6 +77,28 @@ function nextDue(intervalHours: number, windowStartHour: number): number {
 	return next.getTime() + extraDays * 24 * 3_600_000;
 }
 
+/**
+ * Write to R2 and prove it landed.
+ *
+ * The rank crawl runs through `wrangler dev` with remote bindings, and a `put`
+ * that resolves there is not proof of durability: on 2026-09-02 pair 309's
+ * observation was recorded in D1 with no object behind it, during a stretch
+ * where the binding proxy was answering "Network connection lost" and
+ * "Connection timed out". R2 is the rebuild source, so an unarchived
+ * observation is the one loss no later run can repair, and Apple will not serve
+ * that page again. Read back, retry once, then give up and let the caller
+ * record a failure rather than a ranking.
+ */
+async function putArchived(env: Env, key: string, body: string): Promise<void> {
+	for (let attempt = 0; attempt < 2; attempt += 1) {
+		await env.ARCHIVE.put(key, body);
+		if (await env.ARCHIVE.head(key)) {
+			return;
+		}
+	}
+	throw new Error(`archive did not persist: ${key}`);
+}
+
 /** Returns true when the fetch was throttled (caller backs off). */
 export async function crawlPair(
 	env: Env,
@@ -234,22 +256,43 @@ export async function crawlPair(
 	// observation whose body can no longer be fetched: Apple will not serve this
 	// page again. A re-run overwrites the object harmlessly.
 	// Staging is compacted into daily NDJSON overnight.
-	await env.ARCHIVE.put(
-		`staging/rankings/${date}/${pair.id}.json`,
-		JSON.stringify({
-			collectorVersion: COLLECTOR_VERSION,
-			date,
-			fetchedAt: now,
+	try {
+		await putArchived(
+			env,
+			`staging/rankings/${date}/${pair.id}.json`,
+			JSON.stringify({
+				collectorVersion: COLLECTOR_VERSION,
+				date,
+				fetchedAt: now,
+				httpStatus: outcome.status,
+				keyword: pair.keyword_text,
+				locale: pair.locale_code,
+				pairId: pair.id,
+				responseMs: outcome.responseMs,
+				resultCount,
+				resultIds,
+				storefront: pair.storefront_code,
+			})
+		);
+	} catch (error) {
+		// Record nothing. A `ranking` row whose archive is missing is worse than
+		// no row: it reads as a collected day, and `rebuild-d1` cannot reproduce
+		// it. Leave the gap visible and move the pair on, as the http_error branch
+		// does, so one unwritable object cannot wedge the rest of the window.
+		await recordFetchError(env.DB, {
+			endpoint: "itunes:search",
+			errorClass: "task_threw",
 			httpStatus: outcome.status,
-			keyword: pair.keyword_text,
-			locale: pair.locale_code,
-			pairId: pair.id,
+			message:
+				error instanceof Error ? error.message.slice(0, 1200) : "unknown",
+			params: `${pair.keyword_text}|${pair.storefront_code}|${pair.locale_code}`,
 			responseMs: outcome.responseMs,
-			resultCount,
-			resultIds,
-			storefront: pair.storefront_code,
-		})
-	);
+		});
+		await env.DB.prepare("UPDATE crawl_pair SET next_due_at = ? WHERE id = ?")
+			.bind(nextDue(pair.interval_hours, windowStartHour), pair.id)
+			.run();
+		return { throttled: false };
+	}
 
 	stmts.push(
 		env.DB.prepare(
