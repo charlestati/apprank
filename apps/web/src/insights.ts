@@ -184,6 +184,11 @@ export function isBrandTerm(keyword: string, appName: string | null): boolean {
 	return keyword.toLowerCase().includes(brand);
 }
 
+/**
+ * Lane counts are **generic only**; brand terms are reported apart, in
+ * `brandKeywords`. `inTapZone`, `unmeasuredKeywords` and the two `*Keywords`
+ * totals span the whole set.
+ */
 export interface OpportunitySummary {
 	winning: number;
 	close: number;
@@ -210,11 +215,15 @@ export interface OpportunitySummary {
 export function summarise(
 	rows: (KeywordRow & { verdict: KeywordVerdict; brand: boolean })[]
 ): OpportunitySummary {
+	const generic = rows.filter((r) => !r.brand);
+	// Lanes are generic-only, because the panel says so in as many words: brand
+	// terms are counted separately, since that demand is already yours. Counting
+	// them in put all nine `codex` variants into "no volume data" and printed
+	// three of them as its examples, directly under the sentence excluding them.
 	const count = (o: Opportunity) =>
-		rows.filter((r) => r.verdict.opportunity === o).length;
+		generic.filter((r) => r.verdict.opportunity === o).length;
 	const inTapZone = (list: typeof rows) =>
 		list.filter((r) => r.position !== null && r.position <= TAP_ZONE).length;
-	const generic = rows.filter((r) => !r.brand);
 
 	return {
 		blocked: count("blocked"),

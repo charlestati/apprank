@@ -23,8 +23,13 @@ const lanesFor = (t: Dictionary) =>
 		{ hint: t.laneUnknownHint, key: "unknown", label: t.laneUnknown },
 	] as const;
 
+// Brand terms are excluded here for the same reason they are excluded from the
+// counts: a lane that reads 15 while listing three brand keywords under it is
+// describing two different sets.
 function pickExamples(rows: KeywordRow[], key: string): KeywordRow[] {
-	return rows.filter((r) => r.verdict?.opportunity === key).slice(0, 3);
+	return rows
+		.filter((r) => !r.brand && r.verdict?.opportunity === key)
+		.slice(0, 3);
 }
 
 export function Opportunities({

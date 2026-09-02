@@ -119,6 +119,18 @@ describe("GET /api/health/data", () => {
 				`INSERT INTO ranking (id, pair_id, observed_date, fetched_at, http_status, result_count, result_ids, collector_version, valid)
          VALUES (3, 2, ?1, 0, 500, 0, '[]', 'test', 0)`
 			).bind(isoDay()),
+			// A retired pair (ref_count 0) that was still crawled earlier the same
+			// day it was dropped. It keeps its history, so the row is real, but it
+			// is not part of today's expected coverage: counting it against the
+			// active pair count is what reported 443/387, or 114%.
+			env.DB.prepare(
+				`INSERT INTO crawl_pair (id, keyword_id, storefront_code, locale_code, tier, ref_count, next_due_at)
+         VALUES (3, 1, 'de', 'fr-FR', 1, 0, 0)`
+			),
+			env.DB.prepare(
+				`INSERT INTO ranking (id, pair_id, observed_date, fetched_at, http_status, result_count, result_ids, collector_version, valid)
+         VALUES (4, 3, ?1, 0, 200, 200, '[]', 'test', 1)`
+			).bind(isoDay()),
 			env.DB.prepare(
 				"INSERT INTO fetch_error (fetched_at, endpoint, error_class) VALUES (?1, '/search', 'throttled')"
 			).bind(Date.now()),
@@ -155,7 +167,10 @@ describe("GET /api/health/data", () => {
 		const res = await app.fetch(apiRequest("/health/data"), env);
 		const body = (await res.json()) as DataHealthBody;
 		expect(body.tier1Pairs).toBe(1);
+		// Never more than tier1Pairs: numerator and denominator count the same
+		// population, so coverage cannot exceed 100%.
 		expect(body.collectedToday).toBe(1);
+		expect(body.collectedToday).toBeLessThanOrEqual(body.tier1Pairs);
 		expect(
 			body.errorsLast24h.map((e) => ({ errorClass: e.errorClass, n: e.n }))
 		).toStrictEqual([

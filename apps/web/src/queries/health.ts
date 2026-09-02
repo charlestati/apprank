@@ -67,9 +67,17 @@ export async function dataHealth(
 				"SELECT COUNT(*) AS n FROM crawl_pair WHERE ref_count > 0 AND tier = 1"
 			)
 			.first<{ n: number }>(),
+		// Joined to crawl_pair so the numerator counts the same population as the
+		// denominator above. A retired pair keeps its history and can still carry
+		// an observation from earlier the same day it was dropped, so counting
+		// every ranking row against the active pair count reported 443/387, and a
+		// coverage figure over 100% is the one number nobody re-reads.
 		db
 			.prepare(
-				"SELECT COUNT(*) AS n FROM ranking WHERE observed_date = ? AND valid = 1"
+				`SELECT COUNT(*) AS n FROM ranking r
+           JOIN crawl_pair cp ON cp.id = r.pair_id
+          WHERE r.observed_date = ? AND r.valid = 1
+            AND cp.ref_count > 0 AND cp.tier = 1`
 			)
 			.bind(today)
 			.first<{ n: number }>(),

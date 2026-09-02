@@ -200,8 +200,27 @@ describe(summarise, () => {
 			blocked: 1,
 			dormant: 1,
 			vanity: 1,
-			winning: 2,
+			// One winner, not two: row 2 is brand and the lanes exclude it.
+			winning: 1,
 		});
+	});
+
+	it("keeps brand terms out of the lanes the panel says they are out of", () => {
+		// The panel prints "N brand terms are counted separately" directly above
+		// these counts. Counting them in put every brand variant into a lane and
+		// listed them as its examples, contradicting the sentence above them.
+		const brandOnly = [
+			row({ brand: true, pairId: 20, popularity: 60, position: 1 }),
+			row({ brand: true, pairId: 21, popularity: null, position: 2 }),
+		].map((r) => ({ ...r, brand: true, verdict: classify(r) }));
+		const s = summarise(brandOnly);
+
+		expect(s.winning).toBe(0);
+		expect(s.unknown).toBe(0);
+		expect(s.brandKeywords).toBe(2);
+		expect(s.genericKeywords).toBe(0);
+		// Still counted where the field is documented to span the whole set.
+		expect(s.inTapZone).toBe(2);
 	});
 
 	it("counts how much of the set has no published volume", () => {
