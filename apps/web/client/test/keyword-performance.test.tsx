@@ -428,6 +428,73 @@ describe("Chart series selection", () => {
 			screen.getByRole("button", { name: "Add example keyword to the chart" })
 		).toBeDefined();
 	});
+
+	it("keeps a hidden series in the legend, so it can be shown again", async () => {
+		renderPage({
+			report: report({
+				rows: [keywordRow(), keywordRow({ keyword: "second", pairId: 2 })],
+			}),
+			storefronts,
+		});
+		await screen.findAllByText("example keyword");
+		const legend = document.querySelector(".legend") as HTMLElement;
+		expect(document.querySelectorAll(".series")).toHaveLength(2);
+
+		fireEvent.click(
+			within(legend).getByRole("button", {
+				name: "Hide example keyword from the chart",
+			})
+		);
+		expect(document.querySelectorAll(".series")).toHaveLength(1);
+
+		// The chip that hid the line is still there, and it is what brings it
+		// back. Built from the drawn series, the legend deleted its own control.
+		const restore = within(legend).getByRole("button", {
+			name: "Show example keyword on the chart",
+		});
+		expect(restore.getAttribute("aria-pressed")).toBe("false");
+		fireEvent.click(restore);
+		expect(document.querySelectorAll(".series")).toHaveLength(2);
+	});
+
+	it("holds each series' colour when another one is hidden", async () => {
+		renderPage({
+			report: report({
+				rows: [keywordRow(), keywordRow({ keyword: "second", pairId: 2 })],
+			}),
+			storefronts,
+		});
+		await screen.findAllByText("example keyword");
+		const legend = document.querySelector(".legend") as HTMLElement;
+		const strokeOf = (name: string) =>
+			within(legend)
+				.getByRole("button", { name })
+				.querySelector("line")
+				?.getAttribute("stroke");
+		const before = strokeOf("Hide second from the chart");
+
+		fireEvent.click(
+			within(legend).getByRole("button", {
+				name: "Hide example keyword from the chart",
+			})
+		);
+		// Slots follow membership, not what is drawn, so the surviving line keeps
+		// the colour the reader had already learned it by.
+		expect(strokeOf("Hide second from the chart")).toBe(before);
+	});
+
+	it("says the lines are hidden rather than that nothing was collected", async () => {
+		renderPage({ report: report(), storefronts });
+		await screen.findAllByText("example keyword");
+
+		fireEvent.click(
+			screen.getByRole("button", {
+				name: "Hide example keyword from the chart",
+			})
+		);
+		expect(screen.getByText(/Every line is hidden/u)).toBeDefined();
+		expect(screen.queryByText(/No ranked observations/u)).toBeNull();
+	});
 });
 
 describe("Popularity filter", () => {

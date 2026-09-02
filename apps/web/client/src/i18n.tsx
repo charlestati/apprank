@@ -212,6 +212,8 @@ const en = {
 	difficultyTop10: "top-10 rating mass {pct}",
 	difficultyTop3: "top-3 rating mass {pct}",
 	hideFromChart: "Hide {keyword} from the chart",
+	showOnChart: "Show {keyword} on the chart",
+	allSeriesHidden: "Every line is hidden. Use the keys below to show one.",
 	navSections: "Sections",
 	noChangeWindow: "no change in this window",
 	noFieldDiff: "no field diff",
@@ -416,6 +418,9 @@ const fr: Dictionary = {
 	difficultyTop10: "poids des notes du top 10 {pct}",
 	difficultyTop3: "poids des notes du top 3 {pct}",
 	hideFromChart: "Masquer {keyword} du graphique",
+	showOnChart: "Afficher {keyword} sur le graphique",
+	allSeriesHidden:
+		"Toutes les courbes sont masquées. Utilisez la légende pour en afficher une.",
 	navSections: "Sections",
 	noChangeWindow: "aucun changement sur la période",
 	noFieldDiff: "aucun champ modifié",

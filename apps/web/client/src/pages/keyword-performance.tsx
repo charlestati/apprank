@@ -77,6 +77,8 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 	const [filter, setFilter] = useState("");
 	const [band, setBand] = useState(0);
 	const [selected, setSelected] = useState<number[] | null>(null);
+	// Legend visibility, kept apart from membership above.
+	const [hidden, setHidden] = useState<number[]>([]);
 	const [resultsFor, setResultsFor] = useState<KeywordRow | null>(null);
 	// The series the reader is pointing at, from either the chart or the table.
 	// Everything else greys out: contrast is what carries the story, not eight
@@ -112,39 +114,63 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 			} catch {
 				setReport(null);
 			}
+			// A new report is a new set of pairs; carrying the old ids over would
+			// hide a line the reader never touched.
+			setHidden([]);
 			setLoaded(true);
 		})();
 	}, [app, storefront, days]);
 
-	const chartSeries = useMemo(() => {
-		const ranked = (report?.rows ?? []).filter((r) => r.position !== null);
-		if (selected === null) {
-			return ranked.slice(0, CHART_SERIES);
-		}
-		return (report?.rows ?? []).filter((r) => selected.includes(r.pairId));
+	// Membership and visibility are two different questions, which is why the
+	// table's control says add/remove and the legend's says hide/show. Modelling
+	// them as one made the legend chip delete itself: the list was built from the
+	// drawn series, so hiding a line took away the only control that could bring
+	// it back.
+	const members = useMemo(() => {
+		const rankedIds = (report?.rows ?? [])
+			.filter((r) => r.position !== null)
+			.slice(0, CHART_SERIES)
+			.map((r) => r.pairId);
+		const ids = new Set(selected ?? rankedIds);
+		return (report?.rows ?? []).filter((r) => ids.has(r.pairId));
 	}, [report, selected]);
 
-	const toggleSeries = (pairId: number) => {
+	const chartSeries = useMemo(
+		() => members.filter((r) => !hidden.includes(r.pairId)),
+		[members, hidden]
+	);
+
+	/** Table control: puts a keyword on the chart, or takes it off entirely. */
+	const toggleMember = (pairId: number) => {
 		setSelected((current) => {
-			const base =
-				current ??
-				(report?.rows ?? [])
-					.filter((r) => r.position !== null)
-					.slice(0, CHART_SERIES)
-					.map((r) => r.pairId);
+			const base = current ?? members.map((r) => r.pairId);
 			return base.includes(pairId)
 				? base.filter((id) => id !== pairId)
 				: [...base, pairId];
 		});
+		// A keyword put back on the chart comes back visible, whatever the legend
+		// last did with it.
+		setHidden((current) => current.filter((id) => id !== pairId));
 	};
 
+	/** Legend control: hides a line without giving up its slot or its colour. */
+	const toggleVisible = (pairId: number) => {
+		setHidden((current) =>
+			current.includes(pairId)
+				? current.filter((id) => id !== pairId)
+				: [...current, pairId]
+		);
+	};
+
+	// Keyed to membership, not to what is drawn, so hiding one line does not
+	// recolour the others under the reader.
 	const styleIndex = useMemo(() => {
 		const map = new Map<number, SeriesStyle>();
-		for (const [i, row] of chartSeries.entries()) {
+		for (const [i, row] of members.entries()) {
 			map.set(row.pairId, SERIES_STYLES[i] ?? FALLBACK_STYLE);
 		}
 		return map;
-	}, [chartSeries]);
+	}, [members]);
 
 	const rows = useMemo(() => {
 		const needle = filter.trim().toLowerCase();
@@ -218,15 +244,22 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 
 					<section className="card chart-card">
 						<figure className="chart-figure">
-							<RankSeriesChart
-								describedBy="chart-caption"
-								focusedPairId={focused}
-								markers={report.metadataChanges}
-								onFocus={setFocused}
-								series={chartSeries}
-								styleOf={(pairId) => styleIndex.get(pairId) ?? FALLBACK_STYLE}
-								window={report.window}
-							/>
+							{/* Distinguished from "nothing was collected": the chart's own
+                  empty state would tell a reader who just hid four lines
+                  that the collector had not run. */}
+							{members.length > 0 && chartSeries.length === 0 ? (
+								<p className="empty">{t.allSeriesHidden}</p>
+							) : (
+								<RankSeriesChart
+									describedBy="chart-caption"
+									focusedPairId={focused}
+									markers={report.metadataChanges}
+									onFocus={setFocused}
+									series={chartSeries}
+									styleOf={(pairId) => styleIndex.get(pairId) ?? FALLBACK_STYLE}
+									window={report.window}
+								/>
+							)}
 							{/* The prose alternative the graphic points at, and the pointer
                   to the table that carries the numbers themselves. It is not
                   drawn: a sighted reader already has the subject in the page
@@ -244,30 +277,44 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 							</figcaption>
 						</figure>
 						<ul className="legend">
-							{chartSeries.map((row) => (
-								<li key={row.pairId}>
-									{/* The chip is the same control as the table's toggle, so
-                      pointing at it to highlight a line is an interaction on
-                      something that was already interactive. */}
-									<button
-										aria-label={fmt(t.hideFromChart, { keyword: row.keyword })}
-										className={
-											focused !== null && focused !== row.pairId
-												? "legend-chip legend-muted"
-												: "legend-chip"
-										}
-										onBlur={() => setFocused(null)}
-										onClick={() => toggleSeries(row.pairId)}
-										onFocus={() => setFocused(row.pairId)}
-										onMouseEnter={() => setFocused(row.pairId)}
-										onMouseLeave={() => setFocused(null)}
-										type="button"
-									>
-										<SeriesGlyph style={styleIndex.get(row.pairId) ?? null} />
-										{row.keyword}
-									</button>
-								</li>
-							))}
+							{members.map((row) => {
+								const shown = !hidden.includes(row.pairId);
+								return (
+									<li key={row.pairId}>
+										{/* Every member keeps its chip whether or not its line is
+                      drawn. A hidden series that took its own control away
+                      with it could only be recovered from the table. */}
+										<button
+											aria-label={
+												shown
+													? fmt(t.hideFromChart, { keyword: row.keyword })
+													: fmt(t.showOnChart, { keyword: row.keyword })
+											}
+											aria-pressed={shown}
+											className={
+												(focused !== null && focused !== row.pairId) || !shown
+													? "legend-chip legend-muted"
+													: "legend-chip"
+											}
+											onBlur={() => setFocused(null)}
+											onClick={() => toggleVisible(row.pairId)}
+											onFocus={() => setFocused(row.pairId)}
+											onMouseEnter={() => setFocused(row.pairId)}
+											onMouseLeave={() => setFocused(null)}
+											type="button"
+										>
+											{/* A hidden series keeps its slot but drops its colour, so
+                          it is told apart from a chip merely dimmed because
+                          the reader is pointing at another line. */}
+											<SeriesGlyph
+												muted={!shown}
+												style={styleIndex.get(row.pairId) ?? null}
+											/>
+											{row.keyword}
+										</button>
+									</li>
+								);
+							})}
 						</ul>
 						{report.metadataChanges.length > 0 ? (
 							<ol className="marker-key">
@@ -388,7 +435,7 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 													}
 													aria-pressed={styleIndex.has(row.pairId)}
 													className="swatch-button"
-													onClick={() => toggleSeries(row.pairId)}
+													onClick={() => toggleMember(row.pairId)}
 													type="button"
 												>
 													<SeriesGlyph
