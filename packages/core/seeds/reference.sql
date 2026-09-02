@@ -12,7 +12,6 @@ INSERT OR IGNORE INTO storefront (code, name, apple_storefront_id, weight, activ
   ('ch', 'Switzerland',    143459, 0.6, 1),
   ('ca', 'Canada',         143455, 0.6, 1),
   ('lu', 'Luxembourg',     143451, 0.3, 1),
-  ('lb', 'Lebanon',        143497, 0.3, 1),
   ('ma', 'Morocco',        NULL,   0.3, 1),
   ('dz', 'Algeria',        NULL,   0.3, 1),
   ('tn', 'Tunisia',        NULL,   0.3, 1),
@@ -26,6 +25,10 @@ INSERT OR IGNORE INTO storefront (code, name, apple_storefront_id, weight, activ
   -- "ranks nowhere", so leaving it active would bank clean-looking rows that
   -- are all false. Retired rather than deleted, so it is not tried again.
   ('mc', 'Monaco',         NULL,   0.2, 0),
+  -- Lebanon is catalogued because Apple publishes it, not because it is
+  -- tracked. Which storefronts a deployment actually crawls is an operator
+  -- decision and lives in seeds/local/, never here.
+  ('lb', 'Lebanon',        143497, 0.3, 0),
   -- Inactive but pre-seeded for Tier 2 sweeps / a future English localization.
   ('us', 'United States',  143441, 1.0, 0),
   ('gb', 'United Kingdom', 143444, 0.8, 0),
