@@ -1,0 +1,97 @@
+# Half of the collector. The other half is the Cloudflare Worker.
+#
+# The two are split by which APIs each can reach. The Worker takes App Store
+# Connect and Apple Ads, which are credentialed and served to it without
+# complaint. This takes the public iTunes endpoints: keyword ranks, metadata,
+# ratings, reviews and charts. Apple rate-limits those per IP and every Worker
+# egresses from a pool it has already rejected, so a Worker gets HTTP 429 on
+# every attempt while the identical request succeeds from an ordinary
+# connection.
+#
+# Not a second implementation: `wrangler dev` runs the *same* collector source
+# here on the runner, with remote bindings on D1 and R2, so observations carry
+# the same normaliser, provenance and idempotent keys as the Worker's own. The
+# Durable Object is local to this process; only the data is shared.
+#
+# A runner's egress is not Cloudflare's, but it is still shared, and Apple
+# rate-limits whoever it is. Run this by hand once on a new deployment and
+# check `throttled=` in the summary before trusting the cron.
+name: Collect
+
+on:
+  schedule:
+    # Pairs come due at 03:00 UTC. Ten minutes later, so a run never races the
+    # daily job that queues the work. GitHub's scheduler is best-effort and can
+    # be delayed under load; that is fine, since due pairs stay due.
+    - cron: "10 3 * * *"
+  workflow_dispatch:
+
+# One collector at a time. Two concurrent runs would fetch the same pairs twice
+# and spend the same IP's budget against itself.
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    # Sized from the ceilings in refresh.sh, not the other way round: at the
+    # measured 2.56 units a minute, 255 pairs plus the queue steps is ~110
+    # minutes. Billing is on real duration, so a generous cap costs nothing
+    # until a run needs it, and on a public repo the minutes are unlimited. The
+    # hard ceiling is GitHub's 6 hours for one job. Raise this before adding
+    # keywords, never after: a run that times out loses the day for whatever it
+    # had not reached yet.
+    timeout-minutes: 210
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
+      APPRANK_LOG_DIR: ${{ github.workspace }}/collect-logs
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build the crawl config
+        run: node scripts/local-refresh/write-config.mjs
+
+      - name: Provide the admin token to the dev session
+        # refresh.sh drives the collector through its own admin route, which is
+        # gated by ADMIN_TOKEN; wrangler reads it from .dev.vars, not the shell.
+        #
+        # Passed through `env`, not interpolated into the command: a secret on a
+        # command line is visible to `ps` and lands in audit events, and this
+        # one contains characters the shell would otherwise be free to mangle.
+        env:
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        run: printf 'ADMIN_TOKEN=%s\n' "$ADMIN_TOKEN" > apps/collector/.dev.vars
+
+      - name: Collect
+        run: ./scripts/local-refresh/refresh.sh
+
+      - name: Diagnostics
+        if: always()
+        run: |
+          echo "--- log dir ---"
+          ls -la "$APPRANK_LOG_DIR" 2>&1 || echo "(missing)"
+          echo "--- wrangler ---"
+          tail -40 "$APPRANK_LOG_DIR"/wrangler-*.log 2>&1 || true
+
+      - name: Logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          # Not `.collect-logs`: upload-artifact excludes hidden files by
+          # default, so a dot-prefixed directory uploads nothing and reports
+          # success while attaching no diagnostics at all.
+          name: collect-logs-${{ github.run_id }}
+          path: ${{ github.workspace }}/collect-logs
+          retention-days: 14

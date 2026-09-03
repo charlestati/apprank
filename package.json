@@ -1,0 +1,32 @@
+{
+	"name": "apprank",
+	"private": true,
+	"license": "Apache-2.0",
+	"type": "module",
+	"scripts": {
+		"prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true",
+		"types": "pnpm --filter collector --filter web types",
+		"typecheck": "tsc -p tsconfig.json && pnpm -r typecheck",
+		"lint": "ultracite check",
+		"lint:fix": "ultracite fix",
+		"test": "pnpm -r test && pnpm test:scripts",
+		"coverage": "pnpm -r coverage",
+		"generate": "pnpm --filter @apprank/core generate",
+		"migrate:local": "pnpm --filter collector migrate:local",
+		"migrate:remote": "pnpm --filter collector migrate:remote",
+		"seed:local": "pnpm --filter collector seed:local",
+		"seed:remote": "pnpm --filter collector seed:remote",
+		"deploy": "pnpm --filter collector deploy && pnpm --filter web deploy",
+		"track": "node scripts/track/track.mjs",
+		"rebuild:d1": "pnpm --filter rebuild-d1 rebuild",
+		"rank-churn": "node scripts/rank-churn/measure.mjs",
+		"test:scripts": "node --test \"scripts/**/*.test.mjs\""
+	},
+	"devDependencies": {
+		"oxfmt": "0.65.0",
+		"oxlint": "1.80.0",
+		"typescript": "7.0.2",
+		"ultracite": "7.10.6"
+	},
+	"packageManager": "pnpm@11.25.0"
+}

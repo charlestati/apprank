@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Test coverage
+coverage/
+
+# Generated Worker types: `wrangler types` regenerates them on every typecheck
+worker-configuration.d.ts
+
+# Wrangler local state
+.wrangler/
+
+# Secrets and machine-local config. Every wrangler.jsonc is committed with
+# placeholder ids; the wrangler.<name>.jsonc beside it holds the real
+# database_id, APP_URL and COLLECTION_MODE, and is local-only.
+wrangler.*.jsonc
+.dev.vars
+.dev.vars.*
+.env
+.env.*
+*.local
+
+# Local agent settings; `.claude/rules/` is committed
+.claude/settings.local.json
+
+# Installed agent skills. Tooling somebody chose for their own machine, not part
+# of the project: a skill bundle is third-party content, and vendoring one into
+# a public repository makes it look like something this app ships.
+.agents/
+.claude/skills/
+skills-lock.json
+
+# Operator data: the tracked set is an ASO strategy and this repository is public
+tracked.local.json
+tracked.local.sql
+packages/core/seeds/local/
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store

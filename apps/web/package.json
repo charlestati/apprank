@@ -1,0 +1,44 @@
+{
+	"name": "web",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"types": "wrangler types",
+		"typecheck": "wrangler types && tsc -p tsconfig.json && tsc -p client/tsconfig.json",
+		"test": "vitest run",
+		"coverage": "vitest run --coverage",
+		"dev": "vite dev",
+		"build": "vite build",
+		"deploy": "pnpm run build && wrangler deploy -c $(test -f wrangler.local.jsonc && echo wrangler.local.jsonc || echo wrangler.jsonc)",
+		"dev:worker": "wrangler dev -c $(test -f wrangler.local.jsonc && echo wrangler.local.jsonc || echo wrangler.jsonc) --var ALLOW_UNAUTHENTICATED:true"
+	},
+	"dependencies": {
+		"@apprank/core": "workspace:*",
+		"@base-ui/react": "1.7.0",
+		"@modelcontextprotocol/client": "2.0.0",
+		"@modelcontextprotocol/sdk": "1.30.0",
+		"@modelcontextprotocol/server": "2.0.0",
+		"agents": "0.21.0",
+		"hono": "4.13.4",
+		"lucide-react": "1.34.0",
+		"react": "19.2.8",
+		"react-dom": "19.2.8",
+		"react-router": "8.3.0",
+		"zod": "4.4.3"
+	},
+	"devDependencies": {
+		"@cloudflare/vitest-pool-workers": "0.22.0",
+		"@testing-library/dom": "10.4.1",
+		"@testing-library/react": "16.3.2",
+		"@types/node": "24.13.3",
+		"@types/react": "19.2.18",
+		"@types/react-dom": "19.2.5",
+		"@vitejs/plugin-react": "6.1.0",
+		"@vitest/coverage-istanbul": "4.1.11",
+		"happy-dom": "20.11.6",
+		"typescript": "7.0.2",
+		"vite": "8.2.2",
+		"vitest": "4.1.11",
+		"wrangler": "4.125.0"
+	}
+}

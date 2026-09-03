@@ -1,0 +1,40 @@
+{
+	"_readme": [
+		"Copy to tracked.local.json, then: pnpm track  →  pnpm track --apply",
+		"The top-level key is the userId. It MUST match the userId in the",
+		"BASIC_AUTH_ACCOUNTS secret, or that person signs in and sees nothing.",
+		"storefronts x keywords is your whole daily fetch and write volume.",
+		"Removing a keyword retires it and keeps its history; it is never deleted."
+	],
+	"admin": {
+		"apps": [
+			{
+				"appId": 123456789,
+				"name": "Your App",
+				"language": "en",
+				"storefronts": ["us", "gb", "ca"],
+				"keywords": ["habit tracker", "daily planner"]
+			},
+			{
+				"_comment": [
+					"Same appId, second language. `language` stamps the keywords AND picks",
+					"the locale per storefront, so one entry cannot mix languages. List the",
+					"app again to track Spanish terms in the Spanish store."
+				],
+				"appId": 123456789,
+				"name": "Your App",
+				"language": "es",
+				"storefronts": ["es"],
+				"keywords": ["rastreador de hábitos"]
+			},
+			{
+				"_comment": "A second, unrelated app under the same person.",
+				"appId": 987654321,
+				"name": "Your Second App",
+				"language": "en",
+				"storefronts": ["us"],
+				"keywords": ["recipe manager"]
+			}
+		]
+	}
+}

@@ -1,0 +1,1832 @@
+/* Atlassian Design System tokens, transcribed from the values @atlaskit/tokens
+ * emits at runtime (the shipping "refreshed" palette). Translucent 8-digit
+ * hexes are intentional: surface, border and neutral-background tokens
+ * composite over whatever sits behind them, which is what makes the elevation
+ * ramp and the row hover states work on both surfaces.
+ *
+ * Layout follows a keyword-performance report: filter bar, summary tiles,
+ * multi-series rank chart, dense keyword table.
+ */
+
+:root {
+	color-scheme: light;
+
+	/* Surfaces: sunken behind, raised for cards, overlay for popups */
+	--ds-surface: #ffffff;
+	--ds-surface-sunken: #f8f8f8;
+	--ds-surface-raised: #ffffff;
+	--ds-surface-overlay: #ffffff;
+	--ds-surface-hovered: #f0f1f2;
+	--ds-surface-pressed: #dddee1;
+
+	/* Borders */
+	--ds-border: #0b120e24;
+	--ds-border-bold: #7d818a;
+	--ds-border-input: #8c8f97;
+	--ds-border-focused: #4688ec;
+	--ds-border-selected: #1868db;
+
+	/* Text */
+	--ds-text: #292a2e;
+	--ds-text-subtle: #505258;
+	--ds-text-subtlest: #6b6e76;
+	--ds-text-inverse: #ffffff;
+	--ds-link: #1868db;
+	--ds-link-pressed: #1558bc;
+
+	/* Neutral interaction overlays (rows, nav items) */
+	--ds-neutral-subtle-hovered: #0515240f;
+	--ds-neutral-subtle-pressed: #0b120e24;
+	--ds-background-neutral: #0515240f;
+
+	/* Selected */
+	--ds-background-selected: #e9f2fe;
+	--ds-text-selected: #1868db;
+
+	/* Status */
+	--ds-bg-success: #effdd6;
+	--ds-text-success: #4c6b1f;
+	--ds-bg-danger: #ffeceb;
+	--ds-text-danger: #ae2e24;
+	--ds-bg-warning: #fff5db;
+	--ds-text-warning: #9e4c00;
+	--ds-bg-information: #e9f2fe;
+	--ds-text-information: #1558bc;
+
+	/* Categorical chart series, used in numeric order and never cycled */
+	--ds-chart-1: #357de8;
+	--ds-chart-2: #82b536;
+	--ds-chart-3: #bf63f3;
+	--ds-chart-4: #f68909;
+	--ds-chart-5: #1558bc;
+	--ds-chart-6: #964ac0;
+	--ds-chart-7: #42b2d7;
+	--ds-chart-8: #bd5b00;
+	--ds-chart-success: #82b536;
+	--ds-chart-danger: #e2483d;
+	--ds-chart-neutral: #8c8f97;
+
+	--ds-shadow-raised: 0 1px 1px #1e1f2140, 0 0 1px #1e1f214f;
+	--ds-shadow-overlay: 0 8px 12px #1e1f2126, 0 0 1px #1e1f214f;
+
+	/* Type */
+	--ds-font-sans:
+		"Atlassian Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont,
+		"Segoe UI", Ubuntu, "Helvetica Neue", sans-serif;
+	--ds-font-mono:
+		"Atlassian Mono", ui-monospace, Menlo, "Segoe UI Mono", "Ubuntu Mono",
+		monospace;
+	--ds-weight-medium: 500;
+	--ds-weight-bold: 653;
+
+	/* Typography, as the `font` shorthand @atlaskit/tokens emits. Two steps of
+   * the ADS scale are deliberately unused: font.body.small (12px) and
+   * font.heading.xxsmall (12px) fall below this product's 14px floor, so a
+   * label that would have taken them takes font.body or heading.xsmall and
+   * gets the room it needs instead. The base is font.body.large (16px) rather
+   * than ADS's 14px default, because this is a reading surface, not a dense
+   * admin console; the 14px step is reserved for genuinely dense contexts:
+   * table cells, chart furniture, secondary metadata. */
+	--ds-font-heading-xlarge: normal var(--ds-weight-bold) 1.75rem/2rem
+		var(--ds-font-sans);
+	--ds-font-heading-large: normal var(--ds-weight-bold) 1.5rem/1.75rem
+		var(--ds-font-sans);
+	--ds-font-heading-medium: normal var(--ds-weight-bold) 1.25rem/1.5rem
+		var(--ds-font-sans);
+	--ds-font-heading-small: normal var(--ds-weight-bold) 1rem/1.25rem
+		var(--ds-font-sans);
+	--ds-font-heading-xsmall: normal var(--ds-weight-bold) 0.875rem/1.25rem
+		var(--ds-font-sans);
+	--ds-font-body-large: normal 400 1rem/1.5rem var(--ds-font-sans);
+	--ds-font-body: normal 400 0.875rem/1.25rem var(--ds-font-sans);
+
+	/* Space */
+	--ds-space-025: 2px;
+	--ds-space-050: 4px;
+	--ds-space-075: 6px;
+	--ds-space-100: 8px;
+	--ds-space-150: 12px;
+	--ds-space-200: 16px;
+	--ds-space-250: 20px;
+	--ds-space-300: 24px;
+	--ds-space-400: 32px;
+
+	/* Radius */
+	--ds-radius-xsmall: 2px;
+	--ds-radius-small: 4px;
+	--ds-radius-medium: 6px;
+	--ds-radius-large: 8px;
+	--ds-radius-full: 9999px;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme="light"]) {
+		color-scheme: dark;
+
+		--ds-surface: #1f1f21;
+		--ds-surface-sunken: #18191a;
+		--ds-surface-raised: #242528;
+		--ds-surface-overlay: #2b2c2f;
+		--ds-surface-hovered: #242528;
+		--ds-surface-pressed: #2b2c2f;
+
+		--ds-border: #e3e4f21f;
+		--ds-border-bold: #7e8188;
+		--ds-border-input: #7e8188;
+		--ds-border-focused: #8fb8f6;
+		--ds-border-selected: #669df1;
+
+		--ds-text: #cecfd2;
+		--ds-text-subtle: #a9abaf;
+		--ds-text-subtlest: #96999e;
+		--ds-text-inverse: #1f1f21;
+		--ds-link: #669df1;
+		--ds-link-pressed: #8fb8f6;
+
+		--ds-neutral-subtle-hovered: #ceced912;
+		--ds-neutral-subtle-pressed: #e3e4f21f;
+		--ds-background-neutral: #ceced912;
+
+		--ds-background-selected: #1c2b42;
+		--ds-text-selected: #669df1;
+
+		--ds-bg-success: #28311b;
+		--ds-text-success: #b3df72;
+		--ds-bg-danger: #42221f;
+		--ds-text-danger: #fd9891;
+		--ds-bg-warning: #3a2c1f;
+		--ds-text-warning: #fbc828;
+		--ds-bg-information: #1c2b42;
+		--ds-text-information: #8fb8f6;
+
+		--ds-chart-1: #4688ec;
+		--ds-chart-2: #94c748;
+		--ds-chart-3: #c97cf4;
+		--ds-chart-4: #fca700;
+		--ds-chart-5: #1558bc;
+		--ds-chart-6: #964ac0;
+		--ds-chart-7: #42b2d7;
+		--ds-chart-8: #e06c00;
+		--ds-chart-success: #94c748;
+		--ds-chart-danger: #f15b50;
+		--ds-chart-neutral: #96999e;
+
+		--ds-shadow-raised:
+			0 0 0 1px #00000000, 0 1px 1px #01040480, 0 0 1px #01040480;
+		--ds-shadow-overlay:
+			0 0 0 1px #bdbdbd1f, 0 8px 12px #0104045c, 0 0 1px 1px #01040480;
+	}
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	background: var(--ds-surface-sunken);
+	color: var(--ds-text);
+	font: var(--ds-font-body-large);
+}
+
+:focus-visible {
+	outline: 2px solid var(--ds-border-focused);
+	outline-offset: 2px;
+}
+:focus:not(:focus-visible) {
+	outline: none;
+}
+
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+}
+
+/* ── Shell ─────────────────────────────────────────────────────────────── */
+
+.shell {
+	display: grid;
+	grid-template-columns: 240px 1fr;
+	grid-template-rows: auto 1fr;
+	min-height: 100vh;
+}
+
+.topbar {
+	grid-column: 1 / -1;
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-200);
+	padding: var(--ds-space-100) var(--ds-space-300);
+	background: var(--ds-surface);
+	border-bottom: 1px solid var(--ds-border);
+}
+
+.spacer {
+	flex: 1;
+}
+
+.app-name {
+	color: var(--ds-text-subtle);
+}
+
+/* Wordmark: one tile per letter, so the mark scales with the type instead
+   of shipping a bitmap. Used once, in the topbar. */
+.wordmark {
+	display: flex;
+	gap: var(--ds-space-025);
+	text-decoration: none;
+}
+.wordmark span {
+	width: 18px;
+	height: 18px;
+	display: grid;
+	place-items: center;
+	background: var(--ds-text);
+	color: var(--ds-text-inverse);
+	border-radius: var(--ds-radius-xsmall);
+	font: var(--ds-font-heading-xsmall);
+	font-weight: var(--ds-weight-bold);
+}
+.wordmark span:nth-child(4) {
+	background: var(--ds-border-selected);
+	color: #ffffff;
+}
+
+.sidebar {
+	padding: var(--ds-space-200) var(--ds-space-150);
+	background: var(--ds-surface);
+	border-right: 1px solid var(--ds-border);
+	display: flex;
+	flex-direction: column;
+	gap: var(--ds-space-025);
+}
+
+.nav-heading {
+	margin: var(--ds-space-200) 0 var(--ds-space-050);
+	padding: 0 var(--ds-space-100);
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-heading-xsmall);
+	line-height: 16px;
+	font-weight: var(--ds-weight-bold);
+}
+.nav-heading:first-child {
+	margin-top: 0;
+}
+
+.sidebar a {
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-100);
+	padding: var(--ds-space-075) var(--ds-space-100);
+	border-radius: var(--ds-radius-medium);
+	color: var(--ds-text-subtle);
+	text-decoration: none;
+}
+
+/* The icon stays subtle even on the current page: the label already carries
+   the selected state through weight and contrast, and a third signal would
+   make the accent stop meaning "link" everywhere else. */
+.sidebar a svg {
+	flex: none;
+	color: var(--ds-text-subtlest);
+}
+.sidebar a:hover {
+	background: var(--ds-neutral-subtle-hovered);
+}
+.sidebar a:active {
+	background: var(--ds-neutral-subtle-pressed);
+}
+
+/* The selected section reads through weight and text contrast, not colour: an
+   accent fill plus an accent rail plus accent text is three signals for one
+   bit of state, and it makes the accent stop meaning "link" everywhere else.
+   The fill is one step above the hover overlay so hovering a sibling never
+   looks more selected than the current page. */
+.sidebar a.active {
+	background: var(--ds-neutral-subtle-pressed);
+	color: var(--ds-text);
+	font-weight: var(--ds-weight-bold);
+}
+
+main {
+	padding: var(--ds-space-300);
+	min-width: 0;
+}
+
+.status-link {
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-100);
+	text-decoration: none;
+	color: var(--ds-text-subtle);
+}
+/* ── Controls ──────────────────────────────────────────────────────────────
+   Every select, in the top bar and in the page, is one Base UI trigger at one
+   height. A native `<select>` cannot be styled past its own border, so the
+   dark surface used to stop at the popup edge and the control never matched
+   the buttons beside it. `quiet` is the top bar and the table toolbar: a
+   control that changes how the page reads, never what it reports. */
+
+.ui-trigger {
+	display: inline-flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--ds-space-100);
+	/* The ADS medium control. The segmented group matches it exactly. */
+	height: 40px;
+	min-width: 0;
+	padding: 0 var(--ds-space-150);
+	border: 1px solid var(--ds-border-input);
+	border-radius: var(--ds-radius-medium);
+	background: var(--ds-surface);
+	color: var(--ds-text);
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+.ui-trigger:hover {
+	background: var(--ds-surface-hovered);
+}
+.ui-trigger[data-popup-open] {
+	border-color: var(--ds-border-selected);
+}
+.ui-trigger-icon {
+	display: inline-flex;
+	flex: none;
+	color: var(--ds-text-subtlest);
+}
+
+.ui-trigger-quiet {
+	height: 28px;
+	padding: 0 var(--ds-space-100);
+	border-color: var(--ds-border);
+	background: transparent;
+	color: var(--ds-text-subtle);
+	font: var(--ds-font-body);
+}
+.ui-trigger-quiet:hover {
+	background: var(--ds-background-neutral);
+	color: var(--ds-text);
+}
+
+.ui-popup {
+	box-sizing: border-box;
+	min-width: var(--anchor-width);
+	max-height: var(--available-height);
+	padding: var(--ds-space-050);
+	overflow-y: auto;
+	background: var(--ds-surface-overlay);
+	border: 1px solid var(--ds-border);
+	border-radius: var(--ds-radius-medium);
+	box-shadow: var(--ds-shadow-overlay);
+	color: var(--ds-text);
+	font: var(--ds-font-body);
+}
+
+.ui-option {
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-100);
+	padding: var(--ds-space-075) var(--ds-space-100);
+	border-radius: var(--ds-radius-small);
+	cursor: pointer;
+	outline: none;
+	white-space: nowrap;
+}
+/* `data-highlighted` is the roving cursor, keyboard and pointer alike, which
+   is the state that has to read as "this one" — not `:hover`. */
+.ui-option[data-highlighted] {
+	background: var(--ds-neutral-subtle-hovered);
+}
+.ui-option[data-selected] {
+	color: var(--ds-text-selected);
+	font-weight: 600;
+}
+.ui-option-check {
+	display: inline-flex;
+	width: 12px;
+	flex: none;
+}
+
+.ui-backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 9;
+	background: #0b0d1259;
+}
+
+.who {
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
+}
+.status-count {
+	font: var(--ds-font-body);
+	font-variant-numeric: tabular-nums;
+}
+
+.lozenge {
+	display: inline-block;
+	padding: var(--ds-space-025) var(--ds-space-100);
+	border-radius: var(--ds-radius-small);
+	/* Not uppercased: at 14px the tracking that makes small caps legible starts
+     to read as shouting, and these are status words, not labels. */
+	font: var(--ds-font-body);
+	font-weight: var(--ds-weight-bold);
+}
+.lozenge-success {
+	background: var(--ds-bg-success);
+	color: var(--ds-text-success);
+}
+.lozenge-inprogress {
+	background: var(--ds-bg-information);
+	color: var(--ds-text-information);
+}
+.lozenge-removed {
+	background: var(--ds-bg-danger);
+	color: var(--ds-text-danger);
+}
+
+/* ── Page furniture ────────────────────────────────────────────────────── */
+
+.page-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--ds-space-200);
+	margin-bottom: var(--ds-space-250);
+}
+
+h1 {
+	margin: 0;
+	font: var(--ds-font-heading-large);
+	line-height: 28px;
+	font-weight: var(--ds-weight-bold);
+}
+
+.page-sub {
+	margin: var(--ds-space-050) 0 0;
+	color: var(--ds-text-subtle);
+}
+
+.section-title {
+	margin: 0 0 var(--ds-space-150);
+	font: var(--ds-font-heading-small);
+	line-height: 20px;
+	font-weight: var(--ds-weight-bold);
+}
+
+.empty {
+	color: var(--ds-text-subtlest);
+	padding: var(--ds-space-200) 0;
+}
+
+.subtle {
+	color: var(--ds-text-subtle);
+}
+
+.card {
+	background: var(--ds-surface-raised);
+	border: 1px solid var(--ds-border);
+	border-radius: var(--ds-radius-large);
+	box-shadow: var(--ds-shadow-raised);
+	margin-bottom: var(--ds-space-250);
+}
+
+.chart-card {
+	padding: var(--ds-space-200);
+}
+
+/* ── Filter bar ────────────────────────────────────────────────────────── */
+
+/* Every field is a label row over a 40px control, so the bar aligns on the
+   grid rather than on whatever height each control happened to be. The time
+   range was a `<fieldset>`, whose user-agent margin and padding is what sat it
+   below the select no matter what the bar aligned on. */
+.filter-bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	gap: var(--ds-space-300);
+	padding: var(--ds-space-200);
+	margin-bottom: var(--ds-space-250);
+	background: var(--ds-surface-raised);
+	border: 1px solid var(--ds-border);
+	border-radius: var(--ds-radius-large);
+}
+
+.field {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--ds-space-050);
+}
+
+.field-label {
+	display: block;
+	/* Fixed, so a one-word label and a two-word label put their controls on the
+	   same line. */
+	height: 20px;
+	color: var(--ds-text-subtle);
+	font: var(--ds-font-heading-xsmall);
+}
+
+.search {
+	height: 40px;
+	padding: 0 var(--ds-space-150);
+	border: 1px solid var(--ds-border-input);
+	border-radius: var(--ds-radius-medium);
+	background: var(--ds-surface);
+	color: var(--ds-text);
+	font: inherit;
+}
+.search:hover {
+	background: var(--ds-surface-hovered);
+}
+
+.segmented {
+	display: inline-flex;
+	height: 40px;
+	padding: 0;
+	margin: 0;
+	border: 1px solid var(--ds-border-input);
+	border-radius: var(--ds-radius-medium);
+	overflow: hidden;
+}
+.seg {
+	height: 100%;
+	padding: 0 var(--ds-space-200);
+	border: 0;
+	background: var(--ds-surface);
+	color: var(--ds-text-subtle);
+	font: inherit;
+	cursor: pointer;
+}
+.seg + .seg {
+	border-left: 1px solid var(--ds-border);
+}
+.seg:hover {
+	background: var(--ds-neutral-subtle-hovered);
+}
+.seg[data-pressed] {
+	background: var(--ds-background-selected);
+	color: var(--ds-text-selected);
+	font-weight: 600;
+}
+
+/* ── Summary tiles ─────────────────────────────────────────────────────── */
+
+.tiles {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+	gap: var(--ds-space-200);
+	margin-bottom: var(--ds-space-250);
+}
+
+.tile {
+	padding: var(--ds-space-200);
+	background: var(--ds-surface-raised);
+	border: 1px solid var(--ds-border);
+	border-radius: var(--ds-radius-large);
+	box-shadow: var(--ds-shadow-raised);
+}
+
+/* Sentence case throughout. Uppercase plus tracking is what small labels need
+   to stay legible at 11px; at 14–16px it only adds visual weight, and a tile
+   title should not compete with the number it introduces. */
+.tile-title {
+	margin: 0 0 var(--ds-space-150);
+	color: var(--ds-text);
+	font: var(--ds-font-heading-small);
+}
+
+.tile-body {
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-300);
+	flex-wrap: wrap;
+}
+
+.tile-note {
+	margin-top: var(--ds-space-050);
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
+}
+
+.stat-hero {
+	display: flex;
+	align-items: baseline;
+	gap: var(--ds-space-100);
+}
+
+.stat-value {
+	font: var(--ds-font-heading-xlarge);
+	line-height: 32px;
+	font-weight: var(--ds-weight-bold);
+	font-variant-numeric: tabular-nums;
+}
+
+.stat-bad {
+	color: var(--ds-text-danger);
+}
+.stat-warn {
+	color: var(--ds-text-warning);
+}
+
+.stat-of {
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
+	font-weight: 400;
+}
+
+.stat-pair {
+	display: flex;
+	gap: var(--ds-space-250);
+	margin: 0;
+}
+.stat-pair dt {
+	color: var(--ds-text-subtle);
+	font: var(--ds-font-body);
+}
+.stat-pair dd {
+	margin: var(--ds-space-025) 0 0;
+	font: var(--ds-font-heading-small);
+	font-weight: var(--ds-weight-bold);
+	font-variant-numeric: tabular-nums;
+}
+
+.dist {
+	display: flex;
+	align-items: flex-end;
+	gap: var(--ds-space-200);
+	height: 84px;
+}
+.dist-col {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	align-items: center;
+	justify-content: flex-end;
+	height: 100%;
+	gap: var(--ds-space-050);
+}
+.dist-count {
+	font: var(--ds-font-heading-small);
+	font-weight: var(--ds-weight-bold);
+	font-variant-numeric: tabular-nums;
+}
+/* The bar needs a box of its own to be a percentage of. Sized against the
+   column, it shared 84px with the count and the label, flex-shrank to whatever
+   was left, and every bucket came out the same height whatever it counted. */
+.dist-track {
+	display: flex;
+	align-items: flex-end;
+	width: 100%;
+	height: 44px;
+	flex: none;
+}
+.dist-bar {
+	width: 100%;
+	background: var(--ds-chart-1);
+	border-radius: var(--ds-radius-xsmall);
+}
+.dist-label {
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
+	white-space: nowrap;
+}
+
+.movement {
+	display: flex;
+	flex-direction: column;
+	gap: var(--ds-space-150);
+}
+.movement-stats {
+	display: flex;
+	gap: var(--ds-space-250);
+}
+.movement-stats > div {
+	display: flex;
+	flex-direction: column;
+	gap: var(--ds-space-025);
+}
+.movement-label {
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
+}
+.movement-bar {
+	display: flex;
+	height: 6px;
+	border-radius: var(--ds-radius-full);
+	overflow: hidden;
+	background: var(--ds-background-neutral);
+}
+.movement-seg {
+	height: 100%;
+}
+.movement-up {
+	background: var(--ds-chart-success);
+}
+.movement-down {
+	background: var(--ds-chart-danger);
+}
+.movement-flat {
+	background: var(--ds-chart-neutral);
+}
+
+/* ── Opportunities ─────────────────────────────────────────────────────── */
+
+.insights {
+	padding: 0;
+}
+.insights-head {
+	padding: var(--ds-space-200) var(--ds-space-200) var(--ds-space-200);
+}
+.insights-sub {
+	margin: var(--ds-space-050) 0 0;
+	color: var(--ds-text-subtle);
+}
+/* The headline reads at body size; the two caveats that qualify it sit under
+   it as a list, because run together in one paragraph the three sentences
+   read as a single unparseable statistic. */
+.insights-lede {
+	margin: var(--ds-space-050) 0 0;
+	color: var(--ds-text);
+}
+.insights-notes {
+	margin: var(--ds-space-075) 0 0;
+	padding-left: var(--ds-space-200);
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
+}
+.insights-notes li + li {
+	margin-top: var(--ds-space-025);
+}
+/* Columns divided by a hairline, not five tinted panels behind five coloured
+   rules. A lane that happens to be empty then reads as a short column rather
+   than as a card with a hole in it, and the accent bar stops standing in for
+   a distinction the label already makes. */
+.lanes {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+	border-top: 1px solid var(--ds-border);
+}
+.lane {
+	padding: var(--ds-space-200) var(--ds-space-200) var(--ds-space-100);
+}
+.lane + .lane {
+	border-left: 1px solid var(--ds-border);
+}
+.lane-head {
+	display: flex;
+	align-items: baseline;
+	gap: var(--ds-space-100);
+	margin: 0;
+	font: var(--ds-font-body-large);
+}
+.lane-count {
+	font: var(--ds-font-heading-large);
+	line-height: 28px;
+	font-weight: var(--ds-weight-bold);
+	font-variant-numeric: tabular-nums;
+}
+.lane-label {
+	font-weight: 600;
+}
+.lane-hint {
+	margin: var(--ds-space-050) 0 var(--ds-space-100);
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
+}
+.lane-examples {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: var(--ds-space-050);
+	font: var(--ds-font-body);
+}
+.lane-examples li {
+	display: flex;
+	justify-content: space-between;
+	gap: var(--ds-space-100);
+}
+.lane-rank {
+	color: var(--ds-text-subtlest);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+/* The unproven mark rides in a slot of its own, present on every row. Hung
+   directly off the badge it was extra width on some rows only, and the whole
+   right-aligned rank column stepped in and out by three pixels. */
+.rank-cell {
+	position: relative;
+	display: inline-block;
+	/* The slot the mark occupies, reserved on every row whether or not the row
+	   carries one. */
+	padding-right: 10px;
+}
+.unproven {
+	position: absolute;
+	top: 0;
+	right: 0;
+	color: var(--ds-text-subtlest);
+}
+.contested {
+	margin-left: var(--ds-space-050);
+	color: var(--ds-text-warning);
+}
+
+.marker-line {
+	stroke: var(--ds-text-subtlest);
+	stroke-width: 1;
+	stroke-dasharray: 2 4;
+}
+/* A stroked icon, so it takes its colour from `stroke` rather than `fill`, and
+   overflow must stay visible or the nested svg clips its own outline. */
+.marker-pin {
+	overflow: visible;
+	color: var(--ds-text-subtlest);
+}
+/* Beside the tag, not inside a ring: the ring was the part that read as a
+   footnote marker rather than as a release. */
+.marker-index {
+	fill: var(--ds-text-subtle);
+	font: var(--ds-font-body);
+}
+/* The same contrast the series use when the reader points at one of them. */
+.marker-muted {
+	opacity: 0.35;
+}
+/* Brought forward, not only left undimmed: with a single release there is
+   nothing to grey, so dimming alone would give the reader no answer at all.
+   Scoped per element: the tag is a stroked outline taking `color` through
+   currentColor, and setting `fill` on it filled the glyph in solid. */
+.marker-on {
+	color: var(--ds-text);
+}
+text.marker-on {
+	fill: var(--ds-text);
+}
+line.marker-on {
+	stroke: var(--ds-text);
+}
+/* The key that turns a numbered pin into a release. */
+.marker-key {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--ds-space-100) var(--ds-space-200);
+	margin: var(--ds-space-100) 0 0;
+	padding: 0;
+	list-style: none;
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
+}
+.marker-key li {
+	display: flex;
+	align-items: center;
+}
+/* Built like a legend chip so the two keys behave alike: pointing at one
+   release greys the other pins, and it answers the keyboard as well. */
+.marker-key-item {
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-075);
+	padding: 0;
+	border: 0;
+	background: none;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+.marker-key-muted {
+	opacity: 0.5;
+}
+.marker-key-icon {
+	flex: none;
+	color: var(--ds-text-subtlest);
+}
+.marker-key-index {
+	flex: none;
+	margin-left: -2px;
+	color: var(--ds-text-subtle);
+	font-variant-numeric: tabular-nums;
+}
+
+.chart-figure {
+	margin: 0;
+}
+.chart-figure figcaption {
+	margin-top: var(--ds-space-100);
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
+}
+
+/* ── Chart ─────────────────────────────────────────────────────────────── */
+
+.chart {
+	position: relative;
+}
+.chart svg {
+	display: block;
+	width: 100%;
+	height: auto;
+}
+.grid-line {
+	stroke: var(--ds-border);
+	stroke-width: 1;
+}
+.axis-label {
+	fill: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
+}
+.crosshair {
+	stroke: var(--ds-border-bold);
+	stroke-width: 1;
+	stroke-dasharray: 3 3;
+}
+.series-line {
+	fill: none;
+	stroke-width: 2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+.series-dot {
+	stroke: var(--ds-surface-raised);
+	stroke-width: 1.5;
+}
+/* Series sharing a point are rings around it, so the ring takes its colour
+   from the series (an inline attribute, which any `stroke` declared here would
+   override) and stays hollow, letting the marks below it show through. */
+.series-dot-ring {
+	stroke-width: 2;
+}
+/* Everything the reader is not pointing at recedes to grey. Contrast is what
+   carries the story; eight equally loud lines carry none of it. */
+.series-muted .series-line {
+	stroke-width: 1.5;
+	opacity: 0.4;
+}
+.series-label {
+	font: var(--ds-font-body);
+}
+.series-label-muted {
+	opacity: 0.6;
+}
+
+/* The two rails below the plot floor: observed-but-outside-the-top-200, and
+   the days the fetch failed. Both are states, not absences, and neither may
+   be drawn as a rank. */
+.rail-line {
+	stroke: var(--ds-border);
+	stroke-width: 1;
+	stroke-dasharray: 2 4;
+}
+.unranked-mark {
+	stroke: var(--ds-surface-raised);
+	stroke-width: 1;
+}
+.hatch-line {
+	stroke: var(--ds-chart-danger);
+	stroke-width: 2;
+}
+.error-mark {
+	opacity: 0.75;
+}
+
+.series-glyph {
+	width: 20px;
+	height: 8px;
+	flex: none;
+}
+
+.chart-note {
+	margin: var(--ds-space-050) 0 0;
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
+}
+
+.chart-tip {
+	position: absolute;
+	top: 0;
+	transform: translate(-50%, -8px);
+	pointer-events: none;
+	padding: var(--ds-space-100);
+	background: var(--ds-surface-overlay);
+	border: 1px solid var(--ds-border);
+	border-radius: var(--ds-radius-small);
+	box-shadow: var(--ds-shadow-overlay);
+	font: var(--ds-font-body);
+	white-space: nowrap;
+}
+.chart-tip-date {
+	margin-bottom: var(--ds-space-050);
+	color: var(--ds-text-subtlest);
+}
+.chart-tip-row {
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-075);
+}
+.chart-tip-rank {
+	margin-left: auto;
+	font-variant-numeric: tabular-nums;
+	font-weight: var(--ds-weight-bold);
+}
+
+.legend {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--ds-space-200);
+	margin: var(--ds-space-150) 0 0;
+	padding: 0;
+	list-style: none;
+	color: var(--ds-text-subtle);
+	font: var(--ds-font-body);
+}
+.legend li {
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-075);
+}
+.legend-chip {
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-075);
+	padding: 0;
+	border: 0;
+	background: none;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+}
+.legend-muted {
+	opacity: 0.5;
+}
+
+.swatch {
+	width: 8px;
+	height: 8px;
+	flex: none;
+	border: 1px solid transparent;
+	border-radius: var(--ds-radius-full);
+}
+
+/* ── Table ─────────────────────────────────────────────────────────────── */
+
+.table-card {
+	padding: 0;
+	overflow: hidden;
+}
+
+.table-toolbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--ds-space-200);
+	padding: var(--ds-space-150) var(--ds-space-200);
+	border-bottom: 1px solid var(--ds-border);
+}
+.search {
+	min-width: 240px;
+}
+.toolbar-meta {
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
+}
+
+/* The report table is its own scrollport in both axes, which is what makes the
+   sticky header stick. It cannot stick to the page instead: a container with
+   `overflow-x: auto` computes `overflow-y` to `auto` as well, so it becomes the
+   nearest scrollport whether or not it ever scrolls vertically, and a header
+   bound to a container that never scrolls simply leaves with the rows. The cap
+   is generous enough that a short keyword set never scrolls at all. */
+.table-scroll {
+	overflow: auto;
+	max-height: calc(100dvh - 13rem);
+	overscroll-behavior: contain;
+}
+
+table.grid {
+	width: 100%;
+	border-collapse: separate;
+	border-spacing: 0;
+}
+
+table.grid th {
+	padding: var(--ds-space-100) var(--ds-space-150);
+	text-align: left;
+	white-space: nowrap;
+	color: var(--ds-text-subtle);
+	/* Sentence case, not uppercase: 14px small caps needed the letter-spacing to stay
+     legible, and at this size that tracking only makes the header noisier than
+     the data underneath it. */
+	font: var(--ds-font-heading-xsmall);
+	background: var(--ds-surface-raised);
+	border-bottom: 1px solid var(--ds-border);
+	position: sticky;
+	top: 0;
+	z-index: 1;
+}
+
+/* Both header rows pin, the column row parked under the group row it belongs
+   to. `top` is the group row's own height: 20px of line plus its padding.
+   Selected through the group row rather than as `tr:last-child`: a table with a
+   single header row is its own last child, and parking it 36px down left a gap
+   above it with the first data row sliding underneath. */
+.table-scroll thead .group-row + tr th {
+	top: 36px;
+}
+
+.group-row th {
+	color: var(--ds-text-subtle);
+	border-bottom: 1px solid var(--ds-border);
+	background: var(--ds-surface-sunken);
+	z-index: 2;
+}
+.group-row th + th {
+	border-left: 1px solid var(--ds-border);
+}
+
+table.grid td {
+	/* The one place the 14px step is the right answer rather than a concession:
+     a rank table is scanned column-wise, and 16px rows push the comparison a
+     keyword wants off the fold. */
+	font: var(--ds-font-body);
+	height: 44px;
+	padding: var(--ds-space-100) var(--ds-space-150);
+	border-bottom: 1px solid var(--ds-border);
+	vertical-align: middle;
+	white-space: nowrap;
+}
+
+/* A ration, not an auction. Under auto layout the two meters, being the only
+   cells that can grow, took every spare pixel while the keyword itself, the
+   identity of the row, stayed at its text width and truncated first. The
+   keyword column is the one left unsized, so the slack lands there. */
+table.report {
+	table-layout: fixed;
+	min-width: 1120px;
+}
+/* A ration for every column, the keyword included. Left unsized it took all
+   the slack of a wide screen, and a four-letter term sat in a column three
+   times its own width; sized like the rest, the spare pixels are shared out in
+   proportion and the keyword still draws the largest share. */
+.report .col-keyword {
+	width: 240px;
+}
+.report .col-position {
+	width: 90px;
+}
+.report .col-change {
+	width: 100px;
+}
+.report .col-meter {
+	width: 156px;
+}
+.report .col-range {
+	width: 150px;
+}
+.report .col-results {
+	width: 140px;
+}
+.report .col-total {
+	width: 90px;
+}
+/* A long keyword ends in an ellipsis rather than pushing the row wider than
+   its ration. A flex item needs the explicit `min-width` to be allowed to
+   shrink below its content at all. */
+.report .kw .link {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+table.grid tbody tr:hover {
+	background: var(--ds-neutral-subtle-hovered);
+}
+
+/* Error log.
+   `table.grid td` is nowrap, which is right for rank tables and wrong here:
+   an Apple error body is several hundred characters of JSON, so it stretched
+   the table past the viewport and pushed the count column off-screen. Fixed
+   column widths keep the readable fields anchored; the message truncates to
+   one line and expands on click. */
+/* The scrollport is `.table-scroll` now, shared with the report's table; a
+   second `overflow-x` on the card would make it the nearest one and strand the
+   sticky header inside a container that never scrolls. */
+.error-log {
+	max-width: 100%;
+}
+
+.error-log table.grid {
+	table-layout: fixed;
+}
+
+.error-log td {
+	height: auto;
+	min-height: 44px;
+	padding-top: var(--ds-space-100);
+	padding-bottom: var(--ds-space-100);
+	white-space: normal;
+	vertical-align: top;
+}
+
+.error-log .col-when {
+	width: 104px;
+	color: var(--ds-text-subtle);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.error-log .col-class {
+	/* Holds a sentence now, not a single enum value. */
+	width: 280px;
+	font-weight: var(--ds-weight-medium);
+	overflow-wrap: anywhere;
+}
+
+.error-log .error-class-raw {
+	display: block;
+	color: var(--ds-text-subtlest);
+	font-size: 11px;
+	font-weight: var(--ds-weight-regular);
+}
+
+.error-log .col-where {
+	width: 150px;
+	color: var(--ds-text-subtle);
+	white-space: nowrap;
+}
+
+.error-log .col-where code {
+	font-size: 12px;
+}
+
+/* Marks the classes where the day's observation is gone rather than retried. */
+.error-log .error-cost {
+	margin-left: 6px;
+	vertical-align: middle;
+}
+
+.error-log .col-count {
+	width: 72px;
+	font-variant-numeric: tabular-nums;
+}
+
+.error-detail {
+	display: block;
+	width: 100%;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: var(--ds-text-subtle);
+	/* Monospace at the body step: error payloads are read, not glanced at. */
+	font: var(--ds-font-body);
+	font-family: var(--ds-font-mono);
+	text-align: left;
+	cursor: pointer;
+	/* Collapsed: one line, clipped. */
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.error-detail:hover {
+	color: var(--ds-text);
+}
+
+.error-detail.open {
+	max-height: 220px;
+	overflow: auto;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.muted {
+	color: var(--ds-text-subtlest);
+}
+
+.row-self {
+	background: var(--ds-background-selected);
+}
+
+/* The row and its line highlight together, so the mapping between the two
+   never has to be worked out from colour. */
+.row-focused {
+	background: var(--ds-neutral-subtle-hovered);
+}
+
+.num {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+
+.kw {
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-050);
+	min-width: 0;
+	white-space: nowrap;
+}
+
+.link {
+	padding: 0;
+	border: 0;
+	background: none;
+	color: var(--ds-link);
+	font: inherit;
+	cursor: pointer;
+	text-align: left;
+}
+.link:hover {
+	text-decoration: underline;
+}
+.link:active {
+	color: var(--ds-link-pressed);
+}
+
+/* Rank badge: banded by the thresholds that matter, number always readable. */
+.rank {
+	display: inline-block;
+	min-width: 34px;
+	padding: var(--ds-space-025) var(--ds-space-075);
+	border-radius: var(--ds-radius-small);
+	font-weight: var(--ds-weight-bold);
+	font-variant-numeric: tabular-nums;
+	text-align: center;
+}
+.rank-top {
+	background: var(--ds-bg-information);
+	color: var(--ds-text-information);
+}
+.rank-mid {
+	background: var(--ds-background-neutral);
+	color: var(--ds-text);
+}
+.rank-low {
+	color: var(--ds-text-subtle);
+}
+.rank-none {
+	color: var(--ds-text-subtlest);
+}
+
+/* Direction and magnitude first, then how stale the move is. Led by the age,
+   the column right-aligned on a variable-width "3d" and no two arrows in it
+   shared an x. */
+.delta {
+	display: inline-flex;
+	align-items: baseline;
+	gap: var(--ds-space-050);
+	font-variant-numeric: tabular-nums;
+	font-weight: 600;
+}
+
+/* The table's change cell, which carries an age the summary tiles do not. The
+   age's slot is reserved whether or not the row has one, so the arrows down
+   the column all share an x. */
+.delta-cell {
+	position: relative;
+	padding-right: 28px;
+}
+/* An inline svg sits on the text baseline by default, which drops the arrow
+   below the digits beside it. */
+.delta svg {
+	vertical-align: -1px;
+}
+.delta-age {
+	position: absolute;
+	right: 0;
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
+	font-weight: 400;
+}
+.delta-up {
+	color: var(--ds-text-success);
+}
+.delta-down {
+	color: var(--ds-text-danger);
+}
+.delta-flat {
+	color: var(--ds-text-subtlest);
+	font-weight: 400;
+}
+
+/* The track fills the column it was given; it no longer sets the column. */
+.meter {
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-100);
+}
+.meter-track {
+	flex: 1;
+	height: 6px;
+	border-radius: var(--ds-radius-full);
+	background: var(--ds-background-neutral);
+	overflow: hidden;
+}
+.meter-fill {
+	display: block;
+	height: 100%;
+	background: var(--ds-chart-1);
+}
+.meter-empty {
+	justify-content: flex-end;
+}
+.meter-value {
+	width: 28px;
+	/* The `font` shorthand resets font-variant, so it must come first or the
+     tabular figures are silently lost and the column jitters. */
+	font: var(--ds-font-body);
+	font-variant-numeric: tabular-nums;
+	color: var(--ds-text-subtle);
+	text-align: right;
+}
+
+/* One line per row: the table stays scannable even when a keyword is
+   contested by long app names. */
+.results {
+	display: flex;
+	gap: var(--ds-space-050);
+	max-width: 320px;
+	overflow: hidden;
+}
+/* Result-page apps: icon-first, like the store itself. */
+.result-app {
+	display: inline-flex;
+	flex: none;
+}
+.app-icon,
+.result-icon {
+	width: 22px;
+	height: 22px;
+	border-radius: var(--ds-radius-small);
+	border: 1px solid var(--ds-border);
+	object-fit: cover;
+}
+.icon-fallback {
+	display: inline-grid;
+	place-items: center;
+	background: var(--ds-background-neutral);
+	color: var(--ds-text-subtle);
+	font: var(--ds-font-body);
+	font-weight: var(--ds-weight-bold);
+	text-transform: uppercase;
+}
+.results-link {
+	margin-left: var(--ds-space-050);
+	font: var(--ds-font-body);
+}
+
+/* Difficulty bands carry a texture as well as a hue, so the band survives a
+   colour-vision check and a greyscale print. The score sits beside the bar in
+   every case; the fill is the second reading, never the only one. */
+.meter-hard {
+	background:
+		repeating-linear-gradient(-45deg, #00000059 0 2px, transparent 2px 5px),
+		var(--ds-chart-danger);
+}
+.meter-moderate {
+	background:
+		repeating-linear-gradient(-45deg, #00000038 0 1px, transparent 1px 6px),
+		var(--ds-chart-4);
+}
+.meter-easy {
+	background: var(--ds-chart-success);
+}
+
+/* The toolbar is one row of 40px controls: search, band, export. Three
+   heights in one strip is what made the bar read as assembled rather than
+   designed. */
+.button {
+	display: inline-flex;
+	align-items: center;
+	height: 40px;
+	padding: 0 var(--ds-space-150);
+	border: 1px solid var(--ds-border-input);
+	border-radius: var(--ds-radius-medium);
+	background: var(--ds-surface);
+	color: var(--ds-text);
+	text-decoration: none;
+}
+.button:hover {
+	background: var(--ds-neutral-subtle-hovered);
+}
+
+/* The glyph is 20x8; the button around it is the row's height, so the toggle
+   is reachable by a pointer that lands anywhere near it. */
+.swatch-button {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--ds-space-050);
+	flex: none;
+	height: 32px;
+	padding: 0 var(--ds-space-050);
+	border: 0;
+	border-radius: var(--ds-radius-small);
+	background: none;
+	cursor: pointer;
+}
+.swatch-button:hover:not(:disabled) {
+	background: var(--ds-neutral-subtle-hovered);
+}
+.swatch-button:disabled {
+	cursor: not-allowed;
+	opacity: 0.4;
+}
+/* The tick box says whether the keyword is on the chart before anyone clicks
+   it. A coloured stroke alone only answers that question in hindsight. */
+.tick {
+	width: 12px;
+	height: 12px;
+	flex: none;
+	border: 1px solid var(--ds-border-input);
+	border-radius: var(--ds-radius-xsmall);
+	background: var(--ds-surface);
+}
+.swatch-button[aria-pressed="true"] .tick {
+	border-color: var(--ds-border-selected);
+	background: var(--ds-background-selected-bold, var(--ds-border-selected));
+	box-shadow: inset 0 0 0 2px var(--ds-surface);
+}
+
+/* ── Explanations ──────────────────────────────────────────────────────────
+   Every derived number on the report owns a sentence. It hangs off a real
+   focusable trigger rather than a `title`, which neither touch nor the
+   keyboard can reach, and the popup is portalled, so it needs a layer of its
+   own to clear the table's sticky header. */
+
+.ui-layer {
+	z-index: 30;
+}
+
+.infotip {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 14px;
+	height: 14px;
+	margin-left: var(--ds-space-050);
+	padding: 0;
+	border: 0;
+	border-radius: var(--ds-radius-full);
+	background: var(--ds-background-neutral);
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
+	font-size: 10px;
+	font-weight: 700;
+	line-height: 1;
+	vertical-align: middle;
+	cursor: help;
+}
+.infotip:hover,
+.infotip[data-popup-open] {
+	background: var(--ds-neutral-subtle-hovered);
+	color: var(--ds-text);
+}
+
+/* The difficulty asterisk. Same trigger, drawn as the mark it already was. */
+.footnote-mark {
+	padding: 0;
+	border: 0;
+	background: none;
+	color: var(--ds-text-subtlest);
+	font: inherit;
+	font-size: 11px;
+	vertical-align: super;
+	cursor: help;
+}
+
+.tip-popup {
+	max-width: 34ch;
+	padding: var(--ds-space-100) var(--ds-space-150);
+	border: 1px solid var(--ds-border);
+	border-radius: var(--ds-radius-medium);
+	background: var(--ds-surface-overlay);
+	box-shadow: var(--ds-shadow-overlay);
+	color: var(--ds-text);
+	font: var(--ds-font-body);
+	font-weight: 400;
+	line-height: 18px;
+	text-align: left;
+	white-space: normal;
+}
+
+.legend-note {
+	margin: var(--ds-space-100) 0 0;
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
+}
+
+/* ── Sign in ───────────────────────────────────────────────────────────── */
+
+/* ── Result drawer ─────────────────────────────────────────────────────── */
+
+.drawer {
+	position: fixed;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	width: min(420px, 100vw);
+	z-index: 10;
+	margin: 0;
+	display: flex;
+	flex-direction: column;
+	padding: var(--ds-space-200);
+	background: var(--ds-surface-overlay);
+	border-left: 1px solid var(--ds-border);
+	box-shadow: var(--ds-shadow-overlay);
+	overflow-y: auto;
+}
+.drawer-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--ds-space-200);
+	margin-bottom: var(--ds-space-200);
+}
+.drawer-title {
+	margin: 0;
+	font: var(--ds-font-heading-medium);
+	line-height: 20px;
+	font-weight: var(--ds-weight-bold);
+}
+.drawer-sub {
+	margin: var(--ds-space-025) 0 0;
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
+}
+.result-list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.result-row {
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-100);
+	padding: var(--ds-space-075) var(--ds-space-050);
+	border-bottom: 1px solid var(--ds-border);
+}
+.result-position {
+	width: 28px;
+	font: var(--ds-font-body);
+	font-variant-numeric: tabular-nums;
+	color: var(--ds-text-subtlest);
+	text-align: right;
+}
+.result-name {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+.result-developer {
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
+}
+
+/* ── Suggestions ───────────────────────────────────────────────────────── */
+
+.suggestion {
+	padding: var(--ds-space-200);
+	margin-bottom: var(--ds-space-150);
+}
+/* The payload is a stored JSON blob, so it is read rather than glanced at and
+   keeps the mono face and the body step everything else read at. */
+.suggestion-payload {
+	margin: var(--ds-space-100) 0 0;
+	color: var(--ds-text-subtle);
+	font: var(--ds-font-body);
+	font-family: var(--ds-font-mono);
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+/* ── Reviews ───────────────────────────────────────────────────────────── */
+
+/* A review is prose, and prose set across a 1440px window is skimmed rather
+   than read. The column stops at the measure body copy stays legible at and
+   keeps the page's left edge, so it lines up with the header above it instead
+   of floating in the middle of the pane. */
+.review-list {
+	display: grid;
+	gap: var(--ds-space-150);
+	max-width: 72ch;
+}
+
+.review {
+	margin: 0;
+	padding: var(--ds-space-200);
+	/* Sentiment rail. It is the one thing worth reading before the title, and
+     it sits on the leading edge so a scan down the column stays in one
+     column. Never the only channel: the stars say the same thing in text. */
+	border-left: 3px solid var(--ds-chart-neutral);
+}
+.review-positive {
+	border-left-color: var(--ds-chart-success);
+}
+.review-neutral {
+	border-left-color: var(--ds-chart-4);
+}
+.review-negative {
+	border-left-color: var(--ds-chart-danger);
+}
+
+.review-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--ds-space-100);
+}
+.review-date {
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
+	white-space: nowrap;
+}
+.review h3 {
+	margin: var(--ds-space-025) 0 0;
+	font: var(--ds-font-heading-small);
+	line-height: 20px;
+	font-weight: var(--ds-weight-bold);
+}
+/* Apple's feed carries the reviewer's own line breaks; collapsing them runs
+   two thoughts together. */
+.review-body {
+	margin: var(--ds-space-075) 0 0;
+	white-space: pre-wrap;
+}
+.stars {
+	display: inline-flex;
+	align-items: center;
+	gap: 1px;
+	color: var(--ds-chart-4);
+}
+.stars .star-on {
+	fill: currentColor;
+}
+/* The empty half keeps the outline and drops the fill, so five stars always
+   occupy the same width whatever the rating. */
+.stars .star-off {
+	fill: none;
+	color: var(--ds-border-bold);
+}
+
+/* Author, storefront and version are three facts, not one sentence: as a
+   middot-joined line they read as a single string and none of the three can be
+   found by eye. */
+.review-tags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--ds-space-075);
+	margin-top: var(--ds-space-150);
+}
+.review-tag {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--ds-space-050);
+	padding: var(--ds-space-025) var(--ds-space-100);
+	border-radius: var(--ds-radius-small);
+	background: var(--ds-background-neutral);
+	color: var(--ds-text-subtle);
+	font: var(--ds-font-body);
+}
+.review-author {
+	color: var(--ds-text);
+	font-weight: var(--ds-weight-medium);
+}
+.review-version {
+	font-family: var(--ds-font-mono);
+}
+
+@media (max-width: 900px) {
+	.shell {
+		grid-template-columns: 1fr;
+	}
+	.sidebar {
+		flex-direction: row;
+		flex-wrap: wrap;
+		border-right: 0;
+		border-bottom: 1px solid var(--ds-border);
+	}
+	.nav-heading {
+		display: none;
+	}
+	main {
+		padding: var(--ds-space-200);
+	}
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.sidebar a,
+	.seg,
+	table.grid tbody tr {
+		transition: background-color 100ms ease;
+	}
+}
