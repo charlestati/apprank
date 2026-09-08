@@ -230,6 +230,33 @@ describe(crawlPair, () => {
 		expect(row?.position).toBe(47);
 	});
 
+	it("writes ranking and rank_entry in one batch, so a D1 failure leaves no half-indexed day", async () => {
+		// The remote binding has died between two round-trips in production and
+		// left a ranking row with no rank_entry rows. Counting batch calls is the
+		// only observable proof that the two tables share a transaction.
+		await insertPair(1);
+		stubFetch(() => Response.json(fakeSearchResponse(20)));
+		let batches = 0;
+		const db = new Proxy(env.DB, {
+			get(target, prop, receiver) {
+				if (prop === "batch") {
+					return (stmts: D1PreparedStatement[]) => {
+						batches += 1;
+						return target.batch(stmts);
+					};
+				}
+				const value = Reflect.get(target, prop, receiver);
+				return typeof value === "function" ? value.bind(target) : value;
+			},
+		});
+		await crawlPair({ ...env, DB: db }, pair, 3);
+		expect(batches).toBe(1);
+		const entries = await env.DB.prepare(
+			"SELECT COUNT(*) AS n FROM rank_entry re JOIN ranking r ON r.id = re.ranking_id WHERE r.pair_id = 1"
+		).first<{ n: number }>();
+		expect(entries?.n).toBe(10);
+	});
+
 	it("is idempotent: a re-run replaces the day's observation, never duplicates it", async () => {
 		await insertPair(1);
 		stubFetch(() => Response.json(fakeSearchResponse(5)));
