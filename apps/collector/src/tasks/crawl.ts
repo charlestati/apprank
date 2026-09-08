@@ -317,50 +317,50 @@ export async function crawlPair(
 			"UPDATE crawl_pair SET last_fetched_at = ?, next_due_at = ? WHERE id = ?"
 		).bind(now, nextDue(pair.interval_hours, windowStartHour), pair.id)
 	);
-	await env.DB.batch(stmts);
 
-	// rank_entry rows need the ranking id (re-run safe: delete + insert).
-	const rk = await env.DB.prepare(
-		"SELECT id FROM ranking WHERE pair_id = ? AND observed_date = ?"
+	// rank_entry goes into the same batch as ranking, never a second round-trip.
+	// The remote D1 binding under wrangler dev has died between the two, and the
+	// split left a ranking row with no index rows: the pair's next_due_at had
+	// already advanced, so nothing revisited it, and the day's chart read as a
+	// gap that verify.sh then flagged. A batch is one transaction, so either both
+	// land or neither, and the pair simply stays due. The ranking id is not known
+	// until that transaction runs, hence the subquery on the natural key.
+	const wanted = json.results
+		.map((r, i) => ({ appId: r.trackId, position: i + 1 }))
+		.filter((e, i) => i < 10 || trackedIds.has(e.appId));
+	const rankingId =
+		"(SELECT id FROM ranking WHERE pair_id = ? AND observed_date = ?)";
+
+	// Rewrite only when the indexed page actually moved. A board that holds its
+	// order, the common case between two consecutive re-runs, would otherwise
+	// cost a delete plus eleven inserts for an identical result. This read runs
+	// before the batch, so a failure here writes nothing at all.
+	const existing = await env.DB.prepare(
+		`SELECT position, app_id FROM rank_entry WHERE ranking_id = ${rankingId} ORDER BY position`
 	)
 		.bind(pair.id, date)
-		.first<{ id: number }>();
-	if (rk) {
-		const wanted = json.results
-			.map((r, i) => ({ appId: r.trackId, position: i + 1 }))
-			.filter((e, i) => i < 10 || trackedIds.has(e.appId));
-
-		// Rewrite only when the indexed page actually moved. A board that holds
-		// its order, the common case between two consecutive days, would
-		// otherwise cost a delete plus eleven inserts for an identical result.
-		const existing = await env.DB.prepare(
-			"SELECT position, app_id FROM rank_entry WHERE ranking_id = ? ORDER BY position"
-		)
-			.bind(rk.id)
-			.all<{ position: number; app_id: number }>();
-		const same =
-			existing.results.length === wanted.length &&
-			existing.results.every(
-				(e, i) =>
-					e.position === wanted[i]?.position && e.app_id === wanted[i]?.appId
+		.all<{ position: number; app_id: number }>();
+	const same =
+		existing.results.length === wanted.length &&
+		existing.results.every(
+			(e, i) =>
+				e.position === wanted[i]?.position && e.app_id === wanted[i]?.appId
+		);
+	if (!same) {
+		stmts.push(
+			env.DB.prepare(
+				`DELETE FROM rank_entry WHERE ranking_id = ${rankingId}`
+			).bind(pair.id, date)
+		);
+		for (const e of wanted) {
+			stmts.push(
+				env.DB.prepare(
+					`INSERT OR IGNORE INTO rank_entry (ranking_id, position, app_id) VALUES (${rankingId}, ?, ?)`
+				).bind(pair.id, date, e.position, e.appId)
 			);
-
-		if (!same) {
-			const entryStmts: D1PreparedStatement[] = [
-				env.DB.prepare("DELETE FROM rank_entry WHERE ranking_id = ?").bind(
-					rk.id
-				),
-			];
-			for (const e of wanted) {
-				entryStmts.push(
-					env.DB.prepare(
-						"INSERT OR IGNORE INTO rank_entry (ranking_id, position, app_id) VALUES (?, ?, ?)"
-					).bind(rk.id, e.position, e.appId)
-				);
-			}
-			await env.DB.batch(entryStmts);
 		}
 	}
+	await env.DB.batch(stmts);
 
 	return { throttled: false };
 }
