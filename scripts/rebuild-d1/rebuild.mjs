@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 
-// Rebuild the D1 `ranking` observations from the R2 archive: the proof that D1
-// is a materialised view and R2 is the source of truth.
+// Rebuild the D1 rank observations from the R2 archive: the proof that D1 is a
+// materialised view and R2 is the source of truth.
+//
+// Writes `ranking` and its `rank_entry` index (top 10 plus tracked apps, the
+// crawler's own rule), and a bare `app` row for any app the index references
+// that the database has not met. Every statement is gap-filling: a row the
+// collector already wrote is left alone.
 //
 // Usage:
 //   R2_ACCOUNT_ID=… R2_ACCESS_KEY_ID=… R2_SECRET_ACCESS_KEY=… \
@@ -13,12 +18,16 @@
 //              `wrangler d1 execute`
 //
 // R2 credentials: create an R2 API token (dashboard → R2 → Manage API Tokens).
-// Zero egress: reads are free.
+// Zero egress: reads are free. wrangler auth is needed as well: which apps are
+// tracked is reference data that lives only in D1, and the index rule depends
+// on it.
 
 import { execSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 
 import { AwsClient } from "aws4fetch";
+
+import { buildSql } from "./sql.mjs";
 
 const BUCKET = "apprank-archive";
 const accountId = process.env.R2_ACCOUNT_ID;
@@ -70,10 +79,15 @@ async function getObject(key) {
 	return res.text();
 }
 
-function sqlEscape(s) {
-	return s === null || s === undefined
-		? "NULL"
-		: `'${String(s).replaceAll("'", "''")}'`;
+const collectorDir = new URL("../../apps/collector", import.meta.url).pathname;
+
+function d1(command) {
+	const raw = execSync(
+		`npx wrangler d1 execute apprank --remote --json --command "${command}"`,
+		{ cwd: collectorDir, encoding: "utf-8" }
+	);
+	const [{ results }] = JSON.parse(raw);
+	return results;
 }
 
 const verify = process.argv.includes("--verify");
@@ -99,23 +113,14 @@ for (const key of keys) {
 console.log(`observations in archive: ${observations.length}`);
 
 if (verify) {
-	const raw = execSync(
-		`npx wrangler d1 execute apprank --remote --json --command "SELECT COUNT(*) AS n, MIN(observed_date) AS min_d, MAX(observed_date) AS max_d FROM ranking WHERE valid = 1"`,
-		{
-			cwd: new URL("../../apps/collector", import.meta.url).pathname,
-			encoding: "utf-8",
-		}
+	const [live] = d1(
+		"SELECT COUNT(*) AS n, MIN(observed_date) AS min_d, MAX(observed_date) AS max_d FROM ranking WHERE valid = 1"
 	);
-	const [
-		{
-			results: [d1],
-		},
-	] = JSON.parse(raw);
 	// The archive lags D1 by up to one day (compaction runs overnight), so
 	// compare only fully-compacted dates.
 	const dates = new Set(observations.map((o) => o.date));
 	console.log(
-		`D1 valid rankings: ${d1.n} (${d1.min_d} → ${d1.max_d}); archive dates: ${dates.size}`
+		`D1 valid rankings: ${live.n} (${live.min_d} → ${live.max_d}); archive dates: ${dates.size}`
 	);
 	console.log(
 		dates.size > 0
@@ -125,14 +130,19 @@ if (verify) {
 	process.exit(0);
 }
 
-const lines = observations.map(
-	(o) =>
-		`INSERT INTO ranking (pair_id, observed_date, fetched_at, http_status, response_ms, result_count, result_ids, collector_version, r2_key, valid) VALUES (` +
-		`${o.pairId}, ${sqlEscape(o.date)}, ${o.fetchedAt}, ${o.httpStatus}, ${o.responseMs ?? "NULL"}, ${o.resultCount}, ${sqlEscape(JSON.stringify(o.resultIds))}, ${sqlEscape(o.collectorVersion)}, NULL, 1) ` +
-		`ON CONFLICT(pair_id, observed_date) DO NOTHING;`
+// Which apps get an index row beyond the top ten is decided by the tracked set,
+// so a rebuild that could not read it would silently index less than the
+// crawler did. Fail instead.
+const trackedIds = new Set(
+	d1("SELECT DISTINCT app_id FROM tracked_app").map((r) => r.app_id)
 );
+console.log(`tracked apps: ${trackedIds.size}`);
+
+const lines = buildSql(observations, trackedIds);
 writeFileSync(outFile, `${lines.join("\n")}\n`);
-console.log(`wrote ${lines.length} INSERTs to ${outFile}`);
+console.log(
+	`wrote ${lines.length} statements (ranking, app, rank_entry) to ${outFile}`
+);
 console.log(
 	`apply with: npx wrangler d1 execute apprank --remote --file ${outFile}  (from apps/collector)`
 );
