@@ -34,9 +34,10 @@ writing it.
 2. **R2 is the source of truth; D1 is a cache.** Pruning, retention and schema
    changes must stay performance choices, never lossy ones, which means every
    response is archived verbatim before anything is derived from it.
-   `scripts/rebuild-d1` today reconstructs `ranking` and nothing else, so
-   extending it to the other observation tables is owed work, not a nicety: the
-   invariant is only as true as the script that proves it.
+   `scripts/rebuild-d1` today reconstructs `ranking` and `rank_entry` (with bare
+   `app` rows for the index to reference) and nothing else, so extending it to
+   the other observation tables is owed work, not a nicety: the invariant is
+   only as true as the script that proves it.
 3. **Visible gaps beat silent garbage.** Every observation carries provenance
    (HTTP status, response time, result count, collector version, archive key).
    Apple's rate limit returns **HTTP 403 with an empty results array**. That is

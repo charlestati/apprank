@@ -84,9 +84,12 @@ D1 holds a hot window, the archive holds everything, which is what makes
 pruning, retention and schema changes performance choices rather than lossy
 ones. Rebuild with `pnpm rebuild:d1` (not `pnpm rebuild`, a pnpm built-in).
 
-It reads `rankings/v1/` and writes `ranking`. The other observation tables are
-recoverable in principle but no script does it, so treat a D1 prune as
-reversible only for rank observations.
+It reads `rankings/v1/` and writes `ranking`, its `rank_entry` index (the
+crawler's rule: top 10 plus tracked apps, which is why it also needs wrangler
+auth to read `tracked_app`), and a bare `app` row for any indexed app the
+database has not met, which the next live crawl fills in. The other observation
+tables are recoverable in principle but no script does it, so treat a D1 prune
+as reversible only for rank observations.
 
 ## Release markers
 
