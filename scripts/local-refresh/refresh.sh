@@ -56,8 +56,16 @@ STEP_SPACING="${APPRANK_REFRESH_STEP_SPACING:-10}"
 # shortfall. Nothing is lost when it does bind, since an uncrawled pair stays
 # due, but it is silent, so keep this above the pair count.
 MAX_UNITS="${APPRANK_REFRESH_MAX_UNITS:-420}"
-# Consecutive stalls that mean the dev session is wedged rather than slow.
+# Consecutive stalls that mean the dev session is wedged rather than slow. A
+# stall is either a request that timed out or one that came back as a 500. Both
+# count, because D1 has twice now gone away mid-crawl (an "internal error" for
+# a few minutes, a dropped connection once) and a single such answer used to
+# end the whole cycle with 135 pairs still due.
 MAX_MISSES="${APPRANK_REFRESH_MAX_MISSES:-3}"
+# Seconds to wait after a 500 before trying again. Longer than SPACING on
+# purpose: a D1 blip lasts minutes, not seconds, and three retries at crawl
+# pace would all land inside the same outage.
+ERROR_PAUSE="${APPRANK_REFRESH_ERROR_PAUSE:-60}"
 MAX_STEPS="${APPRANK_REFRESH_MAX_STEPS:-80}"
 
 mkdir -p "$LOG_DIR" "$STATE_DIR"
@@ -76,6 +84,13 @@ say() {
 # to every body logged whole, not only the ones known to carry the field today.
 redact() {
   printf '%s' "$1" | sed -E 's/"keyword":"([^"\\]|\\.)*"/"keyword":"<redacted>"/g'
+}
+
+# The first line of an error body. wrangler's dev middleware answers a thrown
+# error with the whole stack, and the frames name nothing the log needs: the
+# message is the diagnosis, and the file already keeps the full wrangler log.
+headline() {
+  printf '%s' "$1" | head -n 1
 }
 
 cd "$COLLECTOR" || { say "FATAL cannot cd to $COLLECTOR"; exit 1; }
@@ -162,8 +177,13 @@ for _ in $(seq 1 "$MAX_UNITS"); do
       [ "$misses" -ge "$MAX_MISSES" ] && { say "stopping after $misses consecutive empty responses"; break; }
       sleep "$SPACING" ;;
     *)
-      say "UNEXPECTED response, stopping: $(redact "$r")"
-      break ;;
+      # A 500, most often D1 failing behind the binding. Treated like a timeout:
+      # a transient one clears on retry, and a genuine bug still stops the loop
+      # after MAX_MISSES in a row, with its message in the log each time.
+      misses=$((misses + 1))
+      say "error response (miss $misses of $MAX_MISSES): $(headline "$(redact "$r")")"
+      [ "$misses" -ge "$MAX_MISSES" ] && { say "stopping after $misses consecutive failed requests"; break; }
+      sleep "$ERROR_PAUSE" ;;
   esac
 done
 
@@ -177,13 +197,27 @@ done
 # .wrangler/state, so anything a previous cycle left behind drains too.
 #
 # Once per UTC day, because that is the grain every one of these writes uses.
+#
+# Retried on failure with the same pause as the crawl loop. The fan-out opens
+# with a D1 write, so it is the request most likely to catch an outage, and a
+# retry is safe: every pull it queues writes on a per-day key, so the worst a
+# duplicate task costs is the fetches, never a second row.
 DAILY_MARKER="$STATE_DIR/daily-$(date -u +%F).done"
 if [ "$throttled" -eq 0 ] && [ ! -f "$DAILY_MARKER" ]; then
-  d="$(post daily)"
-  case "$d" in
-    *'"queued"'*) say "daily fan-out queued: $d"; : >"$DAILY_MARKER" ;;
-    *) say "daily fan-out failed, will retry next cycle: ${d:-<empty response>}" ;;
-  esac
+  tries=0
+  while :; do
+    d="$(post daily)"
+    case "$d" in
+      *'"queued"'*) say "daily fan-out queued: $d"; : >"$DAILY_MARKER"; break ;;
+    esac
+    tries=$((tries + 1))
+    if [ "$tries" -ge "$MAX_MISSES" ]; then
+      say "daily fan-out failed $tries times, will retry next cycle: $(headline "${d:-<empty response>}")"
+      break
+    fi
+    say "daily fan-out failed (try $tries of $MAX_MISSES), pausing ${ERROR_PAUSE}s: $(headline "${d:-<empty response>}")"
+    sleep "$ERROR_PAUSE"
+  done
 fi
 
 steps=0
@@ -217,7 +251,15 @@ printf '%s crawled=%s throttled=%s steps=%s\n' "$(date -u +%FT%TZ)" "$crawled" "
 
 "$ROOT/scripts/local-refresh/verify.sh" >>"$LOG" 2>&1
 verify_status=$?
-say "verify exit=$verify_status"
+# 2 is verify's own code for "could not read the database": nothing was
+# checked, and nothing is known to be wrong. It still fails the cycle, since an
+# unverified day is not a verified one, but the summary must not read as a
+# consistency failure when the only fact is that D1 was unreachable.
+case "$verify_status" in
+  0) say "verify ok" ;;
+  2) say "verify skipped: database unreachable (exit 2), nothing checked" ;;
+  *) say "verify FAILED (exit $verify_status), see $LOG" ;;
+esac
 # Keep only the last day of per-cycle wrangler logs.
 find "$LOG_DIR" -name 'wrangler-*.log' -mtime +1 -delete 2>/dev/null
 say "=== cycle end ==="
