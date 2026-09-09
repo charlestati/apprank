@@ -17,6 +17,12 @@
 #      R2 is the source of truth and `rebuild-d1` reads it, not D1.
 #   5. Nothing is overdue by more than a day. A pair that stops being picked
 #      loses history permanently and silently.
+#
+# Exit codes: 0 when every check passed, 1 when a check failed, 2 when the
+# database could not be read at all. The last is kept apart because it says
+# nothing about the data: D1 has gone away mid-run before, and reporting that
+# as a failed consistency check sent the operator hunting for corruption that
+# did not exist.
 set -uo pipefail
 
 # launchd starts jobs with a minimal PATH, not the interactive shell's, so
@@ -29,6 +35,11 @@ export PATH
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT/apps/collector" || exit 1
+# Attempts at reading the database before giving up, and the pause between.
+# One D1 blip lasts minutes; three reads half a minute apart span the short
+# ones and still bound the wait for a long one.
+READ_TRIES="${APPRANK_VERIFY_READ_TRIES:-3}"
+READ_PAUSE="${APPRANK_VERIFY_READ_PAUSE:-30}"
 # wrangler.local.jsonc is gitignored, so it exists on the operator's machine and
 # never on a runner. Prefer it when present, else the generated crawl config.
 for candidate in wrangler.local.jsonc wrangler.localcrawl.jsonc wrangler.jsonc; do
@@ -44,9 +55,29 @@ q() {
     | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)[0]["results"]))' 2>/dev/null
 }
 
+# q, retried. Prints the result set on success; on exhaustion, exits the whole
+# script with 2 rather than handing an empty string to a caller that would
+# read it as "no rows". That misreading is the dangerous one: an empty pair
+# list below would report the R2 archive complete without checking a thing.
+q_or_die() {
+  local out try
+  for try in $(seq 1 "$READ_TRIES"); do
+    out="$(q "$1")"
+    if [ -n "$out" ]; then
+      printf '%s' "$out"
+      return 0
+    fi
+    # Callers capture stdout, so anything said here goes to stderr or it would
+    # be mistaken for a result set.
+    [ "$try" -lt "$READ_TRIES" ] && { note "database unreachable (try $try of $READ_TRIES), pausing ${READ_PAUSE}s" >&2; sleep "$READ_PAUSE"; }
+  done
+  note "UNREACHABLE could not read the database after $READ_TRIES attempts, nothing checked" >&2
+  exit 2
+}
+
 echo "--- verify $TODAY ---"
 
-row="$(q "SELECT
+row="$(q_or_die "SELECT
   (SELECT COUNT(*) FROM ranking WHERE observed_date='$TODAY') AS today,
   (SELECT COUNT(*) FROM ranking WHERE observed_date='$TODAY' AND (http_status!=200 OR valid!=1)) AS bad_status,
   (SELECT COUNT(*) FROM ranking WHERE observed_date='$TODAY' AND (collector_version IS NULL OR result_count IS NULL OR response_ms IS NULL)) AS no_provenance,
@@ -62,7 +93,9 @@ row="$(q "SELECT
   (SELECT COUNT(*) FROM rating_snapshot WHERE observed_date='$TODAY' AND (rating_count IS NULL AND rating_avg IS NULL)) AS empty_ratings,
   (SELECT COUNT(*) FROM chart_ranking WHERE observed_date='$TODAY' AND (result_ids IS NULL OR result_ids='[]')) AS empty_charts,
   (SELECT COUNT(*) FROM fetch_error WHERE error_class='pull_abandoned' AND fetched_at > (strftime('%s','now')-86400)*1000) AS abandoned")"
-[ -n "$row" ] || { note "FAIL could not read the database"; exit 1; }
+# q_or_die exits from inside the subshell that captured it, so its status has
+# to be re-raised here or the script would carry on with an empty row.
+[ -n "$row" ] || exit 2
 
 get() { printf '%s' "$row" | python3 -c "import json,sys; print(json.load(sys.stdin)[0]['$1'])"; }
 
@@ -111,7 +144,9 @@ check_pair() {
     --remote -c "$CFG" --file /dev/null >/dev/null 2>&1 || printf '%s\n' "$1"
 }
 export -f check_pair
-absent="$(q "SELECT pair_id FROM ranking WHERE observed_date='$TODAY' ORDER BY pair_id" \
+pair_ids="$(q_or_die "SELECT pair_id FROM ranking WHERE observed_date='$TODAY' ORDER BY pair_id")"
+[ -n "$pair_ids" ] || exit 2
+absent="$(printf '%s' "$pair_ids" \
   | python3 -c 'import json,sys; [print(r["pair_id"]) for r in json.load(sys.stdin)]' \
   | xargs -P 8 -I{} bash -c 'check_pair {}')"
 missing=0
