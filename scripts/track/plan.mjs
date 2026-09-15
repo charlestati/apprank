@@ -146,6 +146,35 @@ function settleUnlisted(state, wanted, out) {
 }
 
 /**
+ * Make sure one user's track has a storefront row, under today's locale.
+ *
+ * A row stored under a different locale is moved rather than left: the
+ * reference data can change which locale a storefront indexes for a language,
+ * which is an INSERT away (invariant 5). Left behind, the row keeps naming the
+ * old pair, prune retires that pair from under it, and discovery stops finding
+ * it live.
+ */
+function holdStorefront(want, held) {
+	const { appId, language, locale, norm, storefront, track, userId } = want;
+	const { heldStorefronts, statements, summary, wanted } = held;
+	const key = `${track}|${storefront}`;
+	wanted.storefronts.add(key);
+	const heldLocale = heldStorefronts.get(key);
+	if (heldLocale === undefined) {
+		statements.push(
+			`INSERT OR IGNORE INTO tracked_keyword_storefront (tracked_keyword_id, storefront_code, locale_code, created_at) SELECT ${trackIdExpr(userId, appId, norm, language)}, ${sqlString(storefront)}, ${sqlString(locale)}, strftime('%s','now')*1000;`
+		);
+		summary.storefrontsAdded += 1;
+	} else if (heldLocale !== locale) {
+		statements.push(
+			`UPDATE tracked_keyword_storefront SET locale_code = ${sqlString(locale)} WHERE tracked_keyword_id = ${trackIdExpr(userId, appId, norm, language)} AND storefront_code = ${sqlString(storefront)};`
+		);
+		summary.storefrontsMoved += 1;
+	}
+	heldStorefronts.set(key, locale);
+}
+
+/**
  * @param config  { [userId]: { apps: [{ appId, name, language, storefronts,
  * keywords }] } }, a list, because one person routinely ships more than one
  * app and `tracked_app` has always been keyed (user_id, app_id).
@@ -167,6 +196,7 @@ export function planChanges(config, state, { prune = false } = {}) {
 		pairsActivated: 0,
 		pairsRetired: 0,
 		storefrontsAdded: 0,
+		storefrontsMoved: 0,
 		storefrontsRemoved: 0,
 		tracksAdded: 0,
 		tracksRemoved: 0,
@@ -184,11 +214,12 @@ export function planChanges(config, state, { prune = false } = {}) {
 			trackKey(t.user_id, t.app_id, t.normalized, t.language)
 		)
 	);
-	const heldStorefronts = new Set(
-		state.trackedStorefronts.map(
-			(s) =>
-				`${trackKey(s.user_id, s.app_id, s.normalized, s.language)}|${s.storefront_code}`
-		)
+	// Keyed by storefront, valued by the locale the row was stored under.
+	const heldStorefronts = new Map(
+		state.trackedStorefronts.map((s) => [
+			`${trackKey(s.user_id, s.app_id, s.normalized, s.language)}|${s.storefront_code}`,
+			s.locale_code,
+		])
 	);
 	// Every track and tracked storefront the config asks for, and every pair.
 	const wanted = { storefronts: new Set(), tracks: new Set() };
@@ -266,14 +297,10 @@ export function planChanges(config, state, { prune = false } = {}) {
 						);
 						continue;
 					}
-					wanted.storefronts.add(`${track}|${storefront}`);
-					if (!heldStorefronts.has(`${track}|${storefront}`)) {
-						statements.push(
-							`INSERT OR IGNORE INTO tracked_keyword_storefront (tracked_keyword_id, storefront_code, locale_code, created_at) SELECT ${trackIdExpr(userId, appId, norm, language)}, ${sqlString(storefront)}, ${sqlString(locale)}, strftime('%s','now')*1000;`
-						);
-						heldStorefronts.add(`${track}|${storefront}`);
-						summary.storefrontsAdded += 1;
-					}
+					holdStorefront(
+						{ appId, language, locale, norm, storefront, track, userId },
+						{ heldStorefronts, statements, summary, wanted }
+					);
 					wantedPairs.set(pairKey(norm, language, storefront, locale), {
 						idExpr,
 						locale,

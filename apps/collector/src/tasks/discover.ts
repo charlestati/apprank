@@ -118,13 +118,17 @@ async function alreadyAnswered(
 	task: Extract<Task, { type: "ads_discover" }>
 ): Promise<Set<string>> {
 	const [tracked, proposed] = await Promise.all([
+		// This user's own tracks in this storefront, not the shared pairs. A term
+		// another user tracks here is still a real proposal for this one, and
+		// accepting it shares the pair, so it costs no fetch.
 		env.DB.prepare(
 			`SELECT DISTINCT k.normalized AS term
-         FROM crawl_pair cp
-         JOIN keyword k ON k.id = cp.keyword_id
-        WHERE cp.storefront_code = ?1 AND cp.ref_count > 0`
+         FROM tracked_keyword tk
+         JOIN keyword k ON k.id = tk.keyword_id
+         JOIN tracked_keyword_storefront ts ON ts.tracked_keyword_id = tk.id
+        WHERE tk.user_id = ?1 AND ts.storefront_code = ?2`
 		)
-			.bind(task.storefront)
+			.bind(task.userId, task.storefront)
 			.all<{ term: string }>(),
 		env.DB.prepare(
 			`SELECT json_extract(payload, '$.term') AS term

@@ -166,7 +166,7 @@ console.log(
 		`keywords added:  ${summary.keywordsAdded}`,
 		`tracks added:    ${summary.tracksAdded}`,
 		`tracks removed:  ${summary.tracksRemoved}`,
-		`storefronts +/-: ${summary.storefrontsAdded} / ${summary.storefrontsRemoved}`,
+		`storefronts +/-: ${summary.storefrontsAdded} / ${summary.storefrontsRemoved} (${summary.storefrontsMoved} moved to a new locale)`,
 		`pairs activated: ${summary.pairsActivated}`,
 		`pairs retired:   ${summary.pairsRetired}   (history kept)`,
 		`statements:      ${statements.length}`,

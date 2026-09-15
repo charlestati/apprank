@@ -296,6 +296,40 @@ test("prune keeps a pair another user still points at, storefront by storefront"
 	);
 });
 
+test("apply moves a stored locale when the reference data changes", () => {
+	// Tracked in ca before a French locale existed there, so stored under the
+	// default. Once fr-CA is an INSERT away, the row has to follow, or prune
+	// retires the pair the row still names and discovery stops finding it live.
+	const state = appliedState("kept");
+	state.crawlPairs = [pair(9, "ca", "en-CA", "kept")];
+	state.trackedStorefronts = [stored("ca", "en-CA", "kept")];
+	const file = {
+		operator: {
+			...EMPTY_ENTRY.operator,
+			keywords: ["kept"],
+			storefronts: ["ca"],
+		},
+	};
+	const { statements, summary } = planChanges(file, state, { prune: true });
+	assert.equal(summary.storefrontsMoved, 1);
+	assert.equal(summary.storefrontsAdded, 0);
+	assert.ok(
+		statements.some((s) =>
+			s.startsWith(
+				"UPDATE tracked_keyword_storefront SET locale_code = 'fr-CA'"
+			)
+		)
+	);
+	assert.equal(summary.pairsActivated, 1);
+	assert.equal(summary.pairsRetired, 1);
+	const moved = {
+		...state,
+		crawlPairs: [pair(10, "ca", "fr-CA", "kept")],
+		trackedStorefronts: [stored("ca", "fr-CA", "kept")],
+	};
+	assert.deepEqual(planChanges(file, moved, { prune: true }).statements, []);
+});
+
 test("pull adds a keyword the database tracks to the entry that covers it", () => {
 	const { added, config } = pullConfig(EMPTY_ENTRY, appliedState("new term"));
 	assert.equal(added, 1);

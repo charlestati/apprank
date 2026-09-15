@@ -51,6 +51,24 @@ function suggestionsFetch(rows: unknown[]) {
 	});
 }
 
+/** A keyword tracked by `userId` in fr, through its storefront row. */
+function trackIn(keywordId: number, text: string, userId = "operator") {
+	return [
+		env.DB.prepare(
+			"INSERT OR IGNORE INTO keyword (id, text, normalized, language) VALUES (?1, ?2, ?2, 'fr')"
+		).bind(keywordId, text),
+		env.DB.prepare(
+			"INSERT OR IGNORE INTO crawl_pair (keyword_id, storefront_code, locale_code, tier, ref_count, interval_hours, next_due_at) VALUES (?1, 'fr', 'fr-FR', 1, 1, 24, 0)"
+		).bind(keywordId),
+		env.DB.prepare(
+			"INSERT INTO tracked_keyword (user_id, app_id, keyword_id, created_at) VALUES (?1, 555, ?2, 0)"
+		).bind(userId, keywordId),
+		env.DB.prepare(
+			"INSERT INTO tracked_keyword_storefront (tracked_keyword_id, storefront_code, locale_code, created_at) SELECT id, 'fr', 'fr-FR', 0 FROM tracked_keyword WHERE user_id = ?1 AND keyword_id = ?2"
+		).bind(userId, keywordId),
+	];
+}
+
 describe(pickCandidates, () => {
 	it("drops what is already known, including the seed Apple echoes back", () => {
 		const picked = pickCandidates(
@@ -120,6 +138,8 @@ describe(adsDiscoverStep, () => {
 		await env.DB.batch([
 			env.DB.prepare("DELETE FROM fetch_error"),
 			env.DB.prepare("DELETE FROM suggestion"),
+			env.DB.prepare("DELETE FROM tracked_keyword_storefront"),
+			env.DB.prepare("DELETE FROM tracked_keyword"),
 			env.DB.prepare("DELETE FROM crawl_pair"),
 			env.DB.prepare("DELETE FROM keyword"),
 			env.DB.prepare(
@@ -128,21 +148,35 @@ describe(adsDiscoverStep, () => {
 			env.DB.prepare(
 				"INSERT OR IGNORE INTO locale (code, language) VALUES ('fr-FR', 'fr')"
 			),
+			env.DB.prepare(
+				"INSERT OR IGNORE INTO app (id, current_name, first_seen_at, last_seen_at) VALUES (555, 'App', 0, 0)"
+			),
 		]);
 	});
+
 	afterEach(() => {
 		vi.restoreAllMocks();
 	});
 
-	it("proposes a variant of a tracked keyword, without touching the crawl", async () => {
+	it("still offers a term another user already tracks here", async () => {
+		// The "already tracked" check used the shared pairs, so one user's track
+		// hid the term from everyone else. Accepting it shares the pair anyway.
 		await env.DB.batch([
-			env.DB.prepare(
-				"INSERT INTO keyword (id, text, normalized, language) VALUES (1, 'météo locale', 'météo locale', 'fr')"
-			),
-			env.DB.prepare(
-				"INSERT INTO crawl_pair (id, keyword_id, storefront_code, locale_code, tier, ref_count, interval_hours, next_due_at) VALUES (1, 1, 'fr', 'fr-FR', 1, 1, 24, 0)"
-			),
+			...trackIn(1, "météo locale"),
+			...trackIn(2, "météo locale gratuite", "someone-else"),
 		]);
+		suggestionsFetch([{ popularity: 31, text: "météo locale gratuite" }]);
+
+		await adsDiscoverStep(discoverEnv(), task());
+
+		const rows = await env.DB.prepare(
+			"SELECT json_extract(payload, '$.term') AS term FROM suggestion"
+		).all<{ term: string }>();
+		expect(rows.results).toStrictEqual([{ term: "météo locale gratuite" }]);
+	});
+
+	it("proposes a variant of a tracked keyword, without touching the crawl", async () => {
+		await env.DB.batch(trackIn(1, "météo locale"));
 		suggestionsFetch([
 			{ popularity: 90, text: "météo locale" },
 			{ popularity: 31, text: "météo locale gratuite" },
