@@ -136,10 +136,12 @@ similar job there.
 
 ## Keyword discovery
 
-`job=ads_discover` asks Apple's `suggestions/keywords/query` one seed at a time,
-seeded from the keywords somebody already tracks, and writes what comes back to
-`suggestion`. It spends no crawl budget: a proposal is a row, and only an
-operator accepting one creates a pair.
+Every Monday the daily cron queues discovery beside the genre pull, and
+`job=ads_discover` runs it on demand. It asks Apple's
+`suggestions/keywords/query` one seed at a time, seeded from the keywords
+somebody already tracks, and writes what comes back to `suggestion`. It spends
+no crawl budget: a proposal is a row, and only an operator accepting one creates
+a pair.
 
 Two filters, in two places, because they can afford different things.
 

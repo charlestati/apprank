@@ -39,6 +39,12 @@ export default defineConfig(async () => {
 				reporter: ["text-summary", "json-summary"],
 				thresholds: { branches: 70, functions: 80, lines: 80, statements: 80 },
 			},
+			// One file at a time. Storage is shared across the whole run (there is no
+			// isolated storage in this pool), so a file emptying collector_state in
+			// its beforeEach could land between another file's write and its read:
+			// the throttle test in scheduler-loop failed that way in CI, reading back
+			// a pacing row that had just been deleted.
+			fileParallelism: false,
 			setupFiles: ["./test/setup.ts"],
 		},
 	};

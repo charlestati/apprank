@@ -125,6 +125,74 @@ async function buildAdsTask(
 }
 
 /**
+ * Queue keyword discovery: one Apple request per tracked keyword per tracked
+ * (user, app, storefront).
+ *
+ * Seeded from the keywords somebody already chose, because that is what makes
+ * the answers relevant. Apple scopes suggestions to the promoted app, so no
+ * brand classification of our own is needed to keep competitors out of the
+ * inbox.
+ *
+ * Nothing here spends crawl budget. It costs one Ads request per seed, on a
+ * credentialed endpoint that has nothing to do with the shared-IP iTunes limit,
+ * and it proposes rows an operator then has to accept.
+ */
+async function buildDiscovery(env: Env): Promise<Task[]> {
+	const rows = await env.DB.prepare(
+		// Storefronts come from this user's own tracked_keyword_storefront rows.
+		// crawl_pair is shared, and joining it on the keyword alone asked each seed
+		// in every storefront where anyone collected it, proposing keywords for
+		// markets this user never chose. The pair join keeps only live ones.
+		`SELECT DISTINCT tk.user_id AS userId, a.id AS appId,
+            ts.storefront_code AS storefront, ts.locale_code AS localeCode,
+            k.language AS language, k.normalized AS seed
+       FROM tracked_keyword tk
+       JOIN app a ON a.id = tk.app_id
+       JOIN keyword k ON k.id = tk.keyword_id
+       JOIN tracked_keyword_storefront ts ON ts.tracked_keyword_id = tk.id
+       JOIN crawl_pair cp ON cp.keyword_id = k.id
+        AND cp.storefront_code = ts.storefront_code
+        AND cp.locale_code = ts.locale_code AND cp.ref_count > 0
+      ORDER BY tk.user_id, a.id, ts.storefront_code, k.normalized`
+	).all<{
+		userId: string;
+		appId: number;
+		storefront: string;
+		localeCode: string;
+		language: string;
+		seed: string;
+	}>();
+
+	// One task per (user, app, storefront, locale, language), carrying its seeds;
+	// the step walks them one request at a time so a tick stays bounded. Locale
+	// and language belong in the key because the task stamps both onto every
+	// proposal: keyed on storefront alone, a Canadian unit took its locale from
+	// whichever row came first, and accepting a French seed's variant created an
+	// en-CA pair and an English keyword row.
+	const byUnit = new Map<string, Task>();
+	for (const r of rows.results) {
+		const key = `${r.userId}|${r.appId}|${r.storefront}|${r.localeCode}|${r.language}`;
+		const existing = byUnit.get(key);
+		if (existing?.type === "ads_discover") {
+			existing.rest.push(r.seed);
+			continue;
+		}
+		byUnit.set(key, {
+			appAdamId: String(r.appId),
+			appId: r.appId,
+			language: r.language,
+			localeCode: r.localeCode,
+			rest: [],
+			seed: r.seed,
+			storefront: r.storefront,
+			type: "ads_discover",
+			userId: r.userId,
+		});
+	}
+	return [...byUnit.values()];
+}
+
+/**
  * Run one piece of daily bookkeeping without letting it cancel the day.
  *
  * Pacing, cadence and difficulty all derive from data already held: they
@@ -204,6 +272,13 @@ async function runDailyJobs(env: Env): Promise<{
 				if (adsTask) {
 					tasks.push(adsTask);
 				}
+			});
+			// Discovery, weekly beside it. Left to the manual trigger, the
+			// suggestions inbox only filled when somebody remembered to ask. Weekly
+			// because Apple's associations move slowly and each seed is one Ads
+			// request; what an operator dismissed is never proposed again.
+			await bestEffort(env, "ads_discover", async () => {
+				tasks.push(...(await buildDiscovery(env)));
 			});
 		}
 		// The by-name pass, daily, for whatever the latest week still lacks. On
@@ -347,74 +422,6 @@ const JOBS = [
  * serves is a fact about Apple, not about this code.
  */
 const BACKFILL_WEEKS = 13;
-
-/**
- * Queue keyword discovery: one Apple request per tracked keyword per tracked
- * (user, app, storefront).
- *
- * Seeded from the keywords somebody already chose, because that is what makes
- * the answers relevant. Apple scopes suggestions to the promoted app, so no
- * brand classification of our own is needed to keep competitors out of the
- * inbox.
- *
- * Nothing here spends crawl budget. It costs one Ads request per seed, on a
- * credentialed endpoint that has nothing to do with the shared-IP iTunes limit,
- * and it proposes rows an operator then has to accept.
- */
-async function buildDiscovery(env: Env): Promise<Task[]> {
-	const rows = await env.DB.prepare(
-		// Storefronts come from this user's own tracked_keyword_storefront rows.
-		// crawl_pair is shared, and joining it on the keyword alone asked each seed
-		// in every storefront where anyone collected it, proposing keywords for
-		// markets this user never chose. The pair join keeps only live ones.
-		`SELECT DISTINCT tk.user_id AS userId, a.id AS appId,
-            ts.storefront_code AS storefront, ts.locale_code AS localeCode,
-            k.language AS language, k.normalized AS seed
-       FROM tracked_keyword tk
-       JOIN app a ON a.id = tk.app_id
-       JOIN keyword k ON k.id = tk.keyword_id
-       JOIN tracked_keyword_storefront ts ON ts.tracked_keyword_id = tk.id
-       JOIN crawl_pair cp ON cp.keyword_id = k.id
-        AND cp.storefront_code = ts.storefront_code
-        AND cp.locale_code = ts.locale_code AND cp.ref_count > 0
-      ORDER BY tk.user_id, a.id, ts.storefront_code, k.normalized`
-	).all<{
-		userId: string;
-		appId: number;
-		storefront: string;
-		localeCode: string;
-		language: string;
-		seed: string;
-	}>();
-
-	// One task per (user, app, storefront, locale, language), carrying its seeds;
-	// the step walks them one request at a time so a tick stays bounded. Locale
-	// and language belong in the key because the task stamps both onto every
-	// proposal: keyed on storefront alone, a Canadian unit took its locale from
-	// whichever row came first, and accepting a French seed's variant created an
-	// en-CA pair and an English keyword row.
-	const byUnit = new Map<string, Task>();
-	for (const r of rows.results) {
-		const key = `${r.userId}|${r.appId}|${r.storefront}|${r.localeCode}|${r.language}`;
-		const existing = byUnit.get(key);
-		if (existing?.type === "ads_discover") {
-			existing.rest.push(r.seed);
-			continue;
-		}
-		byUnit.set(key, {
-			appAdamId: String(r.appId),
-			appId: r.appId,
-			language: r.language,
-			localeCode: r.localeCode,
-			rest: [],
-			seed: r.seed,
-			storefront: r.storefront,
-			type: "ads_discover",
-			userId: r.userId,
-		});
-	}
-	return [...byUnit.values()];
-}
 
 /**
  * Queue the by-name popularity pass for every recent week we hold nothing for.

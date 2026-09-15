@@ -228,7 +228,7 @@ const en = {
 	noRankedObservations:
 		"No ranked observations in this window yet. The collector fills this in daily.",
 	suggestionsEmpty:
-		"Nothing pending. Discovery runs when the collector's ads_discover job is triggered, and proposes only keywords you do not already track.",
+		"Nothing pending. Discovery runs every Monday and proposes only keywords you do not already track.",
 	suggestionsIntro:
 		"Keywords Apple associates with the ones you already track. Nothing enters the crawl budget without approval here.",
 
@@ -503,7 +503,7 @@ const fr: Dictionary = {
 	noRankedObservations:
 		"Aucune observation classée sur cette période. Le collecteur la remplit chaque jour.",
 	suggestionsEmpty:
-		"Rien en attente. La découverte tourne quand la tâche ads_discover du collecteur est lancée, et ne propose que des mots-clés non suivis.",
+		"Rien en attente. La découverte tourne chaque lundi et ne propose que des mots-clés non suivis.",
 	suggestionsIntro:
 		"Mots-clés qu'Apple associe à ceux que vous suivez déjà. Rien n'entre dans le budget de collecte sans validation ici.",
 
