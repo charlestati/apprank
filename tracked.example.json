@@ -1,6 +1,8 @@
 {
 	"_readme": [
 		"Copy to tracked.local.json, then: pnpm track  →  pnpm track --apply",
+		"The database is the truth: pnpm track --pull adds what the dashboard accepted.",
+		"Removing a keyword needs pnpm track --prune; a plain run only ever adds.",
 		"The top-level key is the userId. It MUST match the userId in the",
 		"BASIC_AUTH_ACCOUNTS secret, or that person signs in and sees nothing.",
 		"storefronts x keywords is your whole daily fetch and write volume.",

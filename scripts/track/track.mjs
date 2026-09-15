@@ -1,4 +1,4 @@
-// `pnpm track`: reconcile the tracked set from one file.
+// `pnpm track`: keep a local file and the tracked set in the database in step.
 //
 // Adding an app or a keyword must never be a code change (invariant 5), but
 // the raw SQL for it is four statements with subqueries and easy to get wrong.
@@ -6,32 +6,46 @@
 // already in the database, and prints it. Nothing is written without
 // `--apply`.
 //
-// The database stays the source of truth: crawl_pair is reference-counted
-// across users, ownership lives on the rows, and retiring preserves history.
-// The file is how you author that, not where it lives.
+// The database is the source of truth: crawl_pair is reference-counted across
+// users, ownership lives on the rows, retiring preserves history, and the
+// dashboard writes rows too when a suggestion is accepted. The file is a local
+// copy you edit, so:
+//
+//   pnpm track                  what the file would add; also lists what the
+//                               database holds that the file does not
+//   pnpm track --apply          add it
+//   pnpm track --pull           rewrite the file from the database (additive)
+//   pnpm track --prune          also remove what the file does not list
+//   pnpm track --prune --apply
+//
+// `--local` targets the local D1 instead of the remote one.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import { planChanges } from "./plan.mjs";
+import { planChanges, pullConfig } from "./plan.mjs";
 
 const ROOT = path.join(import.meta.dirname, "..", "..");
 const COLLECTOR = path.join(ROOT, "apps", "collector");
 const CONFIG = path.join(ROOT, "tracked.local.json");
+const CONFIG_NAME = path.relative(ROOT, CONFIG);
 
 const apply = process.argv.includes("--apply");
+const pull = process.argv.includes("--pull");
+const prune = process.argv.includes("--prune");
 const local = process.argv.includes("--local");
 const target = local ? "--local" : "--remote";
 
-function config() {
-	if (!existsSync(CONFIG)) {
-		console.error(
-			`No ${path.relative(ROOT, CONFIG)}. Start from tracked.example.json.`
-		);
-		process.exit(1);
-	}
-	return JSON.parse(readFileSync(CONFIG, "utf-8"));
+if (pull && (apply || prune)) {
+	console.error(
+		"--pull only rewrites the file. Run it on its own, then plan again."
+	);
+	process.exit(2);
+}
+
+function readConfig() {
+	return existsSync(CONFIG) ? JSON.parse(readFileSync(CONFIG, "utf-8")) : null;
 }
 
 function wranglerConfig() {
@@ -62,7 +76,7 @@ function query(sql) {
 function currentState() {
 	return {
 		appLanguages: query("SELECT app_id, language FROM app_language"),
-		apps: query("SELECT id FROM app"),
+		apps: query("SELECT id, current_name FROM app"),
 		crawlPairs: query(
 			`SELECT cp.id, cp.ref_count, cp.storefront_code, cp.locale_code, k.normalized, k.language
        FROM crawl_pair cp JOIN keyword k ON k.id = cp.keyword_id`
@@ -74,20 +88,69 @@ function currentState() {
 		),
 		trackedApps: query("SELECT user_id, app_id FROM tracked_app"),
 		trackedKeywords: query(
-			`SELECT tk.user_id, tk.app_id, tk.keyword_id, k.normalized, k.language
+			`SELECT tk.user_id, tk.app_id, tk.keyword_id, k.text, k.normalized, k.language
        FROM tracked_keyword tk JOIN keyword k ON k.id = tk.keyword_id`
 		),
 	};
 }
 
-const { statements, summary, warnings } = planChanges(config(), currentState());
+if (pull) {
+	const { added, config, skipped } = pullConfig(
+		readConfig() ?? {},
+		currentState()
+	);
+	if (skipped > 0) {
+		console.warn(
+			`warning: ${skipped} tracked keyword(s) have no active crawl pair and were left out, so pulling does not restart them`
+		);
+	}
+	if (added === 0) {
+		console.log(`${CONFIG_NAME} already lists everything the database tracks.`);
+		process.exit(0);
+	}
+	writeFileSync(CONFIG, `${JSON.stringify(config, null, "\t")}\n`);
+	console.log(
+		`Added ${added} keyword(s) to ${CONFIG_NAME}. Run \`pnpm track\` to confirm it reports in sync.`
+	);
+	process.exit(0);
+}
+
+const config = readConfig();
+if (!config) {
+	console.error(
+		`No ${CONFIG_NAME}. Start from tracked.example.json, or run \`pnpm track --pull\` to build it from the database.`
+	);
+	process.exit(1);
+}
+
+const { statements, summary, unlisted, warnings } = planChanges(
+	config,
+	currentState(),
+	{ prune }
+);
 
 for (const w of warnings) {
 	console.warn(`warning: ${w}`);
 }
 
+if (unlisted.length > 0) {
+	// Printed to this terminal only, never written anywhere tracked: the terms are
+	// the operator's ASO strategy.
+	console.log(
+		`In the database but not in ${CONFIG_NAME} (kept): ${unlisted.length}`
+	);
+	for (const t of unlisted) {
+		console.log(
+			`  ${t.user_id}  app ${t.app_id}  ${t.language}  ${t.normalized}`
+		);
+	}
+	console.log(
+		"Run `pnpm track --pull` to add them to the file, or `--prune` to remove them.\n"
+	);
+}
+
 if (statements.length === 0) {
-	console.log("Already in sync, nothing to write.");
+	console.log("Nothing to write.");
 	process.exit(0);
 }
 
