@@ -302,18 +302,27 @@ function mutableEntriesOf(config, userId) {
  * Additive only. A keyword in the file but not yet in the database is a pending
  * `--apply`, not a stale line, so it stays; removing things is `prune`'s job.
  *
- * A keyword joins an entry only if that entry already covers every storefront
- * the keyword is collected in; otherwise it gets an entry of its own with
- * exactly those storefronts. Widening an existing entry would look harmless in
- * the file and on the next `--apply` create a pair for every keyword of that
- * entry in the new storefront, which is fetch volume nobody chose. Storefronts
- * come from the pairs actually being collected, since `tracked_keyword` holds
- * none. A tracked keyword with no active pair is left out and counted: writing
- * it back would restart a collection that was stopped.
+ * Which storefronts a keyword belongs in is the hard part, because
+ * `tracked_keyword` records none and `crawl_pair` is shared by every user. So a
+ * storefront counts only when the keyword is actually collected there *and*
+ * this user claimed it: an entry of theirs for the same app and language names
+ * it, or they accepted a suggestion for that term there. Taking every active
+ * pair instead handed one user another user's storefronts, which their next
+ * `--prune` then protected and their next `--apply` could revive. A keyword
+ * with no active pair is left out (writing it back would restart a collection
+ * somebody stopped), and one collected only where this user never claimed is
+ * left out too. Both are counted, never guessed.
+ *
+ * A keyword joins an entry only when the entry's storefronts are exactly its
+ * own; otherwise it gets an entry of its own. Joining a wider entry looks
+ * harmless in the file, and the next `--apply` creates a pair for it in every
+ * storefront that entry lists: fetch volume nobody chose.
  *
  * @param config the current file, or {} when there is none
- * @param state  rows already in the database (the same shape `planChanges` reads)
- * @returns the new file, how many keywords it gained, and how many were skipped
+ * @param state  rows already in the database (the same shape `planChanges`
+ *   reads, plus `suggestions`: accepted promote_keyword rows)
+ * @returns the new file, how many keywords it gained, how many were skipped
+ *   for having no active pair, and how many for having none this user claimed
  */
 export function pullConfig(config, state) {
 	const next = structuredClone(config ?? {});
@@ -327,6 +336,7 @@ export function pullConfig(config, state) {
 			collectedIn.set(key, set);
 		}
 	}
+	const accepted = acceptedStorefronts(state.suggestions ?? []);
 
 	const ordered = state.trackedKeywords.toSorted(
 		(a, b) =>
@@ -337,21 +347,32 @@ export function pullConfig(config, state) {
 	);
 	let added = 0;
 	let skipped = 0;
+	let unclaimed = 0;
 	for (const t of ordered) {
-		const listed = entriesOf(next, t.user_id).some(
-			(e) =>
-				e.appId === t.app_id &&
-				e.language === t.language &&
-				(e.keywords ?? []).some((k) => normalize(k) === t.normalized)
+		const own = entriesOf(next, t.user_id).filter(
+			(e) => e.appId === t.app_id && e.language === t.language
 		);
-		if (listed) {
+		if (
+			own.some((e) =>
+				(e.keywords ?? []).some((k) => normalize(k) === t.normalized)
+			)
+		) {
 			continue;
 		}
-		const storefronts = [
-			...(collectedIn.get(`${t.normalized}:${t.language}`) ?? []),
-		].toSorted();
-		if (storefronts.length === 0) {
+		const collected = collectedIn.get(`${t.normalized}:${t.language}`);
+		if (!collected) {
 			skipped += 1;
+			continue;
+		}
+		const claimed = new Set([
+			...own.flatMap((e) => e.storefronts ?? []),
+			...(accepted.get(
+				`${t.user_id}|${t.app_id}|${t.normalized}:${t.language}`
+			) ?? []),
+		]);
+		const storefronts = [...collected].filter((s) => claimed.has(s)).toSorted();
+		if (storefronts.length === 0) {
+			unclaimed += 1;
 			continue;
 		}
 		const entries = mutableEntriesOf(next, t.user_id);
@@ -359,7 +380,7 @@ export function pullConfig(config, state) {
 			(e) =>
 				e.appId === t.app_id &&
 				e.language === t.language &&
-				storefronts.every((s) => (e.storefronts ?? []).includes(s))
+				sameSet(e.storefronts ?? [], storefronts)
 		);
 		if (!entry) {
 			entry = {
@@ -374,5 +395,37 @@ export function pullConfig(config, state) {
 		entry.keywords = [...(entry.keywords ?? []), t.text ?? t.normalized];
 		added += 1;
 	}
-	return { added, config: next, skipped };
+	return { added, config: next, skipped, unclaimed };
+}
+
+function sameSet(a, b) {
+	return a.length === b.length && a.every((s) => b.includes(s));
+}
+
+/**
+ * Where each user accepted each suggested term, keyed like a track. The payload
+ * is the collector's own JSON; a row that does not parse claims nothing.
+ */
+function acceptedStorefronts(suggestions) {
+	const out = new Map();
+	for (const row of suggestions) {
+		let p;
+		try {
+			p = JSON.parse(row.payload);
+		} catch {
+			continue;
+		}
+		if (
+			typeof p?.term !== "string" ||
+			typeof p.storefront !== "string" ||
+			typeof p.language !== "string"
+		) {
+			continue;
+		}
+		const key = `${row.user_id}|${p.appId}|${normalize(p.term)}:${p.language}`;
+		const set = out.get(key) ?? new Set();
+		set.add(p.storefront);
+		out.set(key, set);
+	}
+	return out;
 }

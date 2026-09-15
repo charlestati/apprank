@@ -198,12 +198,27 @@ test("pull adds a keyword the database tracks to the entry that covers it", () =
 	assert.deepEqual(config.operator.apps[0].keywords, ["new term"]);
 });
 
+/** An accepted suggestion for `term`, the only storefront claim outside the file. */
+function accepted(term, storefront, userId = "operator") {
+	return {
+		user_id: userId,
+		payload: JSON.stringify({
+			appId: 1,
+			language: "fr",
+			locale: "fr-FR",
+			storefront,
+			term,
+		}),
+	};
+}
+
 test("pull never widens an entry into a storefront it did not cover", () => {
 	// Adding "ca" to the existing entry would create a pair for every keyword in
 	// it on the next apply: fetch volume nobody chose.
 	const state = appliedState("new term");
 	state.crawlPairs[0].storefront_code = "ca";
 	state.crawlPairs[0].locale_code = "fr-CA";
+	state.suggestions = [accepted("new term", "ca")];
 	const { config } = pullConfig(EMPTY_ENTRY, state);
 	assert.deepEqual(config.operator.apps[0].storefronts, ["fr"]);
 	assert.deepEqual(config.operator.apps[0].keywords, []);
@@ -214,6 +229,46 @@ test("pull never widens an entry into a storefront it did not cover", () => {
 		storefronts: ["ca"],
 		keywords: ["new term"],
 	});
+});
+
+test("pull never joins an entry wider than the keyword's own storefronts", () => {
+	// The entry covers fr and ca, the keyword is collected in fr only. Joining
+	// would create its ca pair on the next apply.
+	const file = {
+		operator: { ...EMPTY_ENTRY.operator, storefronts: ["fr", "ca"] },
+	};
+	const { config } = pullConfig(file, appliedState("new term"));
+	assert.deepEqual(config.operator.apps[0].keywords, []);
+	assert.deepEqual(config.operator.apps[1].storefronts, ["fr"]);
+	assert.deepEqual(config.operator.apps[1].keywords, ["new term"]);
+	assert.deepEqual(
+		planChanges(config, appliedState("new term")).statements,
+		[]
+	);
+});
+
+test("pull takes no storefront from another user's pair", () => {
+	// crawl_pair is shared. Someone else collecting the term in us must not put
+	// us in this user's file, where their prune would protect it and their apply
+	// could bring it back.
+	const state = appliedState("new term");
+	state.crawlPairs.push({
+		...state.crawlPairs[0],
+		id: 10,
+		storefront_code: "us",
+		locale_code: "en-US",
+	});
+	const { config } = pullConfig(EMPTY_ENTRY, state);
+	assert.deepEqual(config.operator.apps[0].storefronts, ["fr"]);
+	assert.deepEqual(config.operator.apps[0].keywords, ["new term"]);
+});
+
+test("pull leaves out a keyword collected only where this user never claimed", () => {
+	const state = appliedState("new term");
+	state.crawlPairs[0].storefront_code = "us";
+	const { added, unclaimed } = pullConfig(EMPTY_ENTRY, state);
+	assert.equal(added, 0);
+	assert.equal(unclaimed, 1);
 });
 
 test("pull leaves out a tracked keyword nothing is collecting", () => {
@@ -235,7 +290,10 @@ test("pull then plan writes nothing, and keeps the file's notes", () => {
 });
 
 test("pull builds an entry for a user the file has never seen", () => {
-	const { config } = pullConfig({}, appliedState("new term"));
+	// With no entry to claim a storefront, the accepted suggestion is the claim.
+	const state = appliedState("new term");
+	state.suggestions = [accepted("new term", "fr")];
+	const { config } = pullConfig({}, state);
 	assert.deepEqual(config.operator.apps[0].keywords, ["new term"]);
 	assert.equal(config.operator.apps[0].name, "App");
 });
