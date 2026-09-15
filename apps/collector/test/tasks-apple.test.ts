@@ -3,7 +3,15 @@
 import { env } from "cloudflare:test";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-import { adsPullStep, latestCompleteWeekStart } from "../src/tasks/ads";
+import { putArchived } from "../src/lib/archive";
+import {
+	adsPullStep,
+	adsTermsStep,
+	buildTermsTasks,
+	latestCompleteWeekStart,
+	recentWeekStarts,
+	TERM_CHUNK,
+} from "../src/tasks/ads";
 import {
 	ascPollStep,
 	ascFetchInstanceStep,
@@ -73,6 +81,23 @@ describe(latestCompleteWeekStart, () => {
 	});
 });
 
+describe(recentWeekStarts, () => {
+	it("walks back whole Sun–Sat weeks from the latest complete one", () => {
+		// Saturday 2026-09-12: the latest complete week, after Apple's posting
+		// delay, opens 2026-08-23.
+		expect(recentWeekStarts(3, new Date("2026-09-12T03:00:00Z"))).toStrictEqual(
+			["2026-08-09", "2026-08-16", "2026-08-23"]
+		);
+	});
+
+	it("returns the latest week alone when asked for one", () => {
+		const now = new Date("2026-09-12T03:00:00Z");
+		expect(recentWeekStarts(1, now)).toStrictEqual([
+			latestCompleteWeekStart(now),
+		]);
+	});
+});
+
 describe(adsPullStep, () => {
 	it("returns nothing for an empty queue", async () => {
 		await expect(
@@ -124,10 +149,12 @@ describe(adsPullStep, () => {
 			type: "ads_pull",
 			weekStart: "2026-08-16",
 		});
+		// The by-name pass is queued on its own (buildTermsTasks), not chained off
+		// the genre pull, so one failed genre unit cannot cost a storefront its week.
 		expect(followUps).toStrictEqual([]);
 
 		const archived = await env.ARCHIVE.get(
-			"ads/popularity/2026-08-16/fr/GAMES.json"
+			"ads/popularity/2026-08-16/fr/6014-GAMES.json"
 		);
 		expect(archived).not.toBeNull();
 
@@ -277,6 +304,226 @@ describe(adsPullStep, () => {
 			"SELECT COUNT(*) AS n FROM fetch_error"
 		).first<{ n: number }>();
 		expect(err?.n).toBe(1);
+	});
+});
+
+function termsFetch(rows: unknown[]) {
+	stubFetch((url, init) => {
+		if (url.includes("appleid.apple.com")) {
+			return Response.json({ access_token: "tok", expires_in: 3600 });
+		}
+		if (url.includes("/v1/acls")) {
+			return Response.json({ data: { acls: [{ adAccount: { id: 777 } }] } });
+		}
+		const body = JSON.parse(String(init?.body)) as {
+			filters: { field: string; value: unknown }[];
+		};
+		// The whole point of this pass: a genre filter would drop every term Apple
+		// attributes elsewhere, which is most of them.
+		expect(body.filters.map((f) => f.field)).not.toContain("genre");
+		return Response.json({ result: { rows } });
+	});
+}
+
+describe(adsTermsStep, () => {
+	beforeEach(async () => {
+		await env.DB.batch([
+			env.DB.prepare(
+				"INSERT INTO keyword (id, text, normalized, language) VALUES (10, 'radar', 'radar', 'fr'), (11, 'prévisions météo', 'prévisions météo', 'fr')"
+			),
+		]);
+	});
+
+	it("records the storefront-wide popularity of a term outside the genre list", async () => {
+		termsFetch([
+			{
+				searchPopularity1to100: 42,
+				searchPopularity1to5: 2,
+				searchTerm: "Radar",
+			},
+		]);
+		const followUps = await adsTermsStep(adsEnv(), {
+			storefront: "fr",
+			terms: ["radar"],
+			type: "ads_terms",
+			weekStart: "2026-08-16",
+		});
+		expect(followUps).toStrictEqual([]);
+		const archived = await env.ARCHIVE.list({
+			prefix: "ads/popularity-terms/2026-08-16/fr/0001-",
+		});
+		expect(archived.objects).toHaveLength(1);
+
+		const pop = await env.DB.prepare(
+			"SELECT genre_id, present, popularity_1_100, popularity_1_5, rank_in_genre FROM popularity WHERE keyword_id = 10"
+		).first();
+		expect(pop).toStrictEqual({
+			genre_id: 0,
+			popularity_1_100: 42,
+			popularity_1_5: 2,
+			present: 1,
+			rank_in_genre: null,
+		});
+	});
+
+	it("records a term Apple answered nothing for as asked-and-absent", async () => {
+		termsFetch([]);
+		await adsTermsStep(adsEnv(), {
+			storefront: "fr",
+			terms: ["prévisions météo"],
+			type: "ads_terms",
+			weekStart: "2026-08-16",
+		});
+		const pop = await env.DB.prepare(
+			"SELECT present, popularity_1_100 FROM popularity WHERE keyword_id = 11"
+		).first<{ present: number; popularity_1_100: number | null }>();
+		expect(pop?.present).toBe(0);
+		expect(pop?.popularity_1_100).toBeNull();
+	});
+
+	it("archives but writes nothing when only verifying the credential", async () => {
+		termsFetch([{ searchPopularity1to100: 42, searchTerm: "radar" }]);
+		await adsTermsStep(adsEnv(), {
+			storefront: "fr",
+			terms: ["radar"],
+			type: "ads_terms",
+			verifyOnly: true,
+			weekStart: "2026-08-16",
+		});
+		const archived = await env.ARCHIVE.list({
+			prefix: "ads/popularity-terms/2026-08-16/fr/0001-",
+		});
+		expect(archived.objects.length).toBeGreaterThan(0);
+		const n = await env.DB.prepare(
+			"SELECT COUNT(*) AS n FROM popularity"
+		).first<{ n: number }>();
+		expect(n?.n).toBe(0);
+	});
+
+	it("keeps two same-sized chunks for one week apart in the archive", async () => {
+		// The key once named only how many terms remained, so a later pass with a
+		// different set of the same size overwrote the body earlier rows came from.
+		termsFetch([]);
+		const week = "2026-08-09";
+		for (const term of ["radar", "prévisions météo"]) {
+			await adsTermsStep(adsEnv(), {
+				storefront: "fr",
+				terms: [term],
+				type: "ads_terms",
+				verifyOnly: true,
+				weekStart: week,
+			});
+		}
+		const archived = await env.ARCHIVE.list({
+			prefix: `ads/popularity-terms/${week}/fr/`,
+		});
+		expect(archived.objects).toHaveLength(2);
+		for (const o of archived.objects) {
+			expect(o.key).toMatch(/\/0001-[0-9a-f]{8}\.json$/u);
+		}
+	});
+
+	it("gives up on a chunk Apple keeps refusing, and says so", async () => {
+		stubFetch((url) => {
+			if (url.includes("appleid.apple.com")) {
+				return Response.json({ access_token: "tok", expires_in: 3600 });
+			}
+			if (url.includes("/v1/acls")) {
+				return Response.json({ data: { acls: [{ adAccount: { id: 777 } }] } });
+			}
+			return new Response("", {
+				headers: { "Retry-After": "60" },
+				status: 429,
+			});
+		});
+		const task = {
+			storefront: "fr",
+			terms: ["radar"],
+			type: "ads_terms" as const,
+			weekStart: "2026-08-16",
+		};
+		await expect(
+			adsTermsStep(adsEnv(), { ...task, attempt: 3 })
+		).resolves.toStrictEqual([{ ...task, attempt: 4 }]);
+		await expect(
+			adsTermsStep(adsEnv(), { ...task, attempt: 4 })
+		).resolves.toStrictEqual([]);
+		const last = await env.DB.prepare(
+			"SELECT error_class FROM fetch_error ORDER BY id DESC LIMIT 1"
+		).first<{ error_class: string }>();
+		expect(last?.error_class).toBe("pull_abandoned");
+	});
+
+	it("gives up on the refused chunk alone and keeps the chunks after it", async () => {
+		stubFetch((url) => {
+			if (url.includes("appleid.apple.com")) {
+				return Response.json({ access_token: "tok", expires_in: 3600 });
+			}
+			if (url.includes("/v1/acls")) {
+				return Response.json({ data: { acls: [{ adAccount: { id: 777 } }] } });
+			}
+			return new Response("", { status: 429 });
+		});
+		const terms = Array.from({ length: TERM_CHUNK + 1 }, (_, i) => `t${i}`);
+		const followUps = await adsTermsStep(adsEnv(), {
+			attempt: 4,
+			storefront: "fr",
+			terms,
+			type: "ads_terms",
+			weekStart: "2026-08-16",
+		});
+		expect(followUps).toHaveLength(1);
+		expect(followUps[0]).toMatchObject({
+			terms: [`t${TERM_CHUNK}`],
+			type: "ads_terms",
+		});
+		expect(followUps[0]).not.toHaveProperty("attempt");
+	});
+});
+
+describe(buildTermsTasks, () => {
+	beforeEach(async () => {
+		await env.DB.batch([
+			env.DB.prepare(
+				"INSERT INTO keyword (id, text, normalized, language) VALUES (20, 'held', 'held', 'fr'), (21, 'added later', 'added later', 'fr')"
+			),
+			env.DB.prepare(
+				"INSERT INTO crawl_pair (id, keyword_id, storefront_code, locale_code, tier, ref_count, interval_hours, next_due_at) VALUES (20, 20, 'fr', 'fr-FR', 1, 1, 24, 0), (21, 21, 'fr', 'fr-FR', 1, 1, 24, 0)"
+			),
+			env.DB.prepare(
+				"INSERT INTO popularity (keyword_id, storefront_code, genre_id, week_start, present, fetched_at) VALUES (20, 'fr', 0, '2026-08-16', 0, 0), (21, 'fr', 6014, '2026-08-16', 0, 0)"
+			),
+		]);
+	});
+
+	it("asks only for the keywords each week lacks a storefront-wide answer for", async () => {
+		// "held" was asked (an absent answer is still an answer). "added later" has
+		// only a genre-list row, which says nothing about its own popularity. A
+		// check on whether the week held any row at all skipped it forever.
+		await expect(
+			buildTermsTasks(adsEnv(), ["2026-08-16", "2026-08-23"])
+		).resolves.toStrictEqual([
+			{
+				storefront: "fr",
+				terms: ["added later"],
+				type: "ads_terms",
+				weekStart: "2026-08-16",
+			},
+			{
+				storefront: "fr",
+				terms: ["added later", "held"],
+				type: "ads_terms",
+				weekStart: "2026-08-23",
+			},
+		]);
+	});
+
+	it("asks for every term when only verifying a credential", async () => {
+		const [task] = await buildTermsTasks(adsEnv(), ["2026-08-16"], true);
+		expect(task).toMatchObject({
+			terms: ["added later", "held"],
+			verifyOnly: true,
+		});
 	});
 });
 
@@ -639,5 +886,47 @@ describe(ascDetectSkippedDates, () => {
 			"SELECT COUNT(*) AS n FROM fetch_error"
 		).first<{ n: number }>();
 		expect(n?.n).toBe(0);
+	});
+});
+
+describe(putArchived, () => {
+	it("retries the transient refusal R2 answers with", async () => {
+		// R2 returns "We encountered an internal error" as a throw, so a loop that
+		// only re-checks `head` never runs a second time. Twenty crawls lost their
+		// ranking to that on 2026-09-11.
+		let attempts = 0;
+		const flaky = {
+			head: (key: string) => env.ARCHIVE.head(key),
+			put: (key: string, body: string) => {
+				attempts += 1;
+				if (attempts === 1) {
+					throw new Error("put: We encountered an internal error. (10001)");
+				}
+				return env.ARCHIVE.put(key, body);
+			},
+		};
+		await putArchived(
+			{ ARCHIVE: flaky } as unknown as Parameters<typeof putArchived>[0],
+			"probe/retry.json",
+			"{}"
+		);
+		expect(attempts).toBe(2);
+		await expect(env.ARCHIVE.get("probe/retry.json")).resolves.not.toBeNull();
+	});
+
+	it("throws rather than let a caller derive rows from a lost response", async () => {
+		const refusing = {
+			head: () => null,
+			put: () => {
+				throw new Error("put: We encountered an internal error. (10001)");
+			},
+		};
+		await expect(
+			putArchived(
+				{ ARCHIVE: refusing } as unknown as Parameters<typeof putArchived>[0],
+				"probe/lost.json",
+				"{}"
+			)
+		).rejects.toThrow("archive did not persist");
 	});
 });

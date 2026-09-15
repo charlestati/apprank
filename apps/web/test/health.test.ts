@@ -9,6 +9,7 @@ import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import app from "../src/index";
+import { isLoss } from "../src/queries/fetch-error-classes";
 import {
 	APP_ID,
 	RIVAL_ID,
@@ -81,6 +82,7 @@ describe("GET /api/health/data", () => {
 			collectedToday: 0,
 			date: isoDay(),
 			errorsLast24h: [],
+			lostLast24h: 0,
 			// A collector that has never ticked reports null, not a stale-looking
 			// zero: "we do not know" and "it ran and did nothing" differ.
 			lastDailyRun: null,
@@ -253,5 +255,27 @@ describe("GET /api/health/data", () => {
 		expect(body.lastDailyRun?.trigger).toBe("admin");
 		expect(body.lastDailyRun?.finishedAt).toBeNull();
 		expect(body.lastDailyRun?.ok).toBeNull();
+	});
+});
+
+describe("error classes that cost an observation", () => {
+	it("counts a failed fetch, not a throttle or an Apple-side finding", () => {
+		// The three kinds of row in one table. Only the first is a loss, and
+		// merging them is what kept the status badge red on 11 of the first 12
+		// days, which taught the operator to read it as decoration.
+		expect(isLoss("task_threw")).toBeTruthy();
+		expect(isLoss("pull_abandoned")).toBeTruthy();
+		expect(isLoss("throttled")).toBeFalsy();
+		expect(isLoss("rate_limited")).toBeFalsy();
+		expect(isLoss("skipped_processing_date")).toBeFalsy();
+		expect(isLoss("app_not_in_storefront")).toBeFalsy();
+	});
+
+	it("treats a class it does not know as a loss", () => {
+		// A null predates the closed vocabulary and those rows were real
+		// failures; an unrecognised class is new and unexamined. Both should
+		// surface rather than be quietly counted harmless.
+		expect(isLoss(null)).toBeTruthy();
+		expect(isLoss("something_new")).toBeTruthy();
 	});
 });

@@ -65,6 +65,31 @@ export const trackedKeyword = sqliteTable(
 	(t) => [uniqueIndex("tk_unique").on(t.userId, t.appId, t.keywordId)]
 );
 
+// Where each user tracks each keyword: the one fact the rows above could not
+// hold. `tracked_keyword` has no storefront and `crawl_pair` is shared, so every
+// reader that needed "which storefronts did this user choose" had to guess from
+// the union of everyone's pairs, and guessed another user's storefronts into
+// discovery, into `pnpm track --pull`, and past `--prune`. A row here is that
+// choice, written by `pnpm track --apply` and by accepting a suggestion. A pair
+// with no row pointing at it is demand nobody holds, which is what retiring it
+// means. Deleting the track deletes its storefronts with it.
+export const trackedKeywordStorefront = sqliteTable(
+	"tracked_keyword_storefront",
+	{
+		createdAt: integer("created_at").notNull(),
+		localeCode: text("locale_code")
+			.notNull()
+			.references(() => locale.code),
+		storefrontCode: text("storefront_code")
+			.notNull()
+			.references(() => storefront.code),
+		trackedKeywordId: integer("tracked_keyword_id")
+			.notNull()
+			.references(() => trackedKeyword.id, { onDelete: "cascade" }),
+	},
+	(t) => [primaryKey({ columns: [t.trackedKeywordId, t.storefrontCode] })]
+);
+
 // The crawl unit: reference-counted union of distinct demand.
 // N users tracking the same pair = 1 row = 1 fetch/day.
 export const crawlPair = sqliteTable(

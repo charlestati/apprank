@@ -342,6 +342,36 @@ describe("scheduled handler", () => {
 		expect(JSON.parse(row?.value ?? "{}").ratePerMin).toBeCloseTo(4.4, 5);
 	});
 
+	it("still queues the day's work when the cadence recompute fails", async () => {
+		// 2026-09-11: a dropped D1 connection inside the cadence recompute threw
+		// before the fan-out, so nothing was queued and the day went uncollected.
+		// Cadence only decides how often a pair is checked and is recomputed from
+		// scratch tomorrow; collection is the part that cannot be backfilled.
+		const db = new Proxy(env.DB, {
+			get(target, prop) {
+				if (prop === "prepare") {
+					return (query: string) => {
+						if (query.includes("app_storefronts")) {
+							throw new Error("D1_ERROR: Network connection lost.");
+						}
+						return target.prepare(query);
+					};
+				}
+				const value = Reflect.get(target, prop);
+				return typeof value === "function" ? value.bind(target) : value;
+			},
+		});
+
+		await runCron("0 3 * * *", { DB: db });
+
+		const tasks = await drainQueue();
+		expect(tasks.some((t) => t.type === "compact")).toBeTruthy();
+		const err = await env.DB.prepare(
+			"SELECT endpoint, error_class FROM fetch_error WHERE endpoint = 'daily:cadence'"
+		).first<{ endpoint: string; error_class: string }>();
+		expect(err?.error_class).toBe("task_threw");
+	});
+
 	it("flags an ASC date Apple never published while running the daily jobs", async () => {
 		await env.DB.batch([
 			env.DB.prepare(

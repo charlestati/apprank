@@ -15,6 +15,13 @@
 			"when": 1788423195316,
 			"tag": "0001_user_preference",
 			"breakpoints": true
+		},
+		{
+			"idx": 2,
+			"version": "6",
+			"when": 1789480756923,
+			"tag": "0002_tracked_keyword_storefront",
+			"breakpoints": true
 		}
 	]
 }

@@ -41,9 +41,16 @@ pnpm track --apply
 
 `tracked.local.json` is gitignored, so your app ids and keyword lists stay out
 of the repository. `pnpm track` is idempotent and diff-first: re-running it
-reports "already in sync" and writes nothing. Removing a keyword **retires** its
-crawl pairs rather than deleting them, because a deleted day and an uncollected
-day are the same loss.
+writes nothing once the database has what the file lists.
+
+The database is the source of truth and the file is your local copy of it.
+Keywords accepted from the Suggestions page land in the database only, so a
+plain `pnpm track` lists them as "in the database but not in the file" and
+leaves them alone. `pnpm track --pull` adds them to the file. To stop tracking a
+keyword, delete it from the file and run `pnpm track --prune`, then
+`pnpm track --prune --apply`; pull first, or the prune removes the dashboard's
+additions too. A removed keyword's crawl pairs are **retired** rather than
+deleted, because a deleted day and an uncollected day are the same loss.
 
 One entry cannot mix languages: `language` stamps every keyword, records
 `app_language`, and picks each storefront's locale. To track Spanish terms in

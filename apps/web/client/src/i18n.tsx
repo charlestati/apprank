@@ -36,6 +36,9 @@ const en = {
 	searchesToday: "{done} of {total} searches today",
 	collectionError: "collection error",
 	collectionErrors: "collection errors",
+	lostAria: "{n} observations lost in the last 24 hours",
+	lostCount: "{n} lost",
+	markSeen: "Mark as seen",
 	application: "Application",
 	language: "Language",
 
@@ -62,7 +65,9 @@ const en = {
 	brandCountedOne:
 		"1 brand term (people searching your own name) is counted separately.",
 	coverageNote:
-		"Apple publishes no search volume for {n} of the {total}, so those are judged on rank and difficulty alone.",
+		"Apple published no volume for {n} of the {total} when we asked, so those are judged on rank and difficulty alone.",
+	coveragePending:
+		"{n} of the {total} have not been through a popularity pull yet, so their volume is unknown rather than absent.",
 
 	// Verdict reasons, keyed to the server's ReasonKey.
 	reasonBlocked:
@@ -143,6 +148,9 @@ const en = {
 	theTrackedApp: "the tracked app",
 	top10Presence: "Top-10 presence",
 	suggestionPayload: "Payload",
+	suggestionWhy: "Apple suggests this alongside {seed}, in {storefront}.",
+	trackKeyword: "Track it",
+	dismiss: "Dismiss",
 	best: "Best rank",
 	change: "Change",
 	difficulty: "Difficulty",
@@ -182,6 +190,7 @@ const en = {
 	errRateLimited: "Rate-limited by Apple",
 	errHttpError: "Apple returned an error",
 	errInvalidBody: "Unreadable response",
+	errDoRestarted: "The collector was redeployed mid-step",
 	errUpstreamError: "Apple reported a failure",
 	errTaskThrew: "The task failed",
 	errAppNotInStorefront: "Not sold in this storefront",
@@ -218,9 +227,10 @@ const en = {
 	noKeywordMatch: "No keywords match “{filter}”.",
 	noRankedObservations:
 		"No ranked observations in this window yet. The collector fills this in daily.",
-	suggestionsEmpty: "Inbox empty. The global market sweep populates this.",
+	suggestionsEmpty:
+		"Nothing pending. Discovery runs when the collector's ads_discover job is triggered, and proposes only keywords you do not already track.",
 	suggestionsIntro:
-		"Promotions the global sweep proposes. Nothing enters the crawl budget without approval here.",
+		"Keywords Apple associates with the ones you already track. Nothing enters the crawl budget without approval here.",
 
 	// Chart, table and tiles
 	addToChart: "Add {keyword} to the chart",
@@ -303,6 +313,9 @@ const fr: Dictionary = {
 	searchesToday: "{done} sur {total} recherches aujourd'hui",
 	collectionError: "erreur de collecte",
 	collectionErrors: "erreurs de collecte",
+	lostAria: "{n} observations perdues ces dernières 24 h",
+	lostCount: "{n} perdues",
+	markSeen: "Marquer comme vu",
 	application: "Application",
 	language: "Langue",
 
@@ -328,7 +341,9 @@ const fr: Dictionary = {
 	brandCountedOne:
 		"1 terme de marque (les recherches de votre propre nom) est compté à part.",
 	coverageNote:
-		"Apple ne publie aucun volume de recherche pour {n} des {total} ; ceux-là se jugent au rang et à la difficulté.",
+		"Apple n'a publié aucun volume pour {n} des {total} au moment de la requête ; ceux-là se jugent au rang et à la difficulté.",
+	coveragePending:
+		"{n} des {total} n'ont pas encore fait l'objet d'un relevé de popularité : leur volume est inconnu, pas absent.",
 
 	reasonBlocked:
 		"Volume réel, mais le haut de la page est verrouillé ; les métadonnées seules n'y suffiront pas.",
@@ -383,6 +398,9 @@ const fr: Dictionary = {
 	theTrackedApp: "l'application suivie",
 	top10Presence: "Présence top 10",
 	suggestionPayload: "Contenu",
+	suggestionWhy: "Apple le propose à côté de {seed}, sur {storefront}.",
+	trackKeyword: "Suivre",
+	dismiss: "Ignorer",
 
 	app: "Application",
 	averageRank: "Rang moyen",
@@ -446,6 +464,7 @@ const fr: Dictionary = {
 	errRateLimited: "Limité par Apple",
 	errHttpError: "Erreur renvoyée par Apple",
 	errInvalidBody: "Réponse illisible",
+	errDoRestarted: "Le collecteur a été redéployé en cours d'étape",
 	errUpstreamError: "Apple a signalé un échec",
 	errTaskThrew: "La tâche a échoué",
 	errAppNotInStorefront: "Non vendue dans cette boutique",
@@ -483,9 +502,10 @@ const fr: Dictionary = {
 	noKeywordMatch: "Aucun mot-clé ne correspond à « {filter} ».",
 	noRankedObservations:
 		"Aucune observation classée sur cette période. Le collecteur la remplit chaque jour.",
-	suggestionsEmpty: "Boîte vide. Le balayage du marché mondial la remplit.",
+	suggestionsEmpty:
+		"Rien en attente. La découverte tourne quand la tâche ads_discover du collecteur est lancée, et ne propose que des mots-clés non suivis.",
 	suggestionsIntro:
-		"Promotions proposées par le balayage mondial. Rien n'entre dans le budget de collecte sans validation ici.",
+		"Mots-clés qu'Apple associe à ceux que vous suivez déjà. Rien n'entre dans le budget de collecte sans validation ici.",
 
 	// Chart, table and tiles
 	addToChart: "Ajouter {keyword} au graphique",

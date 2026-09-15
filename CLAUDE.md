@@ -30,14 +30,20 @@ writing it.
 1. **History cannot be backfilled.** Apple publishes no past ranks, so a day
    nobody recorded is gone for good. Keep collection running through every
    change: never take it down to land a feature, and never leave it broken
-   overnight.
+   overnight. The one exception is Apple Ads popularity, which Apple does serve
+   for past weeks: `job=ads_backfill` recovers those. Nothing else gets a second
+   chance, so do not reason from that exception to the rest.
 2. **R2 is the source of truth; D1 is a cache.** Pruning, retention and schema
    changes must stay performance choices, never lossy ones, which means every
    response is archived verbatim before anything is derived from it.
    `scripts/rebuild-d1` today reconstructs `ranking` and `rank_entry` (with bare
-   `app` rows for the index to reference) and nothing else, so extending it to
-   the other observation tables is owed work, not a nicety: the invariant is
-   only as true as the script that proves it.
+   `app` rows for the index to reference) plus `popularity` and `seed_term`;
+   metadata, reviews, ratings and charts are still owed, not a nicety, because
+   the invariant is only as true as the script that proves it. A corollary that
+   has already bitten: **an archive key must carry every dimension its rows were
+   stored under.** The Ads genre key named the category alone, and
+   `PRODUCTIVITY_UTILITIES` maps back to two genres, so those rows were not
+   reconstructible at all.
 3. **Visible gaps beat silent garbage.** Every observation carries provenance
    (HTTP status, response time, result count, collector version, archive key).
    Apple's rate limit returns **HTTP 403 with an empty results array**. That is
@@ -92,7 +98,20 @@ when this landed needs one `pnpm run prepare`. Both hooks are bypassable with
   one-row "class" and buries the counts. Put the body in `message` (wide enough
   to diagnose) and pick a class: `throttled`, `rate_limited`, `http_error`,
   `invalid_body`, `upstream_error`, `task_threw`, `app_not_in_storefront`,
-  `pull_abandoned`.
+  `pull_abandoned`, `skipped_processing_date`, `do_restarted`.
+- **The table holds three kinds of row, and only one is a failure.** An
+  observation that is gone; back-pressure that worked, where the unit is
+  requeued and the pair runs late rather than never (`throttled`,
+  `rate_limited`, and `do_restarted`, a deploy dropping an in-flight task); and
+  a _finding_ about Apple's own data that nothing of ours failed on
+  (`skipped_processing_date`, `app_not_in_storefront`). All three belong in the
+  table and on the data-health page, because the provenance is the point, but a
+  single count of them presented as "collection errors" is meaningless: half the
+  rows were the last two kinds, 11 of the first 12 days had at least one, and
+  the badge was therefore red every day. The split lives in
+  `apps/web/src/queries/fetch-error-classes.ts` as a **deny-list**, so a class
+  nobody has classified yet counts as a loss and shows up rather than quietly
+  disappearing.
 - **Comments explain constraints**, not mechanics: why a limit exists, what
   Apple does, why a branch is unreachable. No "this line does X" narration.
 - **The API returns raw column names** for legacy endpoints and camelCase for

@@ -210,6 +210,13 @@ export interface OpportunitySummary {
 	 * the page should say so rather than imply the rest are worthless.
 	 */
 	unmeasuredKeywords: number;
+	/**
+	 * Keywords no popularity pull has ever covered. Kept apart from
+	 * `unmeasuredKeywords`: one says Apple answered and had nothing, the other
+	 * says nobody asked, and a page that words them the same way reports our own
+	 * coverage gap as a fact about the market.
+	 */
+	unqueriedKeywords: number;
 }
 
 export function summarise(
@@ -218,7 +225,7 @@ export function summarise(
 	const generic = rows.filter((r) => !r.brand);
 	// Lanes are generic-only, because the panel says so in as many words: brand
 	// terms are counted separately, since that demand is already yours. Counting
-	// them in put all nine `codex` variants into "no volume data" and printed
+	// them in put all nine variants of the app's own name into "no volume data" and printed
 	// three of them as its examples, directly under the sentence excluding them.
 	const count = (o: Opportunity) =>
 		generic.filter((r) => r.verdict.opportunity === o).length;
@@ -234,7 +241,9 @@ export function summarise(
 		genericKeywords: generic.length,
 		inTapZone: inTapZone(rows),
 		unknown: count("unknown"),
-		unmeasuredKeywords: rows.filter((r) => r.popularityStatus !== "measured")
+		unmeasuredKeywords: rows.filter((r) => r.popularityStatus === "absent")
+			.length,
+		unqueriedKeywords: rows.filter((r) => r.popularityStatus === "unqueried")
 			.length,
 		vanity: count("vanity"),
 		winning: count("winning"),

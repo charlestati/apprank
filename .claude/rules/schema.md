@@ -9,15 +9,19 @@ paths:
 User intent (`tracked_app`, `tracked_keyword`) is separate from what is
 observed. The crawl unit is `crawl_pair`, the reference-counted union of
 distinct `(keyword, storefront, locale)` triples, so two users tracking the same
-keyword produce one fetch. A keyword is always tracked against a **(storefront,
-locale)** pair because Apple cross-localizes (Canada indexes `en-CA` and
-`fr-CA`; Belgium `en-GB`, `nl`, `fr`; Switzerland four locales). Which
-storefronts matter follows the app's content language (`app_language`), not
-market size. `app_localization` records "no localization for this storefront's
-indexed locale" as a first-class state, because that gap is itself an ASO
-finding. `ranking` stores the full ordered list of up to 200 track IDs as JSON
-plus provenance; `rank_entry` indexes only the top 10 and any tracked app,
-because a row per position would be 18× the write budget.
+keyword produce one fetch. `tracked_keyword_storefront` is what each of those
+users chose: one row per user, keyword and storefront, and the reference a pair
+is counted by. It exists because `tracked_keyword` names no storefront, and
+reading one user's storefronts off the shared pairs hands them everyone else's.
+A keyword is always tracked against a **(storefront, locale)** pair because
+Apple cross-localizes (Canada indexes `en-CA` and `fr-CA`; Belgium `en-GB`,
+`nl`, `fr`; Switzerland four locales). Which storefronts matter follows the
+app's content language (`app_language`), not market size. `app_localization`
+records "no localization for this storefront's indexed locale" as a first-class
+state, because that gap is itself an ASO finding. `ranking` stores the full
+ordered list of up to 200 track IDs as JSON plus provenance; `rank_entry`
+indexes only the top 10 and any tracked app, because a row per position would be
+18× the write budget.
 
 ## Traps
 

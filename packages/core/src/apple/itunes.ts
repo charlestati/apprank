@@ -92,6 +92,11 @@ export function chartRssUrl(
 	return `https://itunes.apple.com/${storefront}/rss/${feed}/limit=${limit}${genre}/json`;
 }
 
+/**
+ * Hard ceiling on one Apple request, in ms.
+ */
+const TIMEOUT_MS = 60_000;
+
 export type FetchOutcome =
 	| {
 			kind: "ok";
@@ -115,6 +120,19 @@ export async function fetchClassified(url: string): Promise<FetchOutcome> {
 			"User-Agent":
 				"AppRankCollector/0.2 (open-source ASO tracker; polite: ~4 req/min, backs off on 429)",
 		},
+		// Apple answers a keyword search in ~2.7s. A connection still open a
+		// minute later is hung, not slow, and every second it holds comes out of a
+		// collection window that ends when the day does. Left unbounded the caller
+		// waits on the runtime's own limit, which under `wrangler dev` outlives
+		// the 300s the driving script allows and returns as an empty response it
+		// can only count as a miss.
+		//
+		// The abort throws, deliberately: a hang is a transport failure with no
+		// status to record. The queue retries a thrown task three times, and the
+		// crawl loop leaves a pair that timed out due again shortly rather than
+		// pushing it to tomorrow. Returning an outcome here would consume the unit
+		// instead and spend its day on one stalled connection.
+		signal: AbortSignal.timeout(TIMEOUT_MS),
 	});
 	const responseMs = Date.now() - started;
 	const bodyText = await res.text();

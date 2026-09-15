@@ -1,0 +1,8 @@
+{
+	"name": "keyword-relevance",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"score": "node score.mjs"
+	}
+}

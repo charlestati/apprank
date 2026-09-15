@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { App } from "../src/app";
@@ -83,7 +83,69 @@ describe("App shell", () => {
 		expect(lozengeClass()).toContain("lozenge-inprogress");
 	});
 
-	it("goes critical and singularises a lone error", async () => {
+	it("keeps failures out of the topbar entirely", async () => {
+		// A count that was red every day of the first twelve stopped being read.
+		// Progress belongs here; what went wrong belongs where there is room to
+		// say what it was.
+		stubFetch({
+			"/api/apps": [],
+			"health/data": dataHealth({
+				collectedToday: 10,
+				errorsLast24h: [
+					{
+						endpoint: "itunes:charts",
+						errorClass: "pull_abandoned",
+						loss: true,
+						lastAt: 5000,
+						message: null,
+						n: 3,
+					},
+				],
+				lostLast24h: 3,
+				tier1Pairs: 10,
+			}),
+		});
+		render(<App />);
+		await expect(screen.findByText("Complete")).resolves.toBeDefined();
+		expect(lozengeClass()).not.toContain("lozenge-removed");
+		expect(status()?.textContent).not.toContain("3");
+	});
+
+	it("badges the sidebar with what was lost, and clears on request", async () => {
+		stubFetch({
+			"/api/apps": [],
+			"health/data": dataHealth({
+				collectedToday: 10,
+				errorsLast24h: [
+					{
+						endpoint: "itunes:charts",
+						errorClass: "pull_abandoned",
+						loss: true,
+						lastAt: 5000,
+						message: null,
+						n: 3,
+					},
+				],
+				lostLast24h: 3,
+				tier1Pairs: 10,
+			}),
+		});
+		render(<App />);
+		const badge = await screen.findByLabelText(
+			"3 observations lost in the last 24 hours"
+		);
+		expect(badge.textContent).toBe("3");
+
+		fireEvent.click(screen.getByRole("link", { name: /Data health/u }));
+		fireEvent.click(
+			await screen.findByRole("button", { name: "Mark as seen" })
+		);
+		expect(
+			screen.queryByLabelText("3 observations lost in the last 24 hours")
+		).toBeNull();
+	});
+
+	it("does not badge for throttles, which the next run absorbs", async () => {
 		stubFetch({
 			"/api/apps": [],
 			"health/data": dataHealth({
@@ -92,47 +154,19 @@ describe("App shell", () => {
 					{
 						endpoint: "itunes:search",
 						errorClass: "throttled",
-						lastAt: 0,
+						loss: false,
+						lastAt: 5000,
 						message: null,
-						n: 1,
+						n: 40,
 					},
 				],
+				lostLast24h: 0,
 				tier1Pairs: 10,
 			}),
 		});
 		render(<App />);
-		await expect(
-			screen.findByText("1 collection error")
-		).resolves.toBeDefined();
-		expect(lozengeClass()).toContain("lozenge-removed");
-	});
-
-	it("pluralises several errors", async () => {
-		stubFetch({
-			"/api/apps": [],
-			"health/data": dataHealth({
-				errorsLast24h: [
-					{
-						endpoint: "itunes:search",
-						errorClass: "throttled",
-						lastAt: 0,
-						message: null,
-						n: 2,
-					},
-					{
-						endpoint: "itunes:charts",
-						errorClass: "http_error",
-						lastAt: 0,
-						message: null,
-						n: 1,
-					},
-				],
-			}),
-		});
-		render(<App />);
-		await expect(
-			screen.findByText("3 collection errors")
-		).resolves.toBeDefined();
+		await expect(screen.findByText("Complete")).resolves.toBeDefined();
+		expect(document.querySelector(".nav-badge")).toBeNull();
 	});
 
 	it("shows zero coverage without a divide-by-zero when nothing is due", async () => {
@@ -166,7 +200,7 @@ describe("App shell", () => {
 			"/api/suggestions": [],
 		});
 		render(<App />);
-		await expect(screen.findByText(/Inbox empty/u)).resolves.toBeDefined();
+		await expect(screen.findByText(/Nothing pending/u)).resolves.toBeDefined();
 	});
 
 	it("routes to the data-health page", async () => {

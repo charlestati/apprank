@@ -20,6 +20,7 @@ import { AscClient, downloadSegment } from "@apprank/core/apple/asc";
 import type { AscCredentials } from "@apprank/core/apple/asc";
 
 import type { Env } from "../env";
+import { putArchived } from "../lib/archive";
 import { getStateJson, setStateJson, recordFetchError } from "../lib/state";
 import type { Task, AscReportRef } from "./types";
 
@@ -105,7 +106,8 @@ async function reportsStep(
 	const dumpedKey = `asc:${appId}:report_list_dumped`;
 	const dumped = await getStateJson<boolean>(env.DB, dumpedKey);
 	if (!dumped) {
-		await env.ARCHIVE.put(
+		await putArchived(
+			env,
 			`asc/${appId}/report-list-${requestId}.json`,
 			JSON.stringify(
 				reports.map((r) => ({ id: r.id, ...r.attributes })),
@@ -224,7 +226,7 @@ export async function ascFetchInstanceStep(
 	for (const [i, seg] of segments.entries()) {
 		const res = await downloadSegment(seg.attributes.url);
 		const key = `asc/${appId}/${safeName}/${granularity}/${processingDate}-${instanceId}-${i}.tsv.gz`;
-		await env.ARCHIVE.put(key, res.body, {
+		await putArchived(env, key, res.body, {
 			httpMetadata: { contentType: "application/gzip" },
 		});
 		firstKey ??= key;

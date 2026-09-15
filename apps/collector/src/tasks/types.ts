@@ -34,6 +34,34 @@ export type Task =
 			 */
 			verifyOnly?: boolean;
 	  }
+	| {
+			type: "ads_terms";
+			/** Lowercase storefront code; popularity is per country, not per locale. */
+			storefront: string;
+			weekStart: string;
+			/** Normalized keyword texts still to ask Apple about, oldest chunk first. */
+			terms: string[];
+			attempt?: number;
+			/** As on `ads_pull`: archive the answer, write no rows. */
+			verifyOnly?: boolean;
+	  }
+	| {
+			type: "ads_discover";
+			/** App Store (Adam) id: Apple scopes suggestions to one promoted app. */
+			appAdamId: string;
+			/** Who the suggestions belong to, and which tracked app they concern. */
+			userId: string;
+			appId: number;
+			storefront: string;
+			localeCode: string;
+			language: string;
+			/** The seed for this tick, then the seeds still to come. */
+			seed: string;
+			rest: string[];
+			attempt?: number;
+			/** Fetch and archive, propose nothing. */
+			verifyOnly?: boolean;
+	  }
 	| { type: "lookup_pull"; queue: LookupUnit[]; attempt?: number }
 	| { type: "review_pull"; queue: ReviewUnit[]; attempt?: number }
 	| { type: "chart_pull"; queue: ChartUnit[]; attempt?: number }

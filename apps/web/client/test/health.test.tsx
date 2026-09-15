@@ -27,13 +27,13 @@ describe("Health page", () => {
 
 	it("shows a loading placeholder until the payload arrives", () => {
 		stubFetch({ "health/data": dataHealth() });
-		render(<Health />);
+		render(<Health onAcknowledge={() => {}} unread={0} />);
 		expect(screen.getByText("Loading…")).toBeDefined();
 	});
 
 	it("stays on the placeholder when the request fails", async () => {
 		stubFetch({ "health/data": new Response("", { status: 500 }) });
-		render(<Health />);
+		render(<Health onAcknowledge={() => {}} unread={0} />);
 		await Promise.resolve();
 		expect(screen.getByText("Loading…")).toBeDefined();
 		expect(screen.queryByText("Data health")).toBeNull();
@@ -43,7 +43,7 @@ describe("Health page", () => {
 		stubFetch({
 			"health/data": dataHealth({ collectedToday: 10, tier1Pairs: 10 }),
 		});
-		render(<Health />);
+		render(<Health onAcknowledge={() => {}} unread={0} />);
 		await expect(screen.findByText("Data health")).resolves.toBeDefined();
 		expect(statDetail("Coverage today")).toBe(
 			"100% of Tier-1 pairs observed (10 Jan 2026)"
@@ -58,7 +58,7 @@ describe("Health page", () => {
 		stubFetch({
 			"health/data": dataHealth({ collectedToday: 0, tier1Pairs: 0 }),
 		});
-		render(<Health />);
+		render(<Health onAcknowledge={() => {}} unread={0} />);
 		await expect(screen.findByText("Data health")).resolves.toBeDefined();
 		expect(statDetail("Coverage today")).toBe(
 			"0% of Tier-1 pairs observed (10 Jan 2026)"
@@ -79,6 +79,7 @@ describe("Health page", () => {
 					{
 						endpoint: "itunes:charts",
 						errorClass: "throttled",
+						loss: false,
 						lastAt: Date.now() - 600_000,
 						message: null,
 						n: 4,
@@ -86,6 +87,7 @@ describe("Health page", () => {
 					{
 						endpoint: "ads:popularity",
 						errorClass: "upstream_error",
+						loss: true,
 						lastAt: Date.now() - 300_000,
 						message: '{"error":{"code":"INVALID_VALUE"}}',
 						n: 1,
@@ -98,7 +100,7 @@ describe("Health page", () => {
 				},
 			}),
 		});
-		render(<Health />);
+		render(<Health onAcknowledge={() => {}} unread={0} />);
 		await expect(screen.findByText("Data health")).resolves.toBeDefined();
 		expect(statDetail("Crawl rate")).toMatch(/^paused until /u);
 		expect(statValue("Throttle hits (24h)")?.textContent).toBe("4");
@@ -127,6 +129,7 @@ describe("Health page", () => {
 					{
 						endpoint: "itunes:lookup",
 						errorClass: "pull_abandoned",
+						loss: true,
 						lastAt: Date.now(),
 						message: null,
 						n: 1,
@@ -134,6 +137,7 @@ describe("Health page", () => {
 					{
 						endpoint: "itunes:search",
 						errorClass: "throttled",
+						loss: false,
 						lastAt: Date.now(),
 						message: null,
 						n: 9,
@@ -141,7 +145,7 @@ describe("Health page", () => {
 				],
 			}),
 		});
-		render(<Health />);
+		render(<Health onAcknowledge={() => {}} unread={0} />);
 		await expect(screen.findByText("Data health")).resolves.toBeDefined();
 
 		const abandoned = screen.getByText("A feed gave up today");
@@ -152,7 +156,7 @@ describe("Health page", () => {
 
 	it("dashes the crawl rate when the collector has no pacing state yet", async () => {
 		stubFetch({ "health/data": dataHealth({ pacing: null }) });
-		render(<Health />);
+		render(<Health onAcknowledge={() => {}} unread={0} />);
 		await expect(screen.findByText("Data health")).resolves.toBeDefined();
 		expect(statValue("Crawl rate")?.textContent).toBe("–");
 		expect(statDetail("Crawl rate")).toBe("fetches/min, learned");

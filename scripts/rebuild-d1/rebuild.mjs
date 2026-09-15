@@ -4,9 +4,10 @@
 // materialised view and R2 is the source of truth.
 //
 // Writes `ranking` and its `rank_entry` index (top 10 plus tracked apps, the
-// crawler's own rule), and a bare `app` row for any app the index references
-// that the database has not met. Every statement is gap-filling: a row the
-// collector already wrote is left alone.
+// crawler's own rule), a bare `app` row for any app the index references that
+// the database has not met, and the Apple Ads `popularity` and `seed_term`
+// rows. Every statement is gap-filling: a row the collector already wrote is
+// left alone.
 //
 // Usage:
 //   R2_ACCOUNT_ID=… R2_ACCESS_KEY_ID=… R2_SECRET_ACCESS_KEY=… \
@@ -27,7 +28,13 @@ import { writeFileSync } from "node:fs";
 
 import { AwsClient } from "aws4fetch";
 
-import { buildSql } from "./sql.mjs";
+import {
+	adsRows,
+	buildAdsSql,
+	buildSql,
+	parseGenreKey,
+	parseTermsKey,
+} from "./sql.mjs";
 
 const BUCKET = "apprank-archive";
 const accountId = process.env.R2_ACCOUNT_ID;
@@ -77,6 +84,56 @@ async function getObject(key) {
 		throw new Error(`get ${key} failed: ${res.status}`);
 	}
 	return res.text();
+}
+
+/**
+ * Body plus when the object landed. `fetched_at` is not in any Apple body, and
+ * R2's own timestamp is the closest true answer to "when did we ask".
+ */
+async function getObjectWithTime(key) {
+	const res = await client.fetch(`${endpoint}/${BUCKET}/${key}`);
+	if (!res.ok) {
+		throw new Error(`get ${key} failed: ${res.status}`);
+	}
+	const modified = Date.parse(res.headers.get("Last-Modified") ?? "");
+	return {
+		fetchedAt: Number.isFinite(modified) ? modified : Date.now(),
+		text: await res.text(),
+	};
+}
+
+/**
+ * Every archived Apple Ads response, flattened into rows.
+ *
+ * A genre object whose key names only the category is skipped and counted:
+ * that was the layout before the genre id went into the key, and
+ * PRODUCTIVITY_UTILITIES maps back to two genres, so the dimension those rows
+ * were stored under is not in the archive. Skipping is the honest move;
+ * guessing would put one storefront-wide list under two labels.
+ */
+async function loadAdsRows() {
+	const genre = [];
+	const terms = [];
+	let skipped = 0;
+	for (const key of await listAll("ads/popularity/")) {
+		const dims = parseGenreKey(key);
+		if (!dims) {
+			skipped += 1;
+			continue;
+		}
+		const { fetchedAt, text } = await getObjectWithTime(key);
+		genre.push(...adsRows(JSON.parse(text), dims, fetchedAt));
+	}
+	for (const key of await listAll("ads/popularity-terms/")) {
+		const dims = parseTermsKey(key);
+		if (!dims) {
+			skipped += 1;
+			continue;
+		}
+		const { fetchedAt, text } = await getObjectWithTime(key);
+		terms.push(...adsRows(JSON.parse(text), dims, fetchedAt));
+	}
+	return { genre, skipped, terms };
 }
 
 const collectorDir = new URL("../../apps/collector", import.meta.url).pathname;
@@ -138,10 +195,22 @@ const trackedIds = new Set(
 );
 console.log(`tracked apps: ${trackedIds.size}`);
 
-const lines = buildSql(observations, trackedIds);
+const ads = await loadAdsRows();
+console.log(
+	`ads rows in archive: ${ads.genre.length} ranked, ${ads.terms.length} by-name${
+		ads.skipped > 0
+			? ` (${ads.skipped} objects skipped: key carries no genre id)`
+			: ""
+	}`
+);
+
+const lines = [
+	...buildSql(observations, trackedIds),
+	...buildAdsSql(ads.genre, ads.terms),
+];
 writeFileSync(outFile, `${lines.join("\n")}\n`);
 console.log(
-	`wrote ${lines.length} statements (ranking, app, rank_entry) to ${outFile}`
+	`wrote ${lines.length} statements (ranking, app, rank_entry, seed_term, popularity) to ${outFile}`
 );
 console.log(
 	`apply with: npx wrangler d1 execute apprank --remote --file ${outFile}  (from apps/collector)`

@@ -67,19 +67,43 @@ paused.
 
 ## Adding an app or keywords
 
-`tracked.local.json` (gitignored) is how the tracked set is authored. Each user
-holds an `apps` array, because `tracked_app` has always been keyed
-`(user_id, app_id)` and one person routinely ships more than one; `pnpm track`
-reconciles it against the database and prints the difference, and
-`pnpm track --apply` writes it. `tracked.example.json` shows the shape.
+`tracked.local.json` (gitignored) is a local copy of the tracked set that you
+edit. Each user holds an `apps` array, because `tracked_app` has always been
+keyed `(user_id, app_id)` and one person routinely ships more than one;
+`pnpm track` prints what the file would add, and `pnpm track --apply` writes it.
+`tracked.example.json` shows the shape.
 
-The file is the authoring surface, not the source of truth. That stays in rows,
-because three things depend on it. `crawl_pair` is reference-counted, so two
-users tracking the same keyword in the same storefront share one row and one
-fetch a day. Ownership lives on `tracked_keyword.user_id`, which is what makes
-another operator's data a 404. And removing a keyword **retires** its pairs
-(`ref_count = 0`) rather than deleting them, because history cannot be
-backfilled and a deleted day is the same as an uncollected one.
+**The file is a copy, the rows are the truth, and the tool only adds unless told
+otherwise.** The file is not the only writer: accepting a suggestion on the
+dashboard creates tracking rows too. When `pnpm track` treated the file as
+complete, its next run deleted those rows and retired their pairs, silently,
+because an accepted keyword and a deleted line look identical from the file's
+side. So a plain run reports what the database holds and the file does not, and
+keeps it. `pnpm track --pull` adds those keywords to the file, in exactly the
+storefronts recorded for that user in `tracked_keyword_storefront`, and joins an
+entry only when that entry's storefronts are exactly the ones needed, since
+joining a wider one tracks the keyword in storefronts nobody chose. Removal is
+`pnpm track --prune`, which touches only the users the file names, removes a
+storefront the file dropped even when the keyword stays, and retires a pair only
+once no storefront row of anyone's points at it. Pull before pruning, or the
+prune takes the dashboard's additions with it.
+
+**Where a keyword is tracked is a row, not an inference.** `tracked_keyword`
+names no storefront and `crawl_pair` is shared, so before
+`tracked_keyword_storefront` every reader that needed one user's storefronts
+took the union of everyone's pairs: discovery asked seeds in other users'
+markets, `--pull` wrote other users' storefronts into the file, and `--prune`
+could not tell whose pair it was retiring. `pnpm track --apply` and accepting a
+suggestion both write the row; migration 0002 backfilled it from the pairs that
+were active when it landed.
+
+The truth stays in rows because three things depend on it. `crawl_pair` is
+reference-counted, so two users tracking the same keyword in the same storefront
+share one row and one fetch a day. Ownership lives on `tracked_keyword.user_id`,
+which is what makes another operator's data a 404. And removing a keyword
+**retires** its pairs (`ref_count = 0`) rather than deleting them, because
+history cannot be backfilled and a deleted day is the same as an uncollected
+one.
 
 `language` does three jobs at once. It stamps every keyword in the entry,
 records `app_language`, and picks each storefront's locale, so **one entry
@@ -101,6 +125,40 @@ breaking are that an unchanged config emits **no** statements (D1 charges for a
 conflicting upsert even when it changes nothing), and that a storefront missing
 from the reference data produces a warning rather than a guessed locale.
 
+## Backfill
+
+Popularity is the one thing here that can be recovered after the fact:
+`POST /admin/run?job=ads_backfill` queues the Apple Ads by-name pass for every
+tracked keyword a recent week holds no storefront-wide answer for, bounded by
+the `ads:backfill_weeks` collector_state key (13 weeks, the report's longest
+window). Ranks cannot be recovered and never will be, so do not reach for a
+similar job there.
+
+## Keyword discovery
+
+`job=ads_discover` asks Apple's `suggestions/keywords/query` one seed at a time,
+seeded from the keywords somebody already tracks, and writes what comes back to
+`suggestion`. It spends no crawl budget: a proposal is a row, and only an
+operator accepting one creates a pair.
+
+Two filters, in two places, because they can afford different things.
+
+- **In the collector**, a proposal must share a whole word with its seed. That
+  is the best rule a Worker can apply with no model, and it is the floor: it
+  runs whether or not anyone is at a laptop. Token-based, never substring, since
+  "local" sits inside "localisation" and "locality".
+- **On a laptop**, `pnpm relevance` scores what got through against the tracked
+  set with a local embedding model and dismisses the tail. Word overlap admits
+  same-word false friends the model catches easily: measured on the live French
+  set, two such false friends scored 0.700 and 0.689, while the first real
+  variant sat at 0.785. It never proposes anything, only rules out, so a laptop
+  that never runs costs precision and not coverage.
+
+Absolute scores mean little and the cut is model-specific:
+`qwen3-embedding:0.6b` puts short related phrases between 0.69 and 0.99, so only
+the ranking informs. The script prints the whole distribution and dismisses
+nothing without `--apply`.
+
 ## Traps
 
 - `wrangler dev --remote` no longer works for a Worker that declares a Durable
@@ -115,6 +173,16 @@ from the reference data produces a warning rather than a guessed locale.
   starves every unit behind it indefinitely and burns the pause ladder daily,
   leaving `rating_snapshot`, `review` and `chart_ranking` empty with only
   `throttled` rows to show for it.
+
+**Archive writes go through `lib/archive`, never `env.ARCHIVE.put` directly.**
+R2 on this account really does refuse: twenty `put`s failed on 2026-09-11 with
+"We encountered an internal error. Please try again. (10001)", and because the
+refusal arrives as a _throw_, a retry loop that only re-checks `head` never runs
+a second time. `putArchived` retries the call itself and then reads the object
+back, and throws when it did not land, so no row is derived from a response
+nothing can prove we received (invariant 2). `tryPut` is for the diagnostic
+objects only, where losing the sample costs less than losing the observation
+that depends on it.
 
 Task steps swallow a failed unit into `fetch_error` and return normally, so that
 one bad unit cannot wedge the queue. Manual fetches also book their throttles

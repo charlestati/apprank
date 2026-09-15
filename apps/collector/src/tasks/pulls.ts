@@ -12,6 +12,7 @@ import type { ITunesResponse } from "@apprank/core/apple/itunes";
 import { normalizeApp } from "@apprank/core/normalize/itunes";
 
 import type { Env } from "../env";
+import { GZIP_METADATA, gzip, putArchived } from "../lib/archive";
 import { recordFetchError } from "../lib/state";
 import type { Task } from "./types";
 
@@ -212,11 +213,16 @@ export async function lookupPullStep(
 			).bind(now + 14 * 24 * 3_600_000, napp.id)
 		);
 	}
-	await env.DB.batch(stmts);
-	await env.ARCHIVE.put(
+	// Archive before recording, as the crawl and chart paths do. R2 is the
+	// rebuild source and D1 the view, so the safe order is the one that can only
+	// leave a spare object: a `rating_snapshot` row whose body was never archived
+	// is not reproducible, and Apple will not serve this response again.
+	await putArchived(
+		env,
 		`lookups/${date}/${unit.appId}-${unit.storefront}-${unit.localeCode}.json`,
 		outcome.bodyText
 	);
+	await env.DB.batch(stmts);
 	return { followUps: rest, throttled: false };
 }
 
@@ -317,13 +323,17 @@ export async function reviewPullStep(
 		}
 		stmts.push(reviewInsertStmt(env, unit, e, id, now));
 	}
-	if (stmts.length > 0) {
-		await env.DB.batch(stmts);
-	}
-	await env.ARCHIVE.put(
+	// Archive first, for the same reason as the lookup above: the object is what
+	// a rebuild reads, and reviews are append-only, so a row with no body behind
+	// it is a permanent hole rather than a stale view.
+	await putArchived(
+		env,
 		`reviews/${unit.appId}/${unit.storefront}/${todayUtc()}.json`,
 		outcome.bodyText
 	);
+	if (stmts.length > 0) {
+		await env.DB.batch(stmts);
+	}
 	return { followUps: rest, throttled: false };
 }
 
@@ -393,8 +403,11 @@ export async function chartPullStep(
 		.filter((x): x is string => !!x)
 		.map(Number);
 	const date = todayUtc();
-	const r2Key = `charts/${date.slice(0, 7)}/${unit.storefront}/${unit.chart}/${unit.genreId ?? "all"}/${date}.json`;
-	await env.ARCHIVE.put(r2Key, outcome.bodyText);
+	// Gzipped: charts never expire, and at ~425 KB a body they were the one
+	// prefix growing without bound. Objects before 2026-09-15 are plain `.json`,
+	// so a reader of this prefix has to accept both.
+	const r2Key = `charts/${date.slice(0, 7)}/${unit.storefront}/${unit.chart}/${unit.genreId ?? "all"}/${date}.json.gz`;
+	await putArchived(env, r2Key, await gzip(outcome.bodyText), GZIP_METADATA);
 	// Two conflict targets, because SQLite counts every NULL as distinct: the
 	// genre-less storefront-wide chart needs the partial index from migration
 	// 0007, named by repeating its WHERE clause. Sharing one target silently
@@ -449,7 +462,8 @@ export async function compactStep(
 
 	const month = task.date.slice(0, 7);
 	for (const [storefront, lines] of byStorefront) {
-		await env.ARCHIVE.put(
+		await putArchived(
+			env,
 			`rankings/v1/${month}/${storefront}/${task.date}.ndjson`,
 			`${lines.join("\n")}\n`
 		);

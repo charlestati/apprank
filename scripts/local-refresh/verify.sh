@@ -139,9 +139,17 @@ note "today: ratings=$ratings charts=$charts · reviews (all time)=$reviews"
 # object-list command, so parallelise instead of sampling -- a partial check
 # would miss exactly the single-pair loss this exists to catch.
 export CFG TODAY
+# One retry, because a failed `get` and an absent object are the same exit code
+# here, and only one of them is the permanent loss this check exists to catch.
+# Reporting an API blip as a missing archive is the corruption-that-was-not-there
+# the exit-2 split above was added to stop reporting.
 check_pair() {
-  npx wrangler r2 object get "apprank-archive/staging/rankings/$TODAY/$1.json" \
-    --remote -c "$CFG" --file /dev/null >/dev/null 2>&1 || printf '%s\n' "$1"
+  for try in 1 2; do
+    npx wrangler r2 object get "apprank-archive/staging/rankings/$TODAY/$1.json" \
+      --remote -c "$CFG" --file /dev/null >/dev/null 2>&1 && return 0
+    [ "$try" -eq 1 ] && sleep 5
+  done
+  printf '%s\n' "$1"
 }
 export -f check_pair
 pair_ids="$(q_or_die "SELECT pair_id FROM ranking WHERE observed_date='$TODAY' ORDER BY pair_id")"

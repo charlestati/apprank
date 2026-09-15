@@ -26,6 +26,7 @@ const RESETTABLE_TABLES = [
 	"rank_entry",
 	"ranking",
 	"popularity",
+	"tracked_keyword_storefront",
 	"tracked_keyword",
 	"tracked_app",
 	"crawl_pair",

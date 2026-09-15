@@ -10,9 +10,76 @@ paths:
   shared, so 429s arrive at volumes far below the documented ~20/min. The body
   reads `Rate limit has been exceeded for: itunes-apple-com|general|<ip>`. This
   is expected; the answer is patience, not parallelism.
-- Apple Ads popularity is **weekly** (`WEEKLY_SUN_SAT`), posted about a week
-  late, and only covers roughly the top 500 terms per genre/storefront. Absence
-  is "no data", not "low popularity", hence `popularity.present`.
+- Apple Ads popularity is **weekly** (`WEEKLY_SUN_SAT`) and posted about a week
+  late. Absence is "no data", not "low popularity", hence `popularity.present`.
+- **Popularity is collected in two passes, and neither can reach a long-tail
+  term.**
+  1. `ads_pull` asks `insights/apps/search-term-popularity` for the ranked top
+     500 of a storefront × top-level category. Apple's own description is that
+     it returns the most popular terms for a genre and country, for campaign
+     setup: it is a discovery feed for `seed_term`, not a lookup. The floor is
+     wherever rank 500 lands, popularity 51 for FR/GAMES in August 2026, and a
+     tracked keyword appears in it by luck (3 of 129, measured).
+  2. `ads_terms` filters the same endpoint on `searchTerm IN [...]` with **no
+     genre filter**, which is the only way to see a term Apple attributes to
+     another category: one app's own brand term comes back under
+     PRODUCTIVITY_UTILITIES at 53, and a GAMES-scoped query can never return it.
+     It still cannot reach past rank 500, because that is the whole corpus this
+     endpoint serves.
+- **`suggestions/keywords/query` does not return Search Popularity, and was
+  tried.** The endpoint exists, is scoped to a promoted app through
+  `promotedObjectId`, accepts one seed term at a time, and answers for terms far
+  below the insights floor, so it looks exactly like the missing lookup. Its
+  `popularity` is a different quantity: relevance to _that app_, not search
+  volume. Measured on the same storefront and week, from each term's own seeded
+  request:
+
+  | term                  | insights `searchPopularity1to100` | suggestions `popularity` | Appfigures |
+  | --------------------- | --------------------------------- | ------------------------ | ---------- |
+  | competitor brand A    | 64                                | 7                        | 64         |
+  | competitor brand B    | 54                                | 8                        | 52         |
+  | generic category term | 59                                | 51                       | 57         |
+  | the app's own brand   | 53                                | 62                       | 54         |
+
+  The app's own brand term scores _higher_ on suggestions than a head term with
+  ten times the volume, which is the tell. Appfigures tracks the insights
+  column, not this one. Writing it into `popularity` silently replaced a real
+  measurement with an unrelated score, which is exactly the failure invariant 3
+  exists to prevent. Do not reach for it again for volume; it is a keyword
+  _discovery_ signal and would need its own table and its own name.
+
+- **Where Appfigures' sub-51 numbers come from is still unknown, and the
+  Campaign Management API is not it.** Probed against this account, which holds
+  a live campaign and ad group, so the surface is reachable: `v5/campaigns` and
+  `v5/campaigns/{id}/adgroups` answer 200, `v5/keywords/searchpopularity` and
+  `v5/keywords/recommendations` answer the API's own JSON `RESOURCE_NOT_FOUND`,
+  and every `v5/keyword/*` path returns an HTML 503 from Apple's edge, meaning
+  it never reaches the API at all. The two error shapes are the useful
+  distinction: JSON means the request arrived and the route does not exist, HTML
+  means no such route was ever published. So there is no arbitrary keyword
+  popularity endpoint on either API, and the remaining explanations are that
+  Appfigures models the long tail or buys it.
+- **A backfill is possible, and it is the only one in this repository.** Apple's
+  filterable-fields table takes `week` with `IN`, and history reaches back at
+  least to 2026-05-31 (measured; the pull simply stopped there because thirteen
+  weeks is the default). `POST /admin/run?job=ads_backfill` queues the by-name
+  pass for every tracked keyword a recent week holds no answer for, bounded by
+  `ads:backfill_weeks`. Only the by-name pass: replaying the genre pull would
+  rewrite 500 `seed_term` rows a unit a week to re-derive a discovery list
+  nobody is waiting for.
+- **The 500-term ceiling is Apple's, not our page size.** Asking for
+  `pageSize: 1000` comes back with `pageSize: 500`, 500 rows, and the last at
+  `rankInGenre` 500. Worth having settled: every pull before the probe asked for
+  500 and received 500, which looks identical to our own limit binding.
+- **A 200 is an answer even when it spent the window.** Apple puts
+  `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset` on every
+  response. Treating `remaining = 0` on a 200 like a 429 threw away a body that
+  had already cost quota, before it was archived, and the retry paid again, so
+  only a real 429 is a refusal. There, `Retry-After` wins over
+  `RateLimit-Reset`: Apple documents it as the exact wait for the request it
+  just rejected. A rate-limited Ads task is requeued at most five times, then
+  recorded as `pull_abandoned`, because an uncapped requeue cycled on every tick
+  while the health page counted it as harmless back-pressure.
 - Apple's own Node SDK does not run on workerd (`fs` + axios). The hand-rolled
   clients in `packages/core/src/apple` are deliberate.
 - App Store Connect `ONGOING` report requests die if not polled
@@ -128,17 +195,29 @@ paths:
   credential check asks; the full pull would spend ~500 writes per unit to learn
   it again.
 - **Sub-genre ids in `seed_term`/`popularity` are always a bug.** Only the
-  parent genre id (Games = 6014) is ever correct, because that is the
-  granularity Apple reports at. If sub-genre ids appear, something is writing
-  `unit.genreId` from the tracked genre rather than the resolved parent, and the
-  rows will hold one storefront-wide list duplicated under several labels.
-- Coverage is thin at the long tail, and this is the normal case, not an error:
-  only a small minority of tracked terms (roughly one in eight, measured on the
-  live set) appear in Apple's top-500 list for their parent genre at all, and
-  those that do sit in the 60s on the 1–100 scale. Everything else is stored
-  `present = 0`. Any code that reads popularity must distinguish absent from
-  zero. (Terms themselves stay out of this file: the repository is public and
-  the tracked set is the operator's ASO strategy.)
+  parent genre id (Games = 6014) is ever correct for a genre-pull row, because
+  that is the granularity Apple reports at. If sub-genre ids appear, something
+  is writing `unit.genreId` from the tracked genre rather than the resolved
+  parent, and the rows will hold one storefront-wide list duplicated under
+  several labels.
+- **`popularity.genre_id = 0` (`STOREFRONT_WIDE_GENRE_ID`) is the by-name pass,
+  not a missing value.** Apple publishes popularity per country; a genre only
+  ever scopes a _ranking_ within it, so a row fetched by search term has no
+  genre and carries no `rank_in_genre`. Storing it under 6014 would label a
+  storefront-wide number "Games popularity" and make the column incomparable
+  between two keywords. A keyword can therefore hold two rows for one week;
+  readers prefer the sentinel, which is why `fetchPopularity` orders rather than
+  grouping bare columns.
+- Coverage is thin at the long tail of the _genre_ list, and this is the normal
+  case, not an error: only a small minority of tracked terms appear in Apple's
+  top-500 list for their parent genre at all, and those that do sit in the 60s
+  on the 1–100 scale. That is why the by-name pass exists. Any code that reads
+  popularity must keep three states apart: measured, asked-and-absent
+  (`present = 0`), and never asked (no row). The report exposes all three as
+  `popularityStatus`, and the page words the last two differently on purpose:
+  collapsing them reported our own coverage gap as Apple's answer. (Terms
+  themselves stay out of this file: the repository is public and the tracked set
+  is the operator's ASO strategy.)
 - Apple Ads discovery goes through `GET /v1/acls`, not `/v1/ad-accounts`: it is
   one of only two endpoints that work without the `X-AP-Context` header, and it
   returns the granted roles beside each account. `/v1/ad-accounts` answers

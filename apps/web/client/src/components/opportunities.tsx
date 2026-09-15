@@ -62,7 +62,9 @@ export function Opportunities({
 						total: insights.genericKeywords,
 					})}
 				</p>
-				{insights.brandKeywords > 0 || insights.unmeasuredKeywords > 0 ? (
+				{insights.brandKeywords > 0 ||
+				insights.unmeasuredKeywords > 0 ||
+				insights.unqueriedKeywords > 0 ? (
 					<ul className="insights-notes">
 						{insights.brandKeywords > 0 ? (
 							<li>
@@ -78,6 +80,17 @@ export function Opportunities({
 							<li>
 								{fmt(t.coverageNote, {
 									n: insights.unmeasuredKeywords,
+									total: insights.brandKeywords + insights.genericKeywords,
+								})}
+							</li>
+						) : null}
+						{/* Two separate notes on purpose. Merging them under one count
+						    reported a gap in our own collection as a fact about Apple's
+						    data. */}
+						{insights.unqueriedKeywords > 0 ? (
+							<li>
+								{fmt(t.coveragePending, {
+									n: insights.unqueriedKeywords,
 									total: insights.brandKeywords + insights.genericKeywords,
 								})}
 							</li>

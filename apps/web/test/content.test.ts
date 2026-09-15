@@ -228,6 +228,115 @@ describe("/api/suggestions", () => {
 		expect(rows[0]?.status).toBe("pending");
 	});
 
+	it("promotes the keyword into the crawl when accepted", async () => {
+		// The whole point of the inbox: the crawl budget is fixed, so a keyword
+		// enters it because somebody said yes. Flipping the status alone would
+		// report success while changing nothing.
+		await env.DB.batch([
+			env.DB.prepare(
+				"INSERT OR IGNORE INTO storefront (code, name, weight, active) VALUES ('fr', 'France', 1.0, 1)"
+			),
+			env.DB.prepare(
+				"INSERT OR IGNORE INTO locale (code, language) VALUES ('fr-FR', 'fr')"
+			),
+			env.DB.prepare(
+				`INSERT INTO suggestion (id, user_id, type, payload, status, created_at)
+         VALUES (9, '${USER_ID}', 'promote_keyword', '{"term":"météo locale gratuite","language":"fr","storefront":"fr","locale":"fr-FR","appId":${APP_ID}}', 'pending', 400)`
+			),
+		]);
+
+		const res = await app.fetch(
+			patchSuggestion(9, { status: "accepted" }),
+			env
+		);
+		expect(res.status).toBe(200);
+
+		const pair = await env.DB.prepare(
+			`SELECT cp.tier, cp.ref_count, cp.storefront_code, cp.locale_code
+         FROM crawl_pair cp
+         JOIN keyword k ON k.id = cp.keyword_id
+        WHERE k.normalized = 'météo locale gratuite'`
+		).first<{
+			tier: number;
+			ref_count: number;
+			storefront_code: string;
+			locale_code: string;
+		}>();
+		expect(pair).toStrictEqual({
+			locale_code: "fr-FR",
+			ref_count: 1,
+			storefront_code: "fr",
+			tier: 1,
+		});
+
+		const tracked = await env.DB.prepare(
+			`SELECT COUNT(*) AS n FROM tracked_keyword tk
+         JOIN keyword k ON k.id = tk.keyword_id
+        WHERE tk.user_id = ?1 AND k.normalized = 'météo locale gratuite'`
+		)
+			.bind(USER_ID)
+			.first<{ n: number }>();
+		expect(tracked?.n).toBe(1);
+
+		// Where, not only what: the storefront the suggestion was for is recorded
+		// against this user's track, so nothing downstream has to guess it.
+		const where = await env.DB.prepare(
+			`SELECT ts.storefront_code, ts.locale_code
+         FROM tracked_keyword_storefront ts
+         JOIN tracked_keyword tk ON tk.id = ts.tracked_keyword_id
+         JOIN keyword k ON k.id = tk.keyword_id
+        WHERE tk.user_id = ?1 AND k.normalized = 'météo locale gratuite'`
+		)
+			.bind(USER_ID)
+			.all();
+		expect(where.results).toStrictEqual([
+			{ locale_code: "fr-FR", storefront_code: "fr" },
+		]);
+	});
+
+	it("promotes nothing when the suggestion was already answered", async () => {
+		// Only a pending suggestion can change. Otherwise a dismissed term could be
+		// flipped to accepted with nothing promoted, and a retry after a failed
+		// promotion would report success over a keyword that is not collected.
+		await env.DB.prepare(
+			`INSERT INTO suggestion (id, user_id, type, payload, status, created_at)
+       VALUES (11, '${USER_ID}', 'promote_keyword', '{"term":"answered","language":"fr","storefront":"fr","locale":"fr-FR","appId":${APP_ID}}', 'dismissed', 400)`
+		).run();
+		const res = await app.fetch(
+			patchSuggestion(11, { status: "accepted" }),
+			env
+		);
+		expect(res.status).toBe(404);
+		const row = await env.DB.prepare(
+			"SELECT status FROM suggestion WHERE id = 11"
+		).first<{ status: string }>();
+		expect(row?.status).toBe("dismissed");
+		const n = await env.DB.prepare(
+			"SELECT COUNT(*) AS n FROM keyword WHERE normalized = 'answered'"
+		).first<{ n: number }>();
+		expect(n?.n).toBe(0);
+	});
+
+	it("promotes nothing when the suggestion is dismissed", async () => {
+		await env.DB.batch([
+			env.DB.prepare(
+				"INSERT OR IGNORE INTO storefront (code, name, weight, active) VALUES ('fr', 'France', 1.0, 1)"
+			),
+			env.DB.prepare(
+				"INSERT OR IGNORE INTO locale (code, language) VALUES ('fr-FR', 'fr')"
+			),
+			env.DB.prepare(
+				`INSERT INTO suggestion (id, user_id, type, payload, status, created_at)
+         VALUES (10, '${USER_ID}', 'promote_keyword', '{"term":"unwanted","language":"fr","storefront":"fr","locale":"fr-FR","appId":${APP_ID}}', 'pending', 400)`
+			),
+		]);
+		await app.fetch(patchSuggestion(10, { status: "dismissed" }), env);
+		const n = await env.DB.prepare(
+			"SELECT COUNT(*) AS n FROM keyword WHERE normalized = 'unwanted'"
+		).first<{ n: number }>();
+		expect(n?.n).toBe(0);
+	});
+
 	it("accepts a suggestion", async () => {
 		await seedSuggestions();
 		const res = await app.fetch(

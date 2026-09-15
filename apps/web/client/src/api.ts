@@ -45,9 +45,11 @@ export interface DataHealth {
 	date: string;
 	tier1Pairs: number;
 	collectedToday: number;
+	lostLast24h: number;
 	errorsLast24h: {
 		errorClass: string;
 		endpoint: string;
+		loss: boolean;
 		n: number;
 		lastAt: number;
 		message: string | null;
@@ -216,6 +218,7 @@ export interface Report {
 		genericKeywords: number;
 		genericInTapZone: number;
 		unmeasuredKeywords: number;
+		unqueriedKeywords: number;
 	};
 	stats: {
 		trackedKeywords: number;
@@ -233,6 +236,17 @@ export interface Report {
 		movement: { up: number; down: number; unchanged: number };
 	};
 	rows: KeywordRow[];
+}
+
+/** The payload the collector writes on a `promote_keyword` suggestion. */
+export interface PromoteKeyword {
+	term: string;
+	seed: string;
+	storefront: string;
+	locale: string;
+	language: string;
+	relevance: number;
+	appId: number;
 }
 
 async function get<T>(path: string): Promise<T> {
@@ -261,4 +275,15 @@ export const api = {
 	storefronts: (appId: number) =>
 		get<StorefrontOption[]>(`/apps/${appId}/storefronts`),
 	suggestions: () => get<Suggestion[]>("/suggestions"),
+	/** Accepting promotes the keyword into the crawl; dismissing closes it. */
+	answerSuggestion: async (id: number, status: "accepted" | "dismissed") => {
+		const res = await fetch(`/api/suggestions/${id}`, {
+			body: JSON.stringify({ status }),
+			headers: { "Content-Type": "application/json" },
+			method: "PATCH",
+		});
+		if (!res.ok) {
+			throw new Error(`${res.status} /suggestions/${id}`);
+		}
+	},
 };

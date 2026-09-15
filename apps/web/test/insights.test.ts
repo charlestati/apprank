@@ -223,13 +223,17 @@ describe(summarise, () => {
 		expect(s.inTapZone).toBe(2);
 	});
 
-	it("counts how much of the set has no published volume", () => {
+	it("counts asked-and-absent apart from never-asked", () => {
+		// Both are silence for a verdict, but only one of them is a fact about
+		// Apple; the other is a gap in our own collection.
 		const mixed = [
 			row({ pairId: 10, popularityStatus: "measured" }),
 			row({ pairId: 11, popularity: null, popularityStatus: "absent" }),
 			row({ pairId: 12, popularity: null, popularityStatus: "unqueried" }),
 		].map((r) => ({ ...r, brand: false, verdict: classify(r) }));
-		expect(summarise(mixed).unmeasuredKeywords).toBe(2);
+		const s = summarise(mixed);
+		expect(s.unmeasuredKeywords).toBe(1);
+		expect(s.unqueriedKeywords).toBe(1);
 	});
 
 	it("separates brand demand from generic progress", () => {

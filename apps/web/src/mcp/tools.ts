@@ -258,6 +258,30 @@ function daysIn(w: Window): number {
 	);
 }
 
+/**
+ * How far popularity coverage actually goes, for a caller that cannot see the
+ * table. Silence has two causes and they do not license the same reasoning:
+ * absent is Apple's answer, unqueried is ours.
+ */
+function popularityNote(
+	absent: number,
+	unqueried: number,
+	total: number
+): string | null {
+	const parts: string[] = [];
+	if (absent > 0) {
+		parts.push(
+			`Apple published no volume for ${absent} of ${total} tracked keywords when asked. Absent volume is not zero volume, and lane counts over those keywords are a thin read.`
+		);
+	}
+	if (unqueried > 0) {
+		parts.push(
+			`${unqueried} of ${total} have not been through a popularity pull yet, so their volume is unknown rather than absent.`
+		);
+	}
+	return parts.length > 0 ? parts.join(" ") : null;
+}
+
 function rowSummary(r: KeywordRow) {
 	return {
 		best: r.best,
@@ -303,10 +327,15 @@ export async function getKeywordReport(
 			insights: report.insights,
 			metadataChanges: report.metadataChanges,
 			provenance: {
-				note:
-					report.insights.unmeasuredKeywords > 0
-						? `Apple publishes no search volume for ${report.insights.unmeasuredKeywords} of ${report.rows.length} tracked keywords; it lists only about the top 500 terms per country and top-level genre. Absent volume is not zero volume, and lane counts over those keywords are a thin read.`
-						: null,
+				// Two counts, never one. "Apple had nothing" and "we never asked"
+				// both leave the volume unknown, but only the first is a fact about
+				// the market, and a note that merged them reported our own coverage
+				// gap as Apple's answer.
+				note: popularityNote(
+					report.insights.unmeasuredKeywords,
+					report.insights.unqueriedKeywords,
+					report.rows.length
+				),
 				observedDates: report.dates.length,
 				requested: w,
 				truncated,
@@ -838,6 +867,10 @@ export async function getCollectionHealth(
 		collectedToday: health.collectedToday,
 		errorsLast24h: health.errorsLast24h,
 		lastDailyRun: health.lastDailyRun,
+		// Named apart from the list on purpose. An agent summing the rows would
+		// report throttles and Apple's own skipped dates as collection failures,
+		// which is the mistake the dashboard badge used to make.
+		lostLast24h: health.lostLast24h,
 		loopHeartbeat: health.loop,
 		overduePairs: health.overduePairs,
 		pacing: health.pacing,
@@ -849,7 +882,7 @@ export async function getCollectionHealth(
 			data: {
 				collector: global,
 				provenance: {
-					note: "Collector pacing, cadence and error classes describe shared infrastructure: crawl_pair is the union of what every operator tracks. Pass appId for per-pair coverage of your own keywords.",
+					note: "Collector pacing, cadence and error classes describe shared infrastructure: crawl_pair is the union of what every operator tracks. Pass appId for per-pair coverage of your own keywords. Only lostLast24h counts observations that are gone; the errorsLast24h rows also include throttles, which the pause and the next run absorb, and findings about Apple's own data that nothing of ours failed on. Each row carries `loss` to say which it is.",
 				},
 			},
 			rowCount: health.errorsLast24h.length,

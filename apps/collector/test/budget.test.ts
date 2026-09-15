@@ -156,6 +156,16 @@ describe(resolveAdsCategory, () => {
 		});
 	});
 
+	it("does not lift a top-level genre into the App Store root", () => {
+		// The shape the reference seed actually stores: the tree is rooted at 36,
+		// so every top-level genre has a parent. Lifting to it maps to no Ads
+		// category, which stopped the popularity pull dead without an error.
+		expect(resolveAdsCategory({ id: 6014, parent_id: 36 })).toStrictEqual({
+			category: "GAMES",
+			genreId: 6014,
+		});
+	});
+
 	it("returns null for a genre with no Apple category, rather than inventing one", () => {
 		expect(resolveAdsCategory({ id: 36, parent_id: null })).toBeNull();
 	});
