@@ -196,17 +196,24 @@ async function runDailyJobs(env: Env): Promise<{
 	}
 
 	if (env.ADS_CLIENT_ID) {
-		// Weekly genre pull on Mondays (data posts with ~1 week delay).
+		// Weekly genre pull on Mondays (data posts with ~1 week delay). Its
+		// builder reads D1 too, so it gets the same guard as the pass below.
 		if (new Date().getUTCDay() === 1) {
-			const adsTask = await buildAdsTask(env);
-			if (adsTask) {
-				tasks.push(adsTask);
-			}
+			await bestEffort(env, "ads_pull", async () => {
+				const adsTask = await buildAdsTask(env);
+				if (adsTask) {
+					tasks.push(adsTask);
+				}
+			});
 		}
 		// The by-name pass, daily, for whatever the latest week still lacks. On
 		// most days that is nothing and costs one read per storefront; after a
-		// failed chunk or a newly tracked keyword it is exactly the gap.
-		tasks.push(...(await buildTermsTasks(env, [latestCompleteWeekStart()])));
+		// failed chunk or a newly tracked keyword it is exactly the gap. Best
+		// effort, like pacing above: it reads D1 before anything is enqueued, and
+		// popularity can be asked for again tomorrow while today's lookups cannot.
+		await bestEffort(env, "ads_terms", async () => {
+			tasks.push(...(await buildTermsTasks(env, [latestCompleteWeekStart()])));
+		});
 	}
 
 	// Tracked-app pulls: metadata lookup (per storefront × the locale we query it

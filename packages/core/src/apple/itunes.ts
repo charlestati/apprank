@@ -128,9 +128,10 @@ export async function fetchClassified(url: string): Promise<FetchOutcome> {
 		// can only count as a miss.
 		//
 		// The abort throws, deliberately: a hang is a transport failure with no
-		// status to record, and the queue already retries a thrown task three
-		// times. Returning an outcome here would consume the unit instead and
-		// spend its day on one stalled connection.
+		// status to record. The queue retries a thrown task three times, and the
+		// crawl loop leaves a pair that timed out due again shortly rather than
+		// pushing it to tomorrow. Returning an outcome here would consume the unit
+		// instead and spend its day on one stalled connection.
 		signal: AbortSignal.timeout(TIMEOUT_MS),
 	});
 	const responseMs = Date.now() - started;

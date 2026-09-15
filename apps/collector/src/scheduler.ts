@@ -40,6 +40,9 @@ import type { Task } from "./tasks/types";
  * Alarm contract: at-least-once, auto-retry ×6 with backoff on throw, so every
  * step is idempotent, and we deliberately never call deleteAlarm().
  */
+/** How soon a crawl that failed for a transient reason is due again. */
+export const CRAWL_RETRY_MS = 30 * 60_000;
+
 /**
  * Whether a step died because this Durable Object went away underneath it.
  *
@@ -244,6 +247,39 @@ export class SchedulerDO extends DurableObject<Env> {
 		};
 	}
 
+	/**
+	 * Record a crawl that threw and decide when its pair is due again.
+	 *
+	 * A broken pair goes to tomorrow so it cannot wedge the loop. A hung
+	 * connection or a deploy is not a broken pair: pushing either a day out lost
+	 * that pair's rank for the day, which cannot be backfilled. Those come round
+	 * again soon, and the overdue ordering in pickDuePair still lets every other
+	 * due pair go first.
+	 */
+	async #crawlThrew(
+		pairId: number,
+		error: unknown,
+		now: number
+	): Promise<void> {
+		const message = error instanceof Error ? error.message : "unknown";
+		const restarted = isRestart(message);
+		await recordFetchError(this.env.DB, {
+			endpoint: "task:crawl",
+			errorClass: restarted ? "do_restarted" : "task_threw",
+			message: message.slice(0, 1200),
+			params: String(pairId),
+		});
+		const transient =
+			restarted ||
+			(error instanceof Error &&
+				(error.name === "TimeoutError" || error.name === "AbortError"));
+		await this.env.DB.prepare(
+			"UPDATE crawl_pair SET next_due_at = ? WHERE id = ?"
+		)
+			.bind(now + (transient ? CRAWL_RETRY_MS : 24 * 3_600_000), pairId)
+			.run();
+	}
+
 	async #errorsSince(
 		id: number
 	): Promise<{ endpoint: string; errorClass: string | null }[]> {
@@ -337,19 +373,7 @@ export class SchedulerDO extends DurableObject<Env> {
 						await this.#recordThrottle(pacing, "loop");
 					}
 				} catch (error) {
-					await recordFetchError(this.env.DB, {
-						endpoint: "task:crawl",
-						params: String(pair.id),
-						errorClass: "task_threw",
-						message:
-							error instanceof Error ? error.message.slice(0, 1200) : "unknown",
-					});
-					// Push the pair to tomorrow so one broken pair can't wedge the loop.
-					await this.env.DB.prepare(
-						"UPDATE crawl_pair SET next_due_at = ? WHERE id = ?"
-					)
-						.bind(now + 24 * 3_600_000, pair.id)
-						.run();
+					await this.#crawlThrew(pair.id, error, now);
 				}
 			}
 		}

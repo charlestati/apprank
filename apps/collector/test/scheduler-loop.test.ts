@@ -299,11 +299,31 @@ describe("SchedulerDO work loop", () => {
 		const row = await env.DB.prepare(
 			"SELECT next_due_at FROM crawl_pair WHERE id = 1"
 		).first<{ next_due_at: number }>();
-		expect(row?.next_due_at).toBeGreaterThan(Date.now());
+		expect(row?.next_due_at).toBeGreaterThan(Date.now() + 20 * 3_600_000);
 		const err = await env.DB.prepare(
 			"SELECT endpoint FROM fetch_error ORDER BY id DESC LIMIT 1"
 		).first<{ endpoint: string }>();
 		expect(err?.endpoint).toBe("task:crawl");
+	});
+
+	it("brings a pair back soon when its search timed out, instead of losing the day", async () => {
+		// A hung connection is not a broken pair. Pushed to tomorrow, the pair had
+		// no rank for today, and a day nobody recorded cannot be backfilled.
+		const name = "crawl-timeout";
+		await reset(name);
+		await seedDuePair();
+		vi.stubGlobal("fetch", () =>
+			Promise.reject(
+				new DOMException("The operation timed out.", "TimeoutError")
+			)
+		);
+		await stub(name).ensureAlarm();
+		await runDurableObjectAlarm(stub(name));
+		const row = await env.DB.prepare(
+			"SELECT next_due_at FROM crawl_pair WHERE id = 1"
+		).first<{ next_due_at: number }>();
+		expect(row?.next_due_at).toBeGreaterThan(Date.now());
+		expect(row?.next_due_at).toBeLessThan(Date.now() + 2 * 3_600_000);
 	});
 
 	it("stops scheduling once the queue drains and nothing is due", async () => {
