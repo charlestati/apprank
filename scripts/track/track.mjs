@@ -86,6 +86,9 @@ function currentState() {
 			`SELECT sl.storefront_code, sl.locale_code, sl.is_default, l.language
        FROM storefront_locale sl JOIN locale l ON l.code = sl.locale_code`
 		),
+		suggestions: query(
+			"SELECT user_id, payload FROM suggestion WHERE type = 'promote_keyword' AND status = 'accepted'"
+		),
 		trackedApps: query("SELECT user_id, app_id FROM tracked_app"),
 		trackedKeywords: query(
 			`SELECT tk.user_id, tk.app_id, tk.keyword_id, k.text, k.normalized, k.language
@@ -95,13 +98,18 @@ function currentState() {
 }
 
 if (pull) {
-	const { added, config, skipped } = pullConfig(
+	const { added, config, skipped, unclaimed } = pullConfig(
 		readConfig() ?? {},
 		currentState()
 	);
 	if (skipped > 0) {
 		console.warn(
 			`warning: ${skipped} tracked keyword(s) have no active crawl pair and were left out, so pulling does not restart them`
+		);
+	}
+	if (unclaimed > 0) {
+		console.warn(
+			`warning: ${unclaimed} tracked keyword(s) are collected only in storefronts no entry or accepted suggestion of that user names; add them to the file by hand`
 		);
 	}
 	if (added === 0) {
