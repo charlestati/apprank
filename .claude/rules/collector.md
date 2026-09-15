@@ -105,9 +105,10 @@ from the reference data produces a warning rather than a guessed locale.
 
 Popularity is the one thing here that can be recovered after the fact:
 `POST /admin/run?job=ads_backfill` queues the Apple Ads by-name pass for every
-recent week the database holds nothing for, bounded by the `ads:backfill_weeks`
-collector_state key (13 weeks, the report's longest window). Ranks cannot be
-recovered and never will be, so do not reach for a similar job there.
+tracked keyword a recent week holds no storefront-wide answer for, bounded by
+the `ads:backfill_weeks` collector_state key (13 weeks, the report's longest
+window). Ranks cannot be recovered and never will be, so do not reach for a
+similar job there.
 
 ## Keyword discovery
 

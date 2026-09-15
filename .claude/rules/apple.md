@@ -63,9 +63,10 @@ paths:
   filterable-fields table takes `week` with `IN`, and history reaches back at
   least to 2026-05-31 (measured; the pull simply stopped there because thirteen
   weeks is the default). `POST /admin/run?job=ads_backfill` queues the by-name
-  pass for every recent week holding nothing, bounded by `ads:backfill_weeks`.
-  Only the by-name pass: replaying the genre pull would rewrite 500 `seed_term`
-  rows a unit a week to re-derive a discovery list nobody is waiting for.
+  pass for every tracked keyword a recent week holds no answer for, bounded by
+  `ads:backfill_weeks`. Only the by-name pass: replaying the genre pull would
+  rewrite 500 `seed_term` rows a unit a week to re-derive a discovery list
+  nobody is waiting for.
 - **The 500-term ceiling is Apple's, not our page size.** Asking for
   `pageSize: 1000` comes back with `pageSize: 500`, 500 rows, and the last at
   `rankInGenre` 500. Worth having settled: every pull before the probe asked for

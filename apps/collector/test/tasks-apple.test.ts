@@ -7,8 +7,10 @@ import { putArchived } from "../src/lib/archive";
 import {
 	adsPullStep,
 	adsTermsStep,
+	buildTermsTasks,
 	latestCompleteWeekStart,
 	recentWeekStarts,
+	TERM_CHUNK,
 } from "../src/tasks/ads";
 import {
 	ascPollStep,
@@ -147,16 +149,9 @@ describe(adsPullStep, () => {
 			type: "ads_pull",
 			weekStart: "2026-08-16",
 		});
-		// The discovery pass hands off to the by-name pass for the same storefront.
-		expect(followUps).toStrictEqual([
-			{
-				storefront: "fr",
-				terms: ["recettes de crêpes"],
-				type: "ads_terms",
-				verifyOnly: undefined,
-				weekStart: "2026-08-16",
-			},
-		]);
+		// The by-name pass is queued on its own (buildTermsTasks), not chained off
+		// the genre pull, so one failed genre unit cannot cost a storefront its week.
+		expect(followUps).toStrictEqual([]);
 
 		const archived = await env.ARCHIVE.get(
 			"ads/popularity/2026-08-16/fr/6014-GAMES.json"
@@ -457,6 +452,78 @@ describe(adsTermsStep, () => {
 			"SELECT error_class FROM fetch_error ORDER BY id DESC LIMIT 1"
 		).first<{ error_class: string }>();
 		expect(last?.error_class).toBe("pull_abandoned");
+	});
+
+	it("gives up on the refused chunk alone and keeps the chunks after it", async () => {
+		stubFetch((url) => {
+			if (url.includes("appleid.apple.com")) {
+				return Response.json({ access_token: "tok", expires_in: 3600 });
+			}
+			if (url.includes("/v1/acls")) {
+				return Response.json({ data: { acls: [{ adAccount: { id: 777 } }] } });
+			}
+			return new Response("", { status: 429 });
+		});
+		const terms = Array.from({ length: TERM_CHUNK + 1 }, (_, i) => `t${i}`);
+		const followUps = await adsTermsStep(adsEnv(), {
+			attempt: 4,
+			storefront: "fr",
+			terms,
+			type: "ads_terms",
+			weekStart: "2026-08-16",
+		});
+		expect(followUps).toHaveLength(1);
+		expect(followUps[0]).toMatchObject({
+			terms: [`t${TERM_CHUNK}`],
+			type: "ads_terms",
+		});
+		expect(followUps[0]).not.toHaveProperty("attempt");
+	});
+});
+
+describe(buildTermsTasks, () => {
+	beforeEach(async () => {
+		await env.DB.batch([
+			env.DB.prepare(
+				"INSERT INTO keyword (id, text, normalized, language) VALUES (20, 'held', 'held', 'fr'), (21, 'added later', 'added later', 'fr')"
+			),
+			env.DB.prepare(
+				"INSERT INTO crawl_pair (id, keyword_id, storefront_code, locale_code, tier, ref_count, interval_hours, next_due_at) VALUES (20, 20, 'fr', 'fr-FR', 1, 1, 24, 0), (21, 21, 'fr', 'fr-FR', 1, 1, 24, 0)"
+			),
+			env.DB.prepare(
+				"INSERT INTO popularity (keyword_id, storefront_code, genre_id, week_start, present, fetched_at) VALUES (20, 'fr', 0, '2026-08-16', 0, 0), (21, 'fr', 6014, '2026-08-16', 0, 0)"
+			),
+		]);
+	});
+
+	it("asks only for the keywords each week lacks a storefront-wide answer for", async () => {
+		// "held" was asked (an absent answer is still an answer). "added later" has
+		// only a genre-list row, which says nothing about its own popularity. A
+		// check on whether the week held any row at all skipped it forever.
+		await expect(
+			buildTermsTasks(adsEnv(), ["2026-08-16", "2026-08-23"])
+		).resolves.toStrictEqual([
+			{
+				storefront: "fr",
+				terms: ["added later"],
+				type: "ads_terms",
+				weekStart: "2026-08-16",
+			},
+			{
+				storefront: "fr",
+				terms: ["added later", "held"],
+				type: "ads_terms",
+				weekStart: "2026-08-23",
+			},
+		]);
+	});
+
+	it("asks for every term when only verifying a credential", async () => {
+		const [task] = await buildTermsTasks(adsEnv(), ["2026-08-16"], true);
+		expect(task).toMatchObject({
+			terms: ["added later", "held"],
+			verifyOnly: true,
+		});
 	});
 });
 

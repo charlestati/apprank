@@ -1,5 +1,3 @@
-import { STOREFRONT_WIDE_GENRE_ID } from "@apprank/core/apple/ads";
-
 import type { Env } from "./env";
 import { authorize } from "./lib/admin";
 import { resolveAdsCategory } from "./lib/ads-genres";
@@ -9,9 +7,9 @@ import { loadPacing, savePacing, maybeRaise } from "./lib/pacing";
 import { tracked } from "./lib/runs";
 import { getState, getStateJson, recordFetchError } from "./lib/state";
 import {
+	buildTermsTasks,
 	latestCompleteWeekStart,
 	recentWeekStarts,
-	trackedTerms,
 } from "./tasks/ads";
 import { ascDetectSkippedDates } from "./tasks/asc";
 import { recomputeCadence } from "./tasks/cadence";
@@ -197,12 +195,18 @@ async function runDailyJobs(env: Env): Promise<{
 		tasks.push({ type: "asc_poll" });
 	}
 
-	// Weekly Ads popularity pull on Mondays (data posts with ~1 week delay).
-	if (env.ADS_CLIENT_ID && new Date().getUTCDay() === 1) {
-		const adsTask = await buildAdsTask(env);
-		if (adsTask) {
-			tasks.push(adsTask);
+	if (env.ADS_CLIENT_ID) {
+		// Weekly genre pull on Mondays (data posts with ~1 week delay).
+		if (new Date().getUTCDay() === 1) {
+			const adsTask = await buildAdsTask(env);
+			if (adsTask) {
+				tasks.push(adsTask);
+			}
 		}
+		// The by-name pass, daily, for whatever the latest week still lacks. On
+		// most days that is nothing and costs one read per storefront; after a
+		// failed chunk or a newly tracked keyword it is exactly the gap.
+		tasks.push(...(await buildTermsTasks(env, [latestCompleteWeekStart()])));
 	}
 
 	// Tracked-app pulls: metadata lookup (per storefront × the locale we query it
@@ -407,39 +411,15 @@ async function buildDiscovery(env: Env): Promise<Task[]> {
  * waiting for. The tracked keywords are what a backfill is for.
  */
 async function buildAdsBackfill(env: Env): Promise<Task[]> {
-	const weeks = recentWeekStarts(
-		Number(await getState(env.DB, "ads:backfill_weeks")) || BACKFILL_WEEKS
+	// Only the keywords each week lacks an answer for: popularity is weekly and
+	// settled, so re-asking a held keyword fetches identical data and rewrites
+	// its row for nothing.
+	return buildTermsTasks(
+		env,
+		recentWeekStarts(
+			Number(await getState(env.DB, "ads:backfill_weeks")) || BACKFILL_WEEKS
+		)
 	);
-	const storefronts = await env.DB.prepare(
-		`SELECT DISTINCT cp.storefront_code AS code
-       FROM crawl_pair cp
-       JOIN storefront s ON s.code = cp.storefront_code
-      WHERE cp.ref_count > 0 AND s.active = 1`
-	).all<{ code: string }>();
-	const held = await env.DB.prepare(
-		"SELECT DISTINCT storefront_code AS code, week_start FROM popularity WHERE genre_id = ?1"
-	)
-		.bind(STOREFRONT_WIDE_GENRE_ID)
-		.all<{ code: string; week_start: string }>();
-	const have = new Set(held.results.map((r) => `${r.code}:${r.week_start}`));
-
-	const tasks: Task[] = [];
-	for (const s of storefronts.results) {
-		const terms = await trackedTerms(env, s.code);
-		if (terms.length === 0) {
-			continue;
-		}
-		for (const weekStart of weeks) {
-			// A week already held is skipped rather than re-asked: popularity is
-			// weekly and settled, so a second pull of it fetches identical data and
-			// rewrites a row per tracked keyword for nothing.
-			if (have.has(`${s.code}:${weekStart}`)) {
-				continue;
-			}
-			tasks.push({ storefront: s.code, terms, type: "ads_terms", weekStart });
-		}
-	}
-	return tasks;
 }
 type Job = (typeof JOBS)[number];
 
@@ -500,21 +480,29 @@ async function runJob(
 			if (!env.ADS_CLIENT_ID) {
 				return json({ error: "ADS secrets not configured", job }, 412);
 			}
+			const verifyOnly = opts.verifyOnly ?? true;
+			const byName = await buildTermsTasks(
+				env,
+				[latestCompleteWeekStart()],
+				verifyOnly
+			);
 			const task = await buildAdsTask(env, true);
 			if (!task) {
+				if (byName.length > 0) {
+					await stub.enqueue(byName);
+					return json({ job, queued: await stub.queueDepth() });
+				}
 				return json(
 					{
 						error:
-							"nothing to pull: needs an active storefront and a tracked app with a known genre",
+							"nothing to pull: needs an active storefront and a tracked app with a known genre or keyword",
 						job,
 					},
 					412
 				);
 			}
-			const result = await stub.runNow({
-				...task,
-				verifyOnly: opts.verifyOnly ?? true,
-			});
+			const result = await stub.runNow({ ...task, verifyOnly });
+			await stub.enqueue(byName);
 			return json({ job, ...result }, result.ok ? 200 : 502);
 		}
 		case "ads_backfill": {

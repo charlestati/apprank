@@ -148,9 +148,19 @@ export async function adsDiscoverStep(
 	env: Env,
 	task: Extract<Task, { type: "ads_discover" }>
 ): Promise<Task[]> {
+	// The next seed starts with a clean attempt count. Carried over, 429s added up
+	// across seeds, and a unit refused once per seed was abandoned whole on its
+	// fifth, taking every seed not yet asked with it.
 	const requeue: Task[] =
 		task.rest.length > 0
-			? [{ ...task, rest: task.rest.slice(1), seed: task.rest[0] as string }]
+			? [
+					{
+						...task,
+						attempt: 0,
+						rest: task.rest.slice(1),
+						seed: task.rest[0] as string,
+					},
+				]
 			: [];
 
 	try {
@@ -204,7 +214,8 @@ export async function adsDiscoverStep(
 				env,
 				task,
 				"ads:discover",
-				`${task.storefront}/${task.appAdamId}`
+				`${task.storefront}/${task.appAdamId}`,
+				requeue
 			);
 		}
 		await recordFetchError(env.DB, {

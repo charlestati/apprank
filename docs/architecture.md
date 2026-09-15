@@ -20,8 +20,8 @@ bucket.
   `next_due_at`, so an outage runs late rather than never, but midnight UTC is
   the deadline: an observation is keyed to its date. Apple Ads popularity is the
   one exception, because Apple does serve past weeks:
-  `POST /admin/run?job=ads_backfill` recovers the weeks a database holds nothing
-  for. Nothing else here has a second chance.
+  `POST /admin/run?job=ads_backfill` recovers the weeks a tracked keyword has no
+  answer for. Nothing else here has a second chance.
 - **Visible gaps beat silent garbage.** Every observation carries provenance
   (HTTP status, response time, result count, collector version, archive key);
   Apple's 403-with-empty-results rate limit is recorded as an error, not stored

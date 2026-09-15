@@ -148,11 +148,19 @@ export function normalize(term: string): string {
  */
 export const MAX_RATE_LIMITED_ATTEMPTS = 5;
 
+/**
+ * Requeue a refused unit, or give up on it alone.
+ *
+ * `onGiveUp` is what the task would have handed on had this unit succeeded: the
+ * remaining genre units, chunks or seeds. Giving up used to return nothing,
+ * which dropped all of them for a refusal that was only ever about one.
+ */
 export async function rateLimited<T extends Task>(
 	env: Env,
 	task: T,
 	endpoint: string,
-	params: string
+	params: string,
+	onGiveUp: Task[]
 ): Promise<Task[]> {
 	await recordFetchError(env.DB, {
 		endpoint,
@@ -169,7 +177,81 @@ export async function rateLimited<T extends Task>(
 		errorClass: "pull_abandoned",
 		params: JSON.stringify({ attempts: attempt, unit: params }),
 	});
-	return [];
+	return onGiveUp;
+}
+
+/**
+ * Tracked keywords in a storefront with no storefront-wide popularity row for
+ * the week: never asked, or asked in a chunk that failed. An asked-and-absent
+ * answer is a row (`present = 0`), so it is not asked again.
+ *
+ * Per keyword, not per week. Checking whether the week held *any* row skipped
+ * every keyword tracked after the week was first pulled, which is exactly the
+ * keyword a backfill exists for: one accepted from the suggestions inbox.
+ */
+export async function missingTerms(
+	env: Env,
+	storefront: string,
+	weekStart: string
+): Promise<string[]> {
+	const rows = await env.DB.prepare(
+		`SELECT DISTINCT k.normalized AS term
+       FROM crawl_pair cp
+       JOIN keyword k ON k.id = cp.keyword_id
+      WHERE cp.storefront_code = ?1 AND cp.ref_count > 0
+        AND NOT EXISTS (
+          SELECT 1 FROM popularity p
+           WHERE p.keyword_id = k.id AND p.storefront_code = ?1
+             AND p.genre_id = ?2 AND p.week_start = ?3
+        )
+      ORDER BY k.normalized`
+	)
+		.bind(storefront, STOREFRONT_WIDE_GENRE_ID, weekStart)
+		.all<{ term: string }>();
+	return rows.results.map((r) => r.term);
+}
+
+/**
+ * The by-name pass for these weeks, one task per storefront and week that still
+ * lacks an answer for some tracked keyword.
+ *
+ * Queued on its own rather than chained off the genre pull. Chained, it ran only
+ * when a storefront's last genre unit succeeded, so one failed unit, or a
+ * storefront whose genre maps to no Ads category, cost that storefront its
+ * storefront-wide popularity for the week. A verify pass asks for every tracked
+ * term, since a credential check that found nothing missing would make no
+ * request at all.
+ */
+export async function buildTermsTasks(
+	env: Env,
+	weekStarts: string[],
+	verifyOnly = false
+): Promise<Task[]> {
+	const storefronts = await env.DB.prepare(
+		`SELECT DISTINCT cp.storefront_code AS code
+       FROM crawl_pair cp
+       JOIN storefront s ON s.code = cp.storefront_code
+      WHERE cp.ref_count > 0 AND s.active = 1
+      ORDER BY cp.storefront_code`
+	).all<{ code: string }>();
+	const tasks: Task[] = [];
+	for (const { code } of storefronts.results) {
+		for (const weekStart of weekStarts) {
+			const terms = verifyOnly
+				? await trackedTerms(env, code)
+				: await missingTerms(env, code, weekStart);
+			if (terms.length > 0) {
+				tasks.push({
+					storefront: code,
+					terms,
+					type: "ads_terms",
+					weekStart,
+					...(verifyOnly ? { verifyOnly } : {}),
+				});
+			}
+		}
+	}
+	return tasks;
 }
 
 /** Eight hex characters of SHA-256 over the chunk: enough to tell passes apart. */
@@ -224,26 +306,6 @@ export async function adsPullStep(
 		// keys carry the app id.
 		const r2Key = `ads/popularity/${task.weekStart}/${unit.storefront}/${unit.genreId}-${unit.category}.json`;
 		await putArchived(env, r2Key, JSON.stringify(raw));
-
-		// The by-name pass is per storefront, not per genre: two tracked Games
-		// sub-genres would otherwise ask Apple the same question twice. Queue it
-		// off the last unit of this storefront, so it runs once the discovery
-		// pass for the storefront is done.
-		const lastForStorefront = !rest.some(
-			(u) => u.storefront === unit.storefront
-		);
-		const terms = lastForStorefront
-			? await trackedTerms(env, unit.storefront)
-			: [];
-		if (terms.length > 0) {
-			requeue.push({
-				storefront: unit.storefront,
-				terms,
-				type: "ads_terms",
-				verifyOnly: task.verifyOnly,
-				weekStart: task.weekStart,
-			});
-		}
 
 		// The archive above is the source of truth, so a verify pass has already
 		// proved everything a credential check cares about: the JWT signed, Apple
@@ -334,7 +396,8 @@ export async function adsPullStep(
 				env,
 				task,
 				"ads:popularity",
-				`${unit.storefront}/${unit.genreId}`
+				`${unit.storefront}/${unit.genreId}`,
+				requeue
 			);
 		}
 		await recordFetchError(env.DB, {
@@ -446,7 +509,8 @@ export async function adsTermsStep(
 				env,
 				task,
 				"ads:popularity_terms",
-				`${task.storefront}/${chunk.length} terms`
+				`${task.storefront}/${chunk.length} terms`,
+				requeue
 			);
 		}
 		await recordFetchError(env.DB, {

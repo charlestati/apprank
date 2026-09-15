@@ -144,7 +144,8 @@ response to R2 and reports the outcome. The rest of the fan-out (the other genre
 units and the by-name chunks) is queued in the same verify mode, so it archives
 and writes nothing to D1. Add `&write=1` for the full pull.
 
-`job=ads_backfill` recovers the popularity weeks the database holds nothing for,
+`job=ads_backfill` recovers popularity for every tracked keyword a recent week
+holds no answer for, including keywords tracked after that week was pulled,
 which is worth running once after the credential first works. Apple serves past
 weeks for this one endpoint, so a week nobody collected is a request away rather
 than a permanent hole. It reaches back thirteen weeks by default, the report's

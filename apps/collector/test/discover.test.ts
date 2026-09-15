@@ -191,6 +191,39 @@ describe(adsDiscoverStep, () => {
 		expect(n?.n).toBe(1);
 	});
 
+	it("starts each seed with a clean attempt count", async () => {
+		// Carried over, 429s added up across seeds until one abandonment took
+		// every seed not yet asked.
+		suggestionsFetch([]);
+		const followUps = await adsDiscoverStep(
+			discoverEnv(),
+			task({ attempt: 3, rest: ["radar"] })
+		);
+		expect(followUps[0]).toMatchObject({ attempt: 0, seed: "radar" });
+	});
+
+	it("gives up on a refused seed without dropping the ones after it", async () => {
+		stubFetch((url) => {
+			if (url.includes("appleid.apple.com")) {
+				return Response.json({ access_token: "tok", expires_in: 3600 });
+			}
+			if (url.includes("/v1/acls")) {
+				return Response.json({ data: { acls: [{ adAccount: { id: 777 } }] } });
+			}
+			return new Response("", { status: 429 });
+		});
+		const followUps = await adsDiscoverStep(
+			discoverEnv(),
+			task({ attempt: 4, rest: ["radar", "pluie"] })
+		);
+		expect(followUps).toHaveLength(1);
+		expect(followUps[0]).toMatchObject({
+			attempt: 0,
+			rest: ["pluie"],
+			seed: "radar",
+		});
+	});
+
 	it("walks one seed per tick and hands the rest on", async () => {
 		suggestionsFetch([]);
 		const followUps = await adsDiscoverStep(
