@@ -1,7 +1,15 @@
 // What the tracked set should become, expressed as SQL: the decision half of
 // `pnpm track`, kept free of I/O so it can be reasoned about and tested.
 //
-// Three rules shape everything here, and all three come from the invariants:
+// Four rules shape everything here, and all four come from the invariants:
+//
+//   The database is the source of truth, the file a local copy of it. Rows
+//   arrive from more than one place: the file, and the dashboard accepting a
+//   suggestion. A plan that treated the file as the whole truth undid every
+//   other writer on its next run, and did it silently, because to the planner
+//   an accepted keyword looked exactly like one the operator had deleted. So
+//   by default the plan only adds. Removal is `prune`, asked for by name, and
+//   `pullConfig` brings the file back up to the database first.
 //
 //   Nothing is ever deleted. Removing a keyword from the config retires its
 //   crawl pairs by dropping ref_count to zero; the rows and every observation
@@ -46,15 +54,57 @@ export function localeFor(storefront, language, storefrontLocales) {
  * every observation hanging off it outlive the decision to stop tracking, so
  * putting the keyword back restores its history rather than starting over.
  */
-function retireUnwanted(activePair, wantedPairs, summary) {
+function retireUnwanted(activePair, wantedPairs, stillTracked, summary) {
 	const out = [];
 	for (const [key, pair] of activePair) {
-		if (!wantedPairs.has(key) && pair.ref_count > 0) {
+		// A keyword someone outside this file still tracks keeps its pairs: the
+		// file cannot say which storefronts that person wants, and retiring on a
+		// guess stops a collection nobody asked to stop.
+		const keyword = `${pair.normalized}:${pair.language}`;
+		if (
+			!wantedPairs.has(key) &&
+			!stillTracked.has(keyword) &&
+			pair.ref_count > 0
+		) {
 			out.push(`UPDATE crawl_pair SET ref_count = 0 WHERE id = ${pair.id};`);
 			summary.pairsRetired += 1;
 		}
 	}
 	return out;
+}
+
+/**
+ * Tracks the file does not list. Without `prune` they are reported and kept,
+ * since the database may hold them for a reason the file never heard of. With
+ * it, the row goes for the users the file names; the crawl pair and its
+ * observations do not. A user absent from the file is never touched: an empty
+ * entry is a statement about that person, a missing one is not.
+ *
+ * @returns the keywords still tracked by a row that stays, which no pair of
+ *   theirs may be retired out from under
+ */
+function settleUnlisted(state, wantedTracks, out) {
+	const { listedUsers, prune, statements, summary, unlisted } = out;
+	const stillTracked = new Set();
+	for (const t of state.trackedKeywords) {
+		const key = `${t.user_id}|${t.app_id}|${t.normalized}:${t.language}`;
+		if (wantedTracks.has(key)) {
+			continue;
+		}
+		if (prune && listedUsers.has(t.user_id)) {
+			statements.push(
+				`DELETE FROM tracked_keyword WHERE user_id = ${sqlString(t.user_id)} AND app_id = ${t.app_id} AND keyword_id = ${t.keyword_id};`
+			);
+			summary.tracksRemoved += 1;
+			continue;
+		}
+		stillTracked.add(`${t.normalized}:${t.language}`);
+		if (!prune) {
+			unlisted.push(t);
+		}
+	}
+	summary.tracksUnlisted = unlisted.length;
+	return stillTracked;
 }
 
 function sqlString(value) {
@@ -66,12 +116,17 @@ function sqlString(value) {
  * keywords }] } }, a list, because one person routinely ships more than one
  * app and `tracked_app` has always been keyed (user_id, app_id).
  * @param state   rows already in the database
- * @returns The SQL to run, counts for the human-readable plan, and any
- *   storefront the reference data does not know about.
+ * @param options `prune`: also remove what the file does not list, for the
+ *   users the file names. Off by default, because the file is not the only
+ *   writer.
+ * @returns The SQL to run, counts for the human-readable plan, the tracks the
+ *   database holds and the file does not (`unlisted`, kept unless pruning), and
+ *   any storefront the reference data does not know about.
  */
-export function planChanges(config, state) {
+export function planChanges(config, state, { prune = false } = {}) {
 	const statements = [];
 	const warnings = [];
+	const unlisted = [];
 	const summary = {
 		apps: 0,
 		keywordsAdded: 0,
@@ -79,7 +134,11 @@ export function planChanges(config, state) {
 		pairsRetired: 0,
 		tracksAdded: 0,
 		tracksRemoved: 0,
+		tracksUnlisted: 0,
 	};
+	const listedUsers = new Set(
+		Object.keys(config).filter((userId) => !userId.startsWith("_"))
+	);
 
 	const knownKeyword = new Map(
 		state.keywords.map((k) => [`${k.normalized}:${k.language}`, k.id])
@@ -176,17 +235,13 @@ export function planChanges(config, state) {
 		}
 	}
 
-	// Tracks the config no longer asks for. The row goes; the crawl pair and its
-	// observations do not.
-	for (const t of state.trackedKeywords) {
-		const key = `${t.user_id}|${t.app_id}|${t.normalized}:${t.language}`;
-		if (!wantedTracks.has(key)) {
-			statements.push(
-				`DELETE FROM tracked_keyword WHERE user_id = ${sqlString(t.user_id)} AND app_id = ${t.app_id} AND keyword_id = ${t.keyword_id};`
-			);
-			summary.tracksRemoved += 1;
-		}
-	}
+	const stillTracked = settleUnlisted(state, wantedTracks, {
+		listedUsers,
+		prune,
+		statements,
+		summary,
+		unlisted,
+	});
 
 	const activePair = new Map(
 		state.crawlPairs.map((p) => [
@@ -211,7 +266,113 @@ export function planChanges(config, state) {
 		}
 	}
 
-	statements.push(...retireUnwanted(activePair, wantedPairs, summary));
+	if (prune) {
+		statements.push(
+			...retireUnwanted(activePair, wantedPairs, stillTracked, summary)
+		);
+	}
 
-	return { statements, summary, warnings };
+	return { statements, summary, unlisted, warnings };
+}
+
+/** A user's app entries without reshaping the file: [] when there are none. */
+function entriesOf(config, userId) {
+	const entry = config[userId];
+	if (!entry) {
+		return [];
+	}
+	return Array.isArray(entry.apps) ? entry.apps : [entry];
+}
+
+/** The same list, created or lifted out of the single-app shorthand to append to. */
+function mutableEntriesOf(config, userId) {
+	const entry = config[userId];
+	if (!entry) {
+		config[userId] = { apps: [] };
+	} else if (!Array.isArray(entry.apps)) {
+		config[userId] = { apps: [entry] };
+	}
+	return config[userId].apps;
+}
+
+/**
+ * The file brought up to the database: every tracked keyword the database holds
+ * and the file does not list, added in place.
+ *
+ * Additive only. A keyword in the file but not yet in the database is a pending
+ * `--apply`, not a stale line, so it stays; removing things is `prune`'s job.
+ *
+ * A keyword joins an entry only if that entry already covers every storefront
+ * the keyword is collected in; otherwise it gets an entry of its own with
+ * exactly those storefronts. Widening an existing entry would look harmless in
+ * the file and on the next `--apply` create a pair for every keyword of that
+ * entry in the new storefront, which is fetch volume nobody chose. Storefronts
+ * come from the pairs actually being collected, since `tracked_keyword` holds
+ * none. A tracked keyword with no active pair is left out and counted: writing
+ * it back would restart a collection that was stopped.
+ *
+ * @param config the current file, or {} when there is none
+ * @param state  rows already in the database (the same shape `planChanges` reads)
+ * @returns the new file, how many keywords it gained, and how many were skipped
+ */
+export function pullConfig(config, state) {
+	const next = structuredClone(config ?? {});
+	const names = new Map(state.apps.map((a) => [a.id, a.current_name]));
+	const collectedIn = new Map();
+	for (const p of state.crawlPairs) {
+		if (p.ref_count > 0) {
+			const key = `${p.normalized}:${p.language}`;
+			const set = collectedIn.get(key) ?? new Set();
+			set.add(p.storefront_code);
+			collectedIn.set(key, set);
+		}
+	}
+
+	const ordered = state.trackedKeywords.toSorted(
+		(a, b) =>
+			a.user_id.localeCompare(b.user_id) ||
+			a.app_id - b.app_id ||
+			a.language.localeCompare(b.language) ||
+			a.normalized.localeCompare(b.normalized)
+	);
+	let added = 0;
+	let skipped = 0;
+	for (const t of ordered) {
+		const listed = entriesOf(next, t.user_id).some(
+			(e) =>
+				e.appId === t.app_id &&
+				e.language === t.language &&
+				(e.keywords ?? []).some((k) => normalize(k) === t.normalized)
+		);
+		if (listed) {
+			continue;
+		}
+		const storefronts = [
+			...(collectedIn.get(`${t.normalized}:${t.language}`) ?? []),
+		].toSorted();
+		if (storefronts.length === 0) {
+			skipped += 1;
+			continue;
+		}
+		const entries = mutableEntriesOf(next, t.user_id);
+		let entry = entries.find(
+			(e) =>
+				e.appId === t.app_id &&
+				e.language === t.language &&
+				storefronts.every((s) => (e.storefronts ?? []).includes(s))
+		);
+		if (!entry) {
+			entry = {
+				appId: t.app_id,
+				name: names.get(t.app_id) ?? `App ${t.app_id}`,
+				language: t.language,
+				storefronts,
+				keywords: [],
+			};
+			entries.push(entry);
+		}
+		entry.keywords = [...(entry.keywords ?? []), t.text ?? t.normalized];
+		added += 1;
+	}
+	return { added, config: next, skipped };
 }

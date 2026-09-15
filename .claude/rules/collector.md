@@ -67,19 +67,32 @@ paused.
 
 ## Adding an app or keywords
 
-`tracked.local.json` (gitignored) is how the tracked set is authored. Each user
-holds an `apps` array, because `tracked_app` has always been keyed
-`(user_id, app_id)` and one person routinely ships more than one; `pnpm track`
-reconciles it against the database and prints the difference, and
-`pnpm track --apply` writes it. `tracked.example.json` shows the shape.
+`tracked.local.json` (gitignored) is a local copy of the tracked set that you
+edit. Each user holds an `apps` array, because `tracked_app` has always been
+keyed `(user_id, app_id)` and one person routinely ships more than one;
+`pnpm track` prints what the file would add, and `pnpm track --apply` writes it.
+`tracked.example.json` shows the shape.
 
-The file is the authoring surface, not the source of truth. That stays in rows,
-because three things depend on it. `crawl_pair` is reference-counted, so two
-users tracking the same keyword in the same storefront share one row and one
-fetch a day. Ownership lives on `tracked_keyword.user_id`, which is what makes
-another operator's data a 404. And removing a keyword **retires** its pairs
-(`ref_count = 0`) rather than deleting them, because history cannot be
-backfilled and a deleted day is the same as an uncollected one.
+**The file is a copy, the rows are the truth, and the tool only adds unless told
+otherwise.** The file is not the only writer: accepting a suggestion on the
+dashboard creates tracking rows too. When `pnpm track` treated the file as
+complete, its next run deleted those rows and retired their pairs, silently,
+because an accepted keyword and a deleted line look identical from the file's
+side. So a plain run reports what the database holds and the file does not, and
+keeps it. `pnpm track --pull` adds those keywords to the file, joining an entry
+only when it already covers the keyword's storefronts, so the copy never widens
+an entry into fetch volume nobody chose. Removal is `pnpm track --prune`, which
+touches only the users the file names and never retires a pair someone else
+still tracks. Pull before pruning, or the prune takes the dashboard's additions
+with it.
+
+The truth stays in rows because three things depend on it. `crawl_pair` is
+reference-counted, so two users tracking the same keyword in the same storefront
+share one row and one fetch a day. Ownership lives on `tracked_keyword.user_id`,
+which is what makes another operator's data a 404. And removing a keyword
+**retires** its pairs (`ref_count = 0`) rather than deleting them, because
+history cannot be backfilled and a deleted day is the same as an uncollected
+one.
 
 `language` does three jobs at once. It stamps every keyword in the entry,
 records `app_language`, and picks each storefront's locale, so **one entry

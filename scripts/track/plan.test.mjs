@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 
-import { localeFor, normalize, planChanges } from "./plan.mjs";
+import { localeFor, normalize, planChanges, pullConfig } from "./plan.mjs";
 
 const LOCALES = [
 	{
@@ -116,6 +116,130 @@ test("a second user tracking the same keyword adds no new pair", () => {
 	assert.equal(summary.tracksAdded, 1);
 });
 
+/** One operator tracking one keyword in one storefront, already applied. */
+function appliedState(normalized = "obsolete") {
+	return {
+		...EMPTY,
+		apps: [{ id: 1, current_name: "App" }],
+		appLanguages: [{ app_id: 1, language: "fr" }],
+		crawlPairs: [
+			{
+				id: 9,
+				ref_count: 1,
+				storefront_code: "fr",
+				locale_code: "fr-FR",
+				normalized,
+				language: "fr",
+			},
+		],
+		keywords: [{ id: 3, normalized, language: "fr" }],
+		trackedApps: [{ user_id: "operator", app_id: 1 }],
+		trackedKeywords: [
+			{
+				user_id: "operator",
+				app_id: 1,
+				keyword_id: 3,
+				text: normalized,
+				normalized,
+				language: "fr",
+			},
+		],
+	};
+}
+
+const EMPTY_ENTRY = {
+	operator: {
+		appId: 1,
+		name: "App",
+		language: "fr",
+		storefronts: ["fr"],
+		keywords: [],
+	},
+};
+
+test("keeps a track the file does not list, and reports it", () => {
+	// The dashboard writes tracking rows too. To the planner an accepted
+	// suggestion looks exactly like a line the operator deleted, so treating the
+	// file as complete undid every acceptance on the next run.
+	const { statements, summary, unlisted } = planChanges(
+		EMPTY_ENTRY,
+		appliedState()
+	);
+	assert.deepEqual(statements, []);
+	assert.equal(summary.tracksUnlisted, 1);
+	assert.equal(unlisted[0].normalized, "obsolete");
+});
+
+test("prune removes only the users the file names", () => {
+	// A user missing from the file said nothing; an empty entry said "none".
+	const state = appliedState();
+	state.trackedKeywords.push({
+		user_id: "someone-else",
+		app_id: 2,
+		keyword_id: 3,
+		text: "obsolete",
+		normalized: "obsolete",
+		language: "fr",
+	});
+	const { statements, summary } = planChanges(EMPTY_ENTRY, state, {
+		prune: true,
+	});
+	assert.equal(summary.tracksRemoved, 1);
+	assert.ok(statements.some((s) => s.includes("'operator'")));
+	assert.ok(!statements.some((s) => s.includes("'someone-else'")));
+	// Still tracked by someone outside the file, so its pair keeps collecting.
+	assert.equal(summary.pairsRetired, 0);
+});
+
+test("pull adds a keyword the database tracks to the entry that covers it", () => {
+	const { added, config } = pullConfig(EMPTY_ENTRY, appliedState("new term"));
+	assert.equal(added, 1);
+	// The single-app shorthand is lifted into the canonical list once it grows.
+	assert.deepEqual(config.operator.apps[0].keywords, ["new term"]);
+});
+
+test("pull never widens an entry into a storefront it did not cover", () => {
+	// Adding "ca" to the existing entry would create a pair for every keyword in
+	// it on the next apply: fetch volume nobody chose.
+	const state = appliedState("new term");
+	state.crawlPairs[0].storefront_code = "ca";
+	state.crawlPairs[0].locale_code = "fr-CA";
+	const { config } = pullConfig(EMPTY_ENTRY, state);
+	assert.deepEqual(config.operator.apps[0].storefronts, ["fr"]);
+	assert.deepEqual(config.operator.apps[0].keywords, []);
+	assert.deepEqual(config.operator.apps[1], {
+		appId: 1,
+		name: "App",
+		language: "fr",
+		storefronts: ["ca"],
+		keywords: ["new term"],
+	});
+});
+
+test("pull leaves out a tracked keyword nothing is collecting", () => {
+	// Writing it back would restart a collection somebody stopped.
+	const state = appliedState("stopped");
+	state.crawlPairs[0].ref_count = 0;
+	const { added, skipped } = pullConfig(EMPTY_ENTRY, state);
+	assert.equal(added, 0);
+	assert.equal(skipped, 1);
+});
+
+test("pull then plan writes nothing, and keeps the file's notes", () => {
+	const file = { _readme: ["note"], ...EMPTY_ENTRY };
+	const state = appliedState("new term");
+	const { config } = pullConfig(file, state);
+	assert.deepEqual(config._readme, ["note"]);
+	assert.deepEqual(planChanges(config, state).statements, []);
+	assert.equal(pullConfig(config, state).added, 0);
+});
+
+test("pull builds an entry for a user the file has never seen", () => {
+	const { config } = pullConfig({}, appliedState("new term"));
+	assert.deepEqual(config.operator.apps[0].keywords, ["new term"]);
+	assert.equal(config.operator.apps[0].name, "App");
+});
+
 test("retires a dropped keyword instead of deleting its history", () => {
 	const state = {
 		...EMPTY,
@@ -153,7 +277,8 @@ test("retires a dropped keyword instead of deleting its history", () => {
 				keywords: [],
 			},
 		},
-		state
+		state,
+		{ prune: true }
 	);
 	assert.equal(summary.pairsRetired, 1);
 	assert.ok(statements.some((s) => s.includes("SET ref_count = 0")));
