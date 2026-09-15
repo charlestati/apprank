@@ -298,6 +298,35 @@ test("pull builds an entry for a user the file has never seen", () => {
 	assert.equal(config.operator.apps[0].name, "App");
 });
 
+test("pull writes back a storefront accepted for a keyword the file already lists", () => {
+	// The file tracks the term in fr; the dashboard accepted it for ca. Skipping
+	// every listed keyword left ca out of the file, and pull-then-prune retired it.
+	const file = {
+		operator: { ...EMPTY_ENTRY.operator, keywords: ["new term"] },
+	};
+	const state = appliedState("new term");
+	state.crawlPairs.push({
+		...state.crawlPairs[0],
+		id: 10,
+		storefront_code: "ca",
+		locale_code: "fr-CA",
+	});
+	state.suggestions = [accepted("new term", "ca")];
+	const { added, config } = pullConfig(file, state);
+	assert.equal(added, 1);
+	assert.deepEqual(config.operator.apps[1].storefronts, ["ca"]);
+	assert.deepEqual(config.operator.apps[1].keywords, ["new term"]);
+	const pruned = planChanges(
+		config,
+		{ ...state, storefrontLocales: LOCALES },
+		{
+			prune: true,
+		}
+	);
+	assert.equal(pruned.summary.pairsRetired, 0);
+	assert.equal(pullConfig(config, state).added, 0);
+});
+
 test("retires a dropped keyword instead of deleting its history", () => {
 	const state = {
 		...EMPTY,

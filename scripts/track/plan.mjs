@@ -352,27 +352,26 @@ export function pullConfig(config, state) {
 		const own = entriesOf(next, t.user_id).filter(
 			(e) => e.appId === t.app_id && e.language === t.language
 		);
-		if (
-			own.some((e) =>
-				(e.keywords ?? []).some((k) => normalize(k) === t.normalized)
-			)
-		) {
-			continue;
-		}
+		const listing = own.filter((e) =>
+			(e.keywords ?? []).some((k) => normalize(k) === t.normalized)
+		);
 		const collected = collectedIn.get(`${t.normalized}:${t.language}`);
 		if (!collected) {
-			skipped += 1;
+			if (listing.length === 0) {
+				skipped += 1;
+			}
 			continue;
 		}
-		const claimed = new Set([
-			...own.flatMap((e) => e.storefronts ?? []),
-			...(accepted.get(
-				`${t.user_id}|${t.app_id}|${t.normalized}:${t.language}`
-			) ?? []),
-		]);
-		const storefronts = [...collected].filter((s) => claimed.has(s)).toSorted();
+		const storefronts = storefrontsToAdd(t, {
+			accepted,
+			collected,
+			listing,
+			own,
+		});
 		if (storefronts.length === 0) {
-			unclaimed += 1;
+			if (listing.length === 0) {
+				unclaimed += 1;
+			}
 			continue;
 		}
 		const entries = mutableEntriesOf(next, t.user_id);
@@ -396,6 +395,29 @@ export function pullConfig(config, state) {
 		added += 1;
 	}
 	return { added, config: next, skipped, unclaimed };
+}
+
+/**
+ * The storefronts a tracked keyword still needs a line for.
+ *
+ * Unlisted, that is where it is collected and this user claimed it. Already
+ * listed, it is only the storefronts a dashboard acceptance added beyond the
+ * lines the file has: skipping every listed keyword left an accepted `ca` for a
+ * keyword the file tracked in `fr` out of the file for good, and the documented
+ * pull-then-prune retired it.
+ */
+function storefrontsToAdd(t, { accepted, collected, listing, own }) {
+	const suggested =
+		accepted.get(`${t.user_id}|${t.app_id}|${t.normalized}:${t.language}`) ??
+		new Set();
+	const listedIn = new Set(listing.flatMap((e) => e.storefronts ?? []));
+	const claimed =
+		listing.length > 0
+			? suggested
+			: new Set([...own.flatMap((e) => e.storefronts ?? []), ...suggested]);
+	return [...collected]
+		.filter((s) => claimed.has(s) && !listedIn.has(s))
+		.toSorted();
 }
 
 function sameSet(a, b) {
