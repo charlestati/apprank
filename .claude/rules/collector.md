@@ -79,15 +79,23 @@ dashboard creates tracking rows too. When `pnpm track` treated the file as
 complete, its next run deleted those rows and retired their pairs, silently,
 because an accepted keyword and a deleted line look identical from the file's
 side. So a plain run reports what the database holds and the file does not, and
-keeps it. `pnpm track --pull` adds those keywords to the file. A keyword's
-storefronts are the ones it is collected in _and_ that user claimed, through an
-entry for that app and language or an accepted suggestion, because `crawl_pair`
-is shared and holds other users' storefronts too. It joins an entry only when
-that entry's storefronts are exactly its own, since joining a wider one creates
-pairs on the next apply that nobody chose. Removal is `pnpm track --prune`,
-which touches only the users the file names and never retires a pair someone
-else still tracks. Pull before pruning, or the prune takes the dashboard's
-additions with it.
+keeps it. `pnpm track --pull` adds those keywords to the file, in exactly the
+storefronts recorded for that user in `tracked_keyword_storefront`, and joins an
+entry only when that entry's storefronts are exactly the ones needed, since
+joining a wider one tracks the keyword in storefronts nobody chose. Removal is
+`pnpm track --prune`, which touches only the users the file names, removes a
+storefront the file dropped even when the keyword stays, and retires a pair only
+once no storefront row of anyone's points at it. Pull before pruning, or the
+prune takes the dashboard's additions with it.
+
+**Where a keyword is tracked is a row, not an inference.** `tracked_keyword`
+names no storefront and `crawl_pair` is shared, so before
+`tracked_keyword_storefront` every reader that needed one user's storefronts
+took the union of everyone's pairs: discovery asked seeds in other users'
+markets, `--pull` wrote other users' storefronts into the file, and `--prune`
+could not tell whose pair it was retiring. `pnpm track --apply` and accepting a
+suggestion both write the row; migration 0002 backfilled it from the pairs that
+were active when it landed.
 
 The truth stays in rows because three things depend on it. `crawl_pair` is
 reference-counted, so two users tracking the same keyword in the same storefront

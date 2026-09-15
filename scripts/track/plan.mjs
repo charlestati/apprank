@@ -17,8 +17,10 @@
 //   and a day deleted is the same thing.
 //
 //   crawl_pair is the reference-counted union of what everyone tracks, so two
-// people asking for the same keyword in the same storefront share one row and
-//   therefore one fetch a day.
+//   people asking for the same keyword in the same storefront share one row and
+//   therefore one fetch a day. The references are `tracked_keyword_storefront`
+//   rows: one per user, keyword and storefront. A pair is retired only when no
+//   such row points at it any more.
 //
 //   Only differences are emitted. A re-run that changes nothing must cost no
 //   row-writes: D1 charges for a conflicting upsert even when it updates
@@ -49,21 +51,34 @@ export function localeFor(storefront, language, storefrontLocales) {
 	return rows.find((r) => r.is_default === 1)?.locale_code ?? null;
 }
 
+function sqlString(value) {
+	return `'${String(value).replaceAll("'", "''")}'`;
+}
+
+function trackKey(userId, appId, normalized, language) {
+	return `${userId}|${appId}|${normalized}:${language}`;
+}
+
+function pairKey(normalized, language, storefront, locale) {
+	return `${normalized}:${language}|${storefront}|${locale}`;
+}
+
+/** The id of one user's track of one keyword, as a subquery. */
+function trackIdExpr(userId, appId, normalized, language) {
+	return `(SELECT tk.id FROM tracked_keyword tk JOIN keyword k ON k.id = tk.keyword_id WHERE tk.user_id = ${sqlString(userId)} AND tk.app_id = ${appId} AND k.normalized = ${sqlString(normalized)} AND k.language = ${sqlString(language)})`;
+}
+
 /**
  * Pairs nobody asks for any more. They are retired, never deleted: the row and
  * every observation hanging off it outlive the decision to stop tracking, so
  * putting the keyword back restores its history rather than starting over.
  */
-function retireUnwanted(activePair, wantedPairs, stillTracked, summary) {
+function retireUnwanted(activePair, wantedPairs, stillReferenced, summary) {
 	const out = [];
 	for (const [key, pair] of activePair) {
-		// A keyword someone outside this file still tracks keeps its pairs: the
-		// file cannot say which storefronts that person wants, and retiring on a
-		// guess stops a collection nobody asked to stop.
-		const keyword = `${pair.normalized}:${pair.language}`;
 		if (
 			!wantedPairs.has(key) &&
-			!stillTracked.has(keyword) &&
+			!stillReferenced.has(key) &&
 			pair.ref_count > 0
 		) {
 			out.push(`UPDATE crawl_pair SET ref_count = 0 WHERE id = ${pair.id};`);
@@ -74,41 +89,60 @@ function retireUnwanted(activePair, wantedPairs, stillTracked, summary) {
 }
 
 /**
- * Tracks the file does not list. Without `prune` they are reported and kept,
- * since the database may hold them for a reason the file never heard of. With
- * it, the row goes for the users the file names; the crawl pair and its
- * observations do not. A user absent from the file is never touched: an empty
- * entry is a statement about that person, a missing one is not.
+ * What the database holds and the file does not list. Without `prune` it is
+ * reported and kept, since the database may hold it for a reason the file never
+ * heard of. With it, the rows go for the users the file names; the crawl pairs
+ * and their observations do not. A user absent from the file is never touched:
+ * an empty entry is a statement about that person, a missing one is not.
  *
- * @returns the keywords still tracked by a row that stays, which no pair of
- *   theirs may be retired out from under
+ * @returns the pairs still referenced by a row that stays, which may not be
+ *   retired out from under it
  */
-function settleUnlisted(state, wantedTracks, out) {
+function settleUnlisted(state, wanted, out) {
 	const { listedUsers, prune, statements, summary, unlisted } = out;
-	const stillTracked = new Set();
-	for (const t of state.trackedKeywords) {
-		const key = `${t.user_id}|${t.app_id}|${t.normalized}:${t.language}`;
-		if (wantedTracks.has(key)) {
+	const pruning = (userId) => prune && listedUsers.has(userId);
+	const stillReferenced = new Set();
+
+	for (const s of state.trackedStorefronts) {
+		const track = trackKey(s.user_id, s.app_id, s.normalized, s.language);
+		if (wanted.storefronts.has(`${track}|${s.storefront_code}`)) {
 			continue;
 		}
-		if (prune && listedUsers.has(t.user_id)) {
+		if (pruning(s.user_id)) {
+			// A track the file dropped entirely goes below, and its storefronts go
+			// with it; only a storefront dropped from a track that stays is deleted
+			// on its own.
+			if (wanted.tracks.has(track)) {
+				statements.push(
+					`DELETE FROM tracked_keyword_storefront WHERE tracked_keyword_id = ${trackIdExpr(s.user_id, s.app_id, s.normalized, s.language)} AND storefront_code = ${sqlString(s.storefront_code)};`
+				);
+				summary.storefrontsRemoved += 1;
+			}
+			continue;
+		}
+		stillReferenced.add(
+			pairKey(s.normalized, s.language, s.storefront_code, s.locale_code)
+		);
+		if (!prune) {
+			unlisted.push(s);
+		}
+	}
+
+	for (const t of state.trackedKeywords) {
+		if (
+			wanted.tracks.has(trackKey(t.user_id, t.app_id, t.normalized, t.language))
+		) {
+			continue;
+		}
+		if (pruning(t.user_id)) {
 			statements.push(
 				`DELETE FROM tracked_keyword WHERE user_id = ${sqlString(t.user_id)} AND app_id = ${t.app_id} AND keyword_id = ${t.keyword_id};`
 			);
 			summary.tracksRemoved += 1;
-			continue;
-		}
-		stillTracked.add(`${t.normalized}:${t.language}`);
-		if (!prune) {
-			unlisted.push(t);
 		}
 	}
-	summary.tracksUnlisted = unlisted.length;
-	return stillTracked;
-}
-
-function sqlString(value) {
-	return `'${String(value).replaceAll("'", "''")}'`;
+	summary.unlisted = unlisted.length;
+	return stillReferenced;
 }
 
 /**
@@ -119,9 +153,9 @@ function sqlString(value) {
  * @param options `prune`: also remove what the file does not list, for the
  *   users the file names. Off by default, because the file is not the only
  *   writer.
- * @returns The SQL to run, counts for the human-readable plan, the tracks the
- *   database holds and the file does not (`unlisted`, kept unless pruning), and
- *   any storefront the reference data does not know about.
+ * @returns The SQL to run, counts for the human-readable plan, the tracked
+ *   storefronts the database holds and the file does not (`unlisted`, kept
+ *   unless pruning), and any storefront the reference data does not know about.
  */
 export function planChanges(config, state, { prune = false } = {}) {
 	const statements = [];
@@ -132,9 +166,11 @@ export function planChanges(config, state, { prune = false } = {}) {
 		keywordsAdded: 0,
 		pairsActivated: 0,
 		pairsRetired: 0,
+		storefrontsAdded: 0,
+		storefrontsRemoved: 0,
 		tracksAdded: 0,
 		tracksRemoved: 0,
-		tracksUnlisted: 0,
+		unlisted: 0,
 	};
 	const listedUsers = new Set(
 		Object.keys(config).filter((userId) => !userId.startsWith("_"))
@@ -143,8 +179,19 @@ export function planChanges(config, state, { prune = false } = {}) {
 	const knownKeyword = new Map(
 		state.keywords.map((k) => [`${k.normalized}:${k.language}`, k.id])
 	);
-	// Every (user, app, keyword) the config asks for, and every pair it implies.
-	const wantedTracks = new Set();
+	const heldTracks = new Set(
+		state.trackedKeywords.map((t) =>
+			trackKey(t.user_id, t.app_id, t.normalized, t.language)
+		)
+	);
+	const heldStorefronts = new Set(
+		state.trackedStorefronts.map(
+			(s) =>
+				`${trackKey(s.user_id, s.app_id, s.normalized, s.language)}|${s.storefront_code}`
+		)
+	);
+	// Every track and tracked storefront the config asks for, and every pair.
+	const wanted = { storefronts: new Set(), tracks: new Set() };
 	const wantedPairs = new Map();
 
 	for (const [userId, entry] of Object.entries(config)) {
@@ -195,21 +242,15 @@ export function planChanges(config, state, { prune = false } = {}) {
 					knownKeyword.set(key, null); // id resolved by subquery below
 					summary.keywordsAdded += 1;
 				}
-				wantedTracks.add(`${userId}|${appId}|${key}`);
+				const track = trackKey(userId, appId, norm, language);
+				wanted.tracks.add(track);
 
 				const idExpr = `(SELECT id FROM keyword WHERE normalized = ${sqlString(norm)} AND language = ${sqlString(language)})`;
-				if (
-					!state.trackedKeywords.some(
-						(t) =>
-							t.user_id === userId &&
-							t.app_id === appId &&
-							t.normalized === norm &&
-							t.language === language
-					)
-				) {
+				if (!heldTracks.has(track)) {
 					statements.push(
 						`INSERT OR IGNORE INTO tracked_keyword (user_id, app_id, keyword_id, created_at) SELECT ${sqlString(userId)}, ${appId}, id, strftime('%s','now')*1000 FROM keyword WHERE normalized = ${sqlString(norm)} AND language = ${sqlString(language)};`
 					);
+					heldTracks.add(track);
 					summary.tracksAdded += 1;
 				}
 
@@ -225,7 +266,15 @@ export function planChanges(config, state, { prune = false } = {}) {
 						);
 						continue;
 					}
-					wantedPairs.set(`${norm}:${language}|${storefront}|${locale}`, {
+					wanted.storefronts.add(`${track}|${storefront}`);
+					if (!heldStorefronts.has(`${track}|${storefront}`)) {
+						statements.push(
+							`INSERT OR IGNORE INTO tracked_keyword_storefront (tracked_keyword_id, storefront_code, locale_code, created_at) SELECT ${trackIdExpr(userId, appId, norm, language)}, ${sqlString(storefront)}, ${sqlString(locale)}, strftime('%s','now')*1000;`
+						);
+						heldStorefronts.add(`${track}|${storefront}`);
+						summary.storefrontsAdded += 1;
+					}
+					wantedPairs.set(pairKey(norm, language, storefront, locale), {
 						idExpr,
 						locale,
 						storefront,
@@ -235,7 +284,7 @@ export function planChanges(config, state, { prune = false } = {}) {
 		}
 	}
 
-	const stillTracked = settleUnlisted(state, wantedTracks, {
+	const stillReferenced = settleUnlisted(state, wanted, {
 		listedUsers,
 		prune,
 		statements,
@@ -245,7 +294,7 @@ export function planChanges(config, state, { prune = false } = {}) {
 
 	const activePair = new Map(
 		state.crawlPairs.map((p) => [
-			`${p.normalized}:${p.language}|${p.storefront_code}|${p.locale_code}`,
+			pairKey(p.normalized, p.language, p.storefront_code, p.locale_code),
 			p,
 		])
 	);
@@ -268,7 +317,7 @@ export function planChanges(config, state, { prune = false } = {}) {
 
 	if (prune) {
 		statements.push(
-			...retireUnwanted(activePair, wantedPairs, stillTracked, summary)
+			...retireUnwanted(activePair, wantedPairs, stillReferenced, summary)
 		);
 	}
 
@@ -295,48 +344,43 @@ function mutableEntriesOf(config, userId) {
 	return config[userId].apps;
 }
 
+function sameSet(a, b) {
+	return a.length === b.length && a.every((s) => b.includes(s));
+}
+
 /**
- * The file brought up to the database: every tracked keyword the database holds
- * and the file does not list, added in place.
+ * The file brought up to the database: every tracked storefront the database
+ * holds and the file does not list, added in place.
  *
  * Additive only. A keyword in the file but not yet in the database is a pending
  * `--apply`, not a stale line, so it stays; removing things is `prune`'s job.
  *
- * Which storefronts a keyword belongs in is the hard part, because
- * `tracked_keyword` records none and `crawl_pair` is shared by every user. So a
- * storefront counts only when the keyword is actually collected there *and*
- * this user claimed it: an entry of theirs for the same app and language names
- * it, or they accepted a suggestion for that term there. Taking every active
- * pair instead handed one user another user's storefronts, which their next
- * `--prune` then protected and their next `--apply` could revive. A keyword
- * with no active pair is left out (writing it back would restart a collection
- * somebody stopped), and one collected only where this user never claimed is
- * left out too. Both are counted, never guessed.
+ * The storefronts come from `tracked_keyword_storefront`, so they are exactly
+ * the ones this user chose, never another user's that happen to share a pair.
+ * A keyword the file already lists gets a line only for the storefronts beyond
+ * the entries listing it, which is how a storefront accepted on the dashboard
+ * reaches the file.
  *
- * A keyword joins an entry only when the entry's storefronts are exactly its
- * own; otherwise it gets an entry of its own. Joining a wider entry looks
- * harmless in the file, and the next `--apply` creates a pair for it in every
+ * A keyword joins an entry only when the entry's storefronts are exactly the
+ * ones it needs; otherwise it gets an entry of its own. Joining a wider entry
+ * looks harmless in the file, and the next `--apply` tracks it in every
  * storefront that entry lists: fetch volume nobody chose.
  *
  * @param config the current file, or {} when there is none
- * @param state  rows already in the database (the same shape `planChanges`
- *   reads, plus `suggestions`: accepted promote_keyword rows)
- * @returns the new file, how many keywords it gained, how many were skipped
- *   for having no active pair, and how many for having none this user claimed
+ * @param state  rows already in the database (the shape `planChanges` reads)
+ * @returns the new file, how many lines it gained, and how many tracked
+ *   keywords have no storefront at all and so could not be written
  */
 export function pullConfig(config, state) {
 	const next = structuredClone(config ?? {});
 	const names = new Map(state.apps.map((a) => [a.id, a.current_name]));
-	const collectedIn = new Map();
-	for (const p of state.crawlPairs) {
-		if (p.ref_count > 0) {
-			const key = `${p.normalized}:${p.language}`;
-			const set = collectedIn.get(key) ?? new Set();
-			set.add(p.storefront_code);
-			collectedIn.set(key, set);
-		}
+	const chosen = new Map();
+	for (const s of state.trackedStorefronts) {
+		const key = trackKey(s.user_id, s.app_id, s.normalized, s.language);
+		const set = chosen.get(key) ?? new Set();
+		set.add(s.storefront_code);
+		chosen.set(key, set);
 	}
-	const accepted = acceptedStorefronts(state.suggestions ?? []);
 
 	const ordered = state.trackedKeywords.toSorted(
 		(a, b) =>
@@ -346,32 +390,27 @@ export function pullConfig(config, state) {
 			a.normalized.localeCompare(b.normalized)
 	);
 	let added = 0;
-	let skipped = 0;
-	let unclaimed = 0;
+	let withoutStorefront = 0;
 	for (const t of ordered) {
-		const own = entriesOf(next, t.user_id).filter(
-			(e) => e.appId === t.app_id && e.language === t.language
+		const storefronts = chosen.get(
+			trackKey(t.user_id, t.app_id, t.normalized, t.language)
 		);
-		const listing = own.filter((e) =>
-			(e.keywords ?? []).some((k) => normalize(k) === t.normalized)
-		);
-		const collected = collectedIn.get(`${t.normalized}:${t.language}`);
-		if (!collected) {
-			if (listing.length === 0) {
-				skipped += 1;
-			}
+		if (!storefronts) {
+			withoutStorefront += 1;
 			continue;
 		}
-		const storefronts = storefrontsToAdd(t, {
-			accepted,
-			collected,
-			listing,
-			own,
-		});
-		if (storefronts.length === 0) {
-			if (listing.length === 0) {
-				unclaimed += 1;
-			}
+		const listedIn = new Set(
+			entriesOf(next, t.user_id)
+				.filter(
+					(e) =>
+						e.appId === t.app_id &&
+						e.language === t.language &&
+						(e.keywords ?? []).some((k) => normalize(k) === t.normalized)
+				)
+				.flatMap((e) => e.storefronts ?? [])
+		);
+		const missing = [...storefronts].filter((s) => !listedIn.has(s)).toSorted();
+		if (missing.length === 0) {
 			continue;
 		}
 		const entries = mutableEntriesOf(next, t.user_id);
@@ -379,14 +418,14 @@ export function pullConfig(config, state) {
 			(e) =>
 				e.appId === t.app_id &&
 				e.language === t.language &&
-				sameSet(e.storefronts ?? [], storefronts)
+				sameSet(e.storefronts ?? [], missing)
 		);
 		if (!entry) {
 			entry = {
 				appId: t.app_id,
 				name: names.get(t.app_id) ?? `App ${t.app_id}`,
 				language: t.language,
-				storefronts,
+				storefronts: missing,
 				keywords: [],
 			};
 			entries.push(entry);
@@ -394,60 +433,5 @@ export function pullConfig(config, state) {
 		entry.keywords = [...(entry.keywords ?? []), t.text ?? t.normalized];
 		added += 1;
 	}
-	return { added, config: next, skipped, unclaimed };
-}
-
-/**
- * The storefronts a tracked keyword still needs a line for.
- *
- * Unlisted, that is where it is collected and this user claimed it. Already
- * listed, it is only the storefronts a dashboard acceptance added beyond the
- * lines the file has: skipping every listed keyword left an accepted `ca` for a
- * keyword the file tracked in `fr` out of the file for good, and the documented
- * pull-then-prune retired it.
- */
-function storefrontsToAdd(t, { accepted, collected, listing, own }) {
-	const suggested =
-		accepted.get(`${t.user_id}|${t.app_id}|${t.normalized}:${t.language}`) ??
-		new Set();
-	const listedIn = new Set(listing.flatMap((e) => e.storefronts ?? []));
-	const claimed =
-		listing.length > 0
-			? suggested
-			: new Set([...own.flatMap((e) => e.storefronts ?? []), ...suggested]);
-	return [...collected]
-		.filter((s) => claimed.has(s) && !listedIn.has(s))
-		.toSorted();
-}
-
-function sameSet(a, b) {
-	return a.length === b.length && a.every((s) => b.includes(s));
-}
-
-/**
- * Where each user accepted each suggested term, keyed like a track. The payload
- * is the collector's own JSON; a row that does not parse claims nothing.
- */
-function acceptedStorefronts(suggestions) {
-	const out = new Map();
-	for (const row of suggestions) {
-		let p;
-		try {
-			p = JSON.parse(row.payload);
-		} catch {
-			continue;
-		}
-		if (
-			typeof p?.term !== "string" ||
-			typeof p.storefront !== "string" ||
-			typeof p.language !== "string"
-		) {
-			continue;
-		}
-		const key = `${row.user_id}|${p.appId}|${normalize(p.term)}:${p.language}`;
-		const set = out.get(key) ?? new Set();
-		set.add(p.storefront);
-		out.set(key, set);
-	}
-	return out;
+	return { added, config: next, withoutStorefront };
 }

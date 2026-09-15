@@ -85,6 +85,24 @@ function promotionWrites(
          SELECT ?5, ?3, ${keywordId}, ?4`
 			)
 			.bind(normalized, p.language, p.appId, Date.now(), userId),
+		db
+			.prepare(
+				// The storefront this answer was for, recorded against this user's
+				// track. Without it the database knows the keyword is tracked but not
+				// where, and everything reading the tracked set had to guess.
+				`INSERT OR IGNORE INTO tracked_keyword_storefront (tracked_keyword_id, storefront_code, locale_code, created_at)
+         SELECT tk.id, ?3, ?4, ?5 FROM tracked_keyword tk
+          WHERE tk.user_id = ?6 AND tk.app_id = ?7 AND tk.keyword_id = ${keywordId}`
+			)
+			.bind(
+				normalized,
+				p.language,
+				p.storefront,
+				p.locale,
+				Date.now(),
+				userId,
+				p.appId
+			),
 	];
 }
 

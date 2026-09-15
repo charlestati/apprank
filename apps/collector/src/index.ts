@@ -363,14 +363,21 @@ const BACKFILL_WEEKS = 13;
  */
 async function buildDiscovery(env: Env): Promise<Task[]> {
 	const rows = await env.DB.prepare(
+		// Storefronts come from this user's own tracked_keyword_storefront rows.
+		// crawl_pair is shared, and joining it on the keyword alone asked each seed
+		// in every storefront where anyone collected it, proposing keywords for
+		// markets this user never chose. The pair join keeps only live ones.
 		`SELECT DISTINCT tk.user_id AS userId, a.id AS appId,
-            cp.storefront_code AS storefront, cp.locale_code AS localeCode,
+            ts.storefront_code AS storefront, ts.locale_code AS localeCode,
             k.language AS language, k.normalized AS seed
        FROM tracked_keyword tk
        JOIN app a ON a.id = tk.app_id
        JOIN keyword k ON k.id = tk.keyword_id
-       JOIN crawl_pair cp ON cp.keyword_id = k.id AND cp.ref_count > 0
-      ORDER BY tk.user_id, a.id, cp.storefront_code, k.normalized`
+       JOIN tracked_keyword_storefront ts ON ts.tracked_keyword_id = tk.id
+       JOIN crawl_pair cp ON cp.keyword_id = k.id
+        AND cp.storefront_code = ts.storefront_code
+        AND cp.locale_code = ts.locale_code AND cp.ref_count > 0
+      ORDER BY tk.user_id, a.id, ts.storefront_code, k.normalized`
 	).all<{
 		userId: string;
 		appId: number;

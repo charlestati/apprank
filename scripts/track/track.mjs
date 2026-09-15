@@ -86,10 +86,13 @@ function currentState() {
 			`SELECT sl.storefront_code, sl.locale_code, sl.is_default, l.language
        FROM storefront_locale sl JOIN locale l ON l.code = sl.locale_code`
 		),
-		suggestions: query(
-			"SELECT user_id, payload FROM suggestion WHERE type = 'promote_keyword' AND status = 'accepted'"
-		),
 		trackedApps: query("SELECT user_id, app_id FROM tracked_app"),
+		trackedStorefronts: query(
+			`SELECT tk.user_id, tk.app_id, k.normalized, k.language, ts.storefront_code, ts.locale_code
+       FROM tracked_keyword_storefront ts
+       JOIN tracked_keyword tk ON tk.id = ts.tracked_keyword_id
+       JOIN keyword k ON k.id = tk.keyword_id`
+		),
 		trackedKeywords: query(
 			`SELECT tk.user_id, tk.app_id, tk.keyword_id, k.text, k.normalized, k.language
        FROM tracked_keyword tk JOIN keyword k ON k.id = tk.keyword_id`
@@ -98,18 +101,13 @@ function currentState() {
 }
 
 if (pull) {
-	const { added, config, skipped, unclaimed } = pullConfig(
+	const { added, config, withoutStorefront } = pullConfig(
 		readConfig() ?? {},
 		currentState()
 	);
-	if (skipped > 0) {
+	if (withoutStorefront > 0) {
 		console.warn(
-			`warning: ${skipped} tracked keyword(s) have no active crawl pair and were left out, so pulling does not restart them`
-		);
-	}
-	if (unclaimed > 0) {
-		console.warn(
-			`warning: ${unclaimed} tracked keyword(s) are collected only in storefronts no entry or accepted suggestion of that user names; add them to the file by hand`
+			`warning: ${withoutStorefront} tracked keyword(s) have no storefront recorded, so there is no line to write for them; add them to the file by hand`
 		);
 	}
 	if (added === 0) {
@@ -149,7 +147,7 @@ if (unlisted.length > 0) {
 	);
 	for (const t of unlisted) {
 		console.log(
-			`  ${t.user_id}  app ${t.app_id}  ${t.language}  ${t.normalized}`
+			`  ${t.user_id}  app ${t.app_id}  ${t.storefront_code}  ${t.language}  ${t.normalized}`
 		);
 	}
 	console.log(
@@ -168,6 +166,7 @@ console.log(
 		`keywords added:  ${summary.keywordsAdded}`,
 		`tracks added:    ${summary.tracksAdded}`,
 		`tracks removed:  ${summary.tracksRemoved}`,
+		`storefronts +/-: ${summary.storefrontsAdded} / ${summary.storefrontsRemoved}`,
 		`pairs activated: ${summary.pairsActivated}`,
 		`pairs retired:   ${summary.pairsRetired}   (history kept)`,
 		`statements:      ${statements.length}`,

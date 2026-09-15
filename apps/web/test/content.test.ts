@@ -277,6 +277,21 @@ describe("/api/suggestions", () => {
 			.bind(USER_ID)
 			.first<{ n: number }>();
 		expect(tracked?.n).toBe(1);
+
+		// Where, not only what: the storefront the suggestion was for is recorded
+		// against this user's track, so nothing downstream has to guess it.
+		const where = await env.DB.prepare(
+			`SELECT ts.storefront_code, ts.locale_code
+         FROM tracked_keyword_storefront ts
+         JOIN tracked_keyword tk ON tk.id = ts.tracked_keyword_id
+         JOIN keyword k ON k.id = tk.keyword_id
+        WHERE tk.user_id = ?1 AND k.normalized = 'météo locale gratuite'`
+		)
+			.bind(USER_ID)
+			.all();
+		expect(where.results).toStrictEqual([
+			{ locale_code: "fr-FR", storefront_code: "fr" },
+		]);
 	});
 
 	it("promotes nothing when the suggestion was already answered", async () => {

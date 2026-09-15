@@ -40,6 +40,7 @@ const EMPTY = {
 	storefrontLocales: LOCALES,
 	trackedApps: [],
 	trackedKeywords: [],
+	trackedStorefronts: [],
 };
 
 test("prefers the locale matching the app's language over the default", () => {
@@ -144,6 +145,37 @@ function appliedState(normalized = "obsolete") {
 				language: "fr",
 			},
 		],
+		trackedStorefronts: [stored("fr", "fr-FR", normalized)],
+	};
+}
+
+/** One tracked_keyword_storefront row, joined the way track.mjs reads it. */
+function stored(
+	storefront,
+	locale,
+	normalized,
+	userId = "operator",
+	appId = 1
+) {
+	return {
+		user_id: userId,
+		app_id: appId,
+		normalized,
+		language: "fr",
+		storefront_code: storefront,
+		locale_code: locale,
+	};
+}
+
+/** An active pair for the fixture keyword in another storefront. */
+function pair(id, storefront, locale, normalized) {
+	return {
+		id,
+		ref_count: 1,
+		storefront_code: storefront,
+		locale_code: locale,
+		normalized,
+		language: "fr",
 	};
 }
 
@@ -166,8 +198,37 @@ test("keeps a track the file does not list, and reports it", () => {
 		appliedState()
 	);
 	assert.deepEqual(statements, []);
-	assert.equal(summary.tracksUnlisted, 1);
+	assert.equal(summary.unlisted, 1);
 	assert.equal(unlisted[0].normalized, "obsolete");
+	assert.equal(unlisted[0].storefront_code, "fr");
+});
+
+test("apply records where each keyword is tracked, not only that it is", () => {
+	// tracked_keyword has no storefront. Without this row every reader of the
+	// tracked set had to guess the storefronts from the shared pairs.
+	const { statements, summary } = planChanges(
+		{
+			operator: {
+				appId: 42,
+				name: "App",
+				language: "fr",
+				storefronts: ["fr", "ca"],
+				keywords: ["terme un"],
+			},
+		},
+		EMPTY
+	);
+	assert.equal(summary.storefrontsAdded, 2);
+	const rows = statements.filter((s) =>
+		s.includes("INSERT OR IGNORE INTO tracked_keyword_storefront")
+	);
+	assert.equal(rows.length, 2);
+	assert.ok(rows.some((s) => s.includes("'fr-CA'")));
+	// After the track it points at, or the subquery finds nothing.
+	const trackAt = statements.findIndex((s) =>
+		s.includes("INTO tracked_keyword (")
+	);
+	assert.ok(statements.indexOf(rows[0]) > trackAt);
 });
 
 test("prune removes only the users the file names", () => {
@@ -181,14 +242,58 @@ test("prune removes only the users the file names", () => {
 		normalized: "obsolete",
 		language: "fr",
 	});
+	state.trackedStorefronts.push(
+		stored("fr", "fr-FR", "obsolete", "someone-else", 2)
+	);
 	const { statements, summary } = planChanges(EMPTY_ENTRY, state, {
 		prune: true,
 	});
 	assert.equal(summary.tracksRemoved, 1);
 	assert.ok(statements.some((s) => s.includes("'operator'")));
 	assert.ok(!statements.some((s) => s.includes("'someone-else'")));
-	// Still tracked by someone outside the file, so its pair keeps collecting.
+	// Still referenced by someone outside the file, so its pair keeps collecting.
 	assert.equal(summary.pairsRetired, 0);
+});
+
+test("prune drops a storefront the file no longer lists and retires its pair", () => {
+	const state = appliedState("kept");
+	state.crawlPairs.push(pair(10, "ca", "fr-CA", "kept"));
+	state.trackedStorefronts.push(stored("ca", "fr-CA", "kept"));
+	const file = {
+		operator: { ...EMPTY_ENTRY.operator, keywords: ["kept"] },
+	};
+	const { statements, summary } = planChanges(file, state, { prune: true });
+	assert.equal(summary.storefrontsRemoved, 1);
+	assert.equal(summary.tracksRemoved, 0);
+	assert.ok(
+		statements.some(
+			(s) =>
+				s.startsWith("DELETE FROM tracked_keyword_storefront") &&
+				s.includes("'ca'")
+		)
+	);
+	assert.equal(summary.pairsRetired, 1);
+	assert.ok(
+		statements.includes("UPDATE crawl_pair SET ref_count = 0 WHERE id = 10;")
+	);
+});
+
+test("prune keeps a pair another user still points at, storefront by storefront", () => {
+	// Keyword-level protection kept every storefront of a shared keyword alive;
+	// the reference is the storefront row, so only the one still held survives.
+	const state = appliedState("shared");
+	state.crawlPairs.push(pair(10, "ca", "fr-CA", "shared"));
+	state.trackedStorefronts.push(
+		stored("ca", "fr-CA", "shared"),
+		stored("fr", "fr-FR", "shared", "someone-else", 2)
+	);
+	const { summary, statements } = planChanges(EMPTY_ENTRY, state, {
+		prune: true,
+	});
+	assert.equal(summary.pairsRetired, 1);
+	assert.ok(
+		statements.includes("UPDATE crawl_pair SET ref_count = 0 WHERE id = 10;")
+	);
 });
 
 test("pull adds a keyword the database tracks to the entry that covers it", () => {
@@ -198,27 +303,12 @@ test("pull adds a keyword the database tracks to the entry that covers it", () =
 	assert.deepEqual(config.operator.apps[0].keywords, ["new term"]);
 });
 
-/** An accepted suggestion for `term`, the only storefront claim outside the file. */
-function accepted(term, storefront, userId = "operator") {
-	return {
-		user_id: userId,
-		payload: JSON.stringify({
-			appId: 1,
-			language: "fr",
-			locale: "fr-FR",
-			storefront,
-			term,
-		}),
-	};
-}
-
 test("pull never widens an entry into a storefront it did not cover", () => {
 	// Adding "ca" to the existing entry would create a pair for every keyword in
 	// it on the next apply: fetch volume nobody chose.
 	const state = appliedState("new term");
-	state.crawlPairs[0].storefront_code = "ca";
-	state.crawlPairs[0].locale_code = "fr-CA";
-	state.suggestions = [accepted("new term", "ca")];
+	state.crawlPairs[0] = pair(9, "ca", "fr-CA", "new term");
+	state.trackedStorefronts = [stored("ca", "fr-CA", "new term")];
 	const { config } = pullConfig(EMPTY_ENTRY, state);
 	assert.deepEqual(config.operator.apps[0].storefronts, ["fr"]);
 	assert.deepEqual(config.operator.apps[0].keywords, []);
@@ -252,32 +342,21 @@ test("pull takes no storefront from another user's pair", () => {
 	// us in this user's file, where their prune would protect it and their apply
 	// could bring it back.
 	const state = appliedState("new term");
-	state.crawlPairs.push({
-		...state.crawlPairs[0],
-		id: 10,
-		storefront_code: "us",
-		locale_code: "en-US",
-	});
+	state.crawlPairs.push(pair(10, "us", "en-US", "new term"));
+	state.trackedStorefronts.push(
+		stored("us", "en-US", "new term", "someone-else", 2)
+	);
 	const { config } = pullConfig(EMPTY_ENTRY, state);
 	assert.deepEqual(config.operator.apps[0].storefronts, ["fr"]);
 	assert.deepEqual(config.operator.apps[0].keywords, ["new term"]);
 });
 
-test("pull leaves out a keyword collected only where this user never claimed", () => {
-	const state = appliedState("new term");
-	state.crawlPairs[0].storefront_code = "us";
-	const { added, unclaimed } = pullConfig(EMPTY_ENTRY, state);
+test("pull counts a tracked keyword with no storefront recorded", () => {
+	const state = appliedState("nowhere");
+	state.trackedStorefronts = [];
+	const { added, withoutStorefront } = pullConfig(EMPTY_ENTRY, state);
 	assert.equal(added, 0);
-	assert.equal(unclaimed, 1);
-});
-
-test("pull leaves out a tracked keyword nothing is collecting", () => {
-	// Writing it back would restart a collection somebody stopped.
-	const state = appliedState("stopped");
-	state.crawlPairs[0].ref_count = 0;
-	const { added, skipped } = pullConfig(EMPTY_ENTRY, state);
-	assert.equal(added, 0);
-	assert.equal(skipped, 1);
+	assert.equal(withoutStorefront, 1);
 });
 
 test("pull then plan writes nothing, and keeps the file's notes", () => {
@@ -290,9 +369,7 @@ test("pull then plan writes nothing, and keeps the file's notes", () => {
 });
 
 test("pull builds an entry for a user the file has never seen", () => {
-	// With no entry to claim a storefront, the accepted suggestion is the claim.
 	const state = appliedState("new term");
-	state.suggestions = [accepted("new term", "fr")];
 	const { config } = pullConfig({}, state);
 	assert.deepEqual(config.operator.apps[0].keywords, ["new term"]);
 	assert.equal(config.operator.apps[0].name, "App");
@@ -305,25 +382,16 @@ test("pull writes back a storefront accepted for a keyword the file already list
 		operator: { ...EMPTY_ENTRY.operator, keywords: ["new term"] },
 	};
 	const state = appliedState("new term");
-	state.crawlPairs.push({
-		...state.crawlPairs[0],
-		id: 10,
-		storefront_code: "ca",
-		locale_code: "fr-CA",
-	});
-	state.suggestions = [accepted("new term", "ca")];
+	state.crawlPairs.push(pair(10, "ca", "fr-CA", "new term"));
+	state.trackedStorefronts.push(stored("ca", "fr-CA", "new term"));
 	const { added, config } = pullConfig(file, state);
 	assert.equal(added, 1);
 	assert.deepEqual(config.operator.apps[1].storefronts, ["ca"]);
 	assert.deepEqual(config.operator.apps[1].keywords, ["new term"]);
-	const pruned = planChanges(
-		config,
-		{ ...state, storefrontLocales: LOCALES },
-		{
-			prune: true,
-		}
-	);
+	const pruned = planChanges(config, state, { prune: true });
 	assert.equal(pruned.summary.pairsRetired, 0);
+	assert.equal(pruned.summary.storefrontsRemoved, 0);
+	assert.deepEqual(pruned.statements, []);
 	assert.equal(pullConfig(config, state).added, 0);
 });
 
@@ -401,6 +469,7 @@ test("an unchanged config writes nothing at all", () => {
 				language: "fr",
 			},
 		],
+		trackedStorefronts: [stored("fr", "fr-FR", "terme deux")],
 	};
 	const { statements } = planChanges(
 		{
