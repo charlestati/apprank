@@ -503,4 +503,52 @@ describe("ads weekly gate", () => {
 		const queued = await drainQueue();
 		expect(queued.find((t) => t.type === "ads_pull")).toBeDefined();
 	});
+
+	it("queues discovery on Mondays, from the storefronts each user tracks", async () => {
+		// Discovery only ran when someone triggered it by hand, so the suggestions
+		// inbox stayed empty unless somebody remembered to.
+		await env.DB.batch([
+			env.DB.prepare(
+				"INSERT OR IGNORE INTO keyword (id, text, normalized, language) VALUES (9101, 'seed term', 'seed term', 'fr')"
+			),
+			env.DB.prepare(
+				"INSERT INTO crawl_pair (keyword_id, storefront_code, locale_code, tier, ref_count, interval_hours, next_due_at) VALUES (9101, 'fr', 'fr-FR', 1, 1, 24, 0)"
+			),
+			env.DB.prepare(
+				"INSERT INTO tracked_keyword (user_id, app_id, keyword_id, created_at) VALUES ('admin', 424242, 9101, 0)"
+			),
+			env.DB.prepare(
+				"INSERT INTO tracked_keyword_storefront (tracked_keyword_id, storefront_code, locale_code, created_at) SELECT id, 'fr', 'fr-FR', 0 FROM tracked_keyword WHERE keyword_id = 9101"
+			),
+		]);
+		await runCron("0 3 * * *", { ADS_CLIENT_ID: "x" });
+		const queued = await drainQueue();
+		expect(queued.find((t) => t.type === "ads_discover")).toMatchObject({
+			seed: "seed term",
+			storefront: "fr",
+			userId: "admin",
+		});
+	});
+
+	it("queues the by-name pass on any day, for the keywords the week lacks", async () => {
+		// Tuesday: no genre pull, but a week missing a storefront-wide answer for
+		// a tracked keyword is asked for again rather than waiting for Monday.
+		vi.setSystemTime(new Date("2026-09-08T03:00:00Z"));
+		await env.DB.batch([
+			env.DB.prepare(
+				"INSERT OR IGNORE INTO keyword (id, text, normalized, language) VALUES (9102, 'plain term', 'plain term', 'fr')"
+			),
+			env.DB.prepare(
+				"INSERT INTO crawl_pair (keyword_id, storefront_code, locale_code, tier, ref_count, interval_hours, next_due_at) VALUES (9102, 'fr', 'fr-FR', 1, 1, 24, 0)"
+			),
+		]);
+		await runCron("0 3 * * *", { ADS_CLIENT_ID: "x" });
+		const queued = await drainQueue();
+		expect(queued.find((t) => t.type === "ads_pull")).toBeUndefined();
+		expect(queued.find((t) => t.type === "ads_discover")).toBeUndefined();
+		expect(queued.find((t) => t.type === "ads_terms")).toMatchObject({
+			storefront: "fr",
+			terms: ["plain term"],
+		});
+	});
 });

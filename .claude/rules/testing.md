@@ -11,6 +11,10 @@ paths:
   `apps/web/test/fixtures.ts`) and stub `globalThis.fetch` via `vi.stubGlobal`
   (see `apps/collector/test/helpers.ts`). Tests share the isolate with the
   Worker, so a global stub intercepts its outbound calls.
+- **Test files run one at a time** (`fileParallelism: false` in the collector's
+  `vitest.config.ts`). Storage is shared across the run, so a file emptying
+  `collector_state` in its `beforeEach` could land between another file's write
+  and its read; the scheduler-loop throttle test failed in CI exactly that way.
 - Inspect Durable Object state with `runInDurableObject` rather than widening
   the production RPC surface for tests.
 - A Durable Object receives the Worker's **deployed** env, not the per-call
