@@ -329,6 +329,58 @@ describe(crawlPair, () => {
 		await expect(env.ARCHIVE.get(err?.r2_key ?? "")).resolves.not.toBeNull();
 	});
 
+	it("still reports the throttle when the verbatim body cannot be archived", async () => {
+		// The throttle is the signal that parks the loop (invariant 4). Losing it
+		// because the forensic copy of the body failed to store would leave the
+		// crawler pushing at a bucket Apple has already closed.
+		await insertPair(1);
+		stubFetch(() =>
+			Response.json({ resultCount: 0, results: [] }, { status: 403 })
+		);
+		const put = vi
+			.spyOn(env.ARCHIVE, "put")
+			.mockRejectedValue(new Error("Network connection lost."));
+
+		const { throttled } = await crawlPair(env, pair, 3);
+		put.mockRestore();
+
+		expect(throttled).toBeTruthy();
+		const err = await env.DB.prepare(
+			"SELECT error_class, r2_key FROM fetch_error ORDER BY id DESC LIMIT 1"
+		).first<{ error_class: string; r2_key: string | null }>();
+		expect(err?.error_class).toBe("throttled");
+		// No key, because there is no object: r2_key must never name one that is
+		// not there.
+		expect(err?.r2_key).toBeNull();
+	});
+
+	it("keeps the observation when the one-in-ten sample cannot be archived", async () => {
+		// The sample exists for parser-bug recovery and R2 expires it at 21 days.
+		// The ranking it accompanies is the thing that cannot be re-fetched, so a
+		// failed sample must cost nothing.
+		await insertPair(1);
+		stubFetch(() => Response.json(fakeSearchResponse(12)));
+		const random = vi.spyOn(Math, "random").mockReturnValue(0);
+		const realPut = env.ARCHIVE.put.bind(env.ARCHIVE);
+		const put = vi
+			.spyOn(env.ARCHIVE, "put")
+			.mockImplementation(((key: string, body: string) =>
+				String(key).startsWith("verbatim/")
+					? Promise.reject(new Error("Network connection lost."))
+					: realPut(key, body)) as never);
+
+		const { throttled } = await crawlPair(env, pair, 3);
+		put.mockRestore();
+		random.mockRestore();
+
+		expect(throttled).toBeFalsy();
+		const ranking = await env.DB.prepare(
+			"SELECT result_count, r2_key FROM ranking WHERE pair_id = 1"
+		).first<{ result_count: number; r2_key: string | null }>();
+		expect(ranking?.result_count).toBe(12);
+		expect(ranking?.r2_key).toBeNull();
+	});
+
 	it("records a server error, reschedules the pair and writes no observation", async () => {
 		await insertPair(1);
 		stubFetch(() => new Response("boom", { status: 500 }));
@@ -365,8 +417,14 @@ describe(crawlPair, () => {
 		const row = await env.DB.prepare(
 			"SELECT r2_key FROM ranking WHERE pair_id = 1"
 		).first<{ r2_key: string | null }>();
-		expect(row?.r2_key).toBeTruthy();
-		await expect(env.ARCHIVE.get(row?.r2_key ?? "")).resolves.not.toBeNull();
+		expect(row?.r2_key).toMatch(/\.json\.gz$/u);
+		const object = await env.ARCHIVE.get(row?.r2_key ?? "");
+		expect(object?.httpMetadata?.contentType).toBe("application/gzip");
+		// Gzipped for size, but still the body Apple sent, byte for byte.
+		const text = await new Response(
+			object?.body.pipeThrough(new DecompressionStream("gzip"))
+		).text();
+		expect(JSON.parse(text)).toStrictEqual(fakeSearchResponse(2));
 		vi.restoreAllMocks();
 	});
 

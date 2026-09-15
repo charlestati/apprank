@@ -4,10 +4,9 @@
 // Each tile names its own period and its own denominator. A tile that says
 // "Ranked 41/129" and nothing else asks the reader to guess both.
 
-import { ArrowDown, ArrowUp } from "lucide-react";
-
 import type { Report } from "../api";
 import { fmt, useT } from "../i18n";
+import { TrendArrow } from "./delta";
 import { InfoTip } from "./info-tip";
 
 function DistributionBar({
@@ -71,13 +70,7 @@ export function SummaryTiles({
 										: "delta delta-down"
 								}
 							>
-								<span aria-hidden="true">
-									{stats.averageRankChange > 0 ? (
-										<ArrowUp aria-hidden="true" size={12} />
-									) : (
-										<ArrowDown aria-hidden="true" size={12} />
-									)}
-								</span>
+								<TrendArrow up={stats.averageRankChange > 0} />
 								{Math.abs(stats.averageRankChange)}
 							</span>
 						) : null}
@@ -148,13 +141,13 @@ export function SummaryTiles({
 					<div className="movement-stats">
 						<div>
 							<span className="delta delta-up">
-								<ArrowUp aria-hidden="true" size={12} /> {m.up}
+								<TrendArrow up /> {m.up}
 							</span>
 							<span className="movement-label">{t.wentUp}</span>
 						</div>
 						<div>
 							<span className="delta delta-down">
-								<ArrowDown aria-hidden="true" size={12} /> {m.down}
+								<TrendArrow up={false} /> {m.down}
 							</span>
 							<span className="movement-label">{t.wentDown}</span>
 						</div>

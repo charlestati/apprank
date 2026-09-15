@@ -142,6 +142,7 @@ export function suggestion(over: Partial<Suggestion> = {}): Suggestion {
 export function dataHealth(over: Partial<DataHealth> = {}): DataHealth {
 	return {
 		ascAnomalies: [],
+		lostLast24h: 0,
 		cadence: {
 			capacity: { keywordsPerDay: 600, overheadPerDay: 120, totalPerDay: 720 },
 			fastCount: 10,

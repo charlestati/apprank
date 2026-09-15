@@ -3,21 +3,25 @@
 Two Workers (`apprank-collector`, `apprank-web`), one D1 database, one R2
 bucket.
 
-| Path                    | What it is                                                                                                                    |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `packages/core`         | Drizzle schema + migrations, SQL seeds, Apple clients (WebCrypto ES256 JWT for Ads and App Store Connect), iTunes normalisers |
-| `apps/collector`        | The collector Worker. Two crons drive one `SchedulerDO` work loop, plus one admin route to trigger a job by hand              |
-| `apps/web`              | Hono JSON API, MCP endpoint, and the React SPA on Workers Static Assets                                                       |
-| `scripts/local-refresh` | Drives the collector from a runner or your own machine. This is what the GitHub Actions half runs                             |
-| `scripts/track`         | Reconciles the tracked set against `tracked.local.json`                                                                       |
-| `scripts/mcp-token`     | Issues an MCP credential and prints the SQL to apply it                                                                       |
-| `scripts/rebuild-d1`    | Rebuild or verify rank observations from the R2 archive                                                                       |
+| Path                        | What it is                                                                                                                    |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `packages/core`             | Drizzle schema + migrations, SQL seeds, Apple clients (WebCrypto ES256 JWT for Ads and App Store Connect), iTunes normalisers |
+| `apps/collector`            | The collector Worker. Two crons drive one `SchedulerDO` work loop, plus one admin route to trigger a job by hand              |
+| `apps/web`                  | Hono JSON API, MCP endpoint, and the React SPA on Workers Static Assets                                                       |
+| `scripts/local-refresh`     | Drives the collector from a runner or your own machine. This is what the GitHub Actions half runs                             |
+| `scripts/track`             | Reconciles the tracked set against `tracked.local.json`                                                                       |
+| `scripts/mcp-token`         | Issues an MCP credential and prints the SQL to apply it                                                                       |
+| `scripts/rebuild-d1`        | Rebuild or verify rank and popularity observations from the R2 archive                                                        |
+| `scripts/keyword-relevance` | Scores pending keyword suggestions against the tracked set with a local embedding model; dismisses the tail                   |
 
 ## Three rules that shape the rest
 
 - **History cannot be backfilled.** Apple publishes no past ranks. Pairs carry a
   `next_due_at`, so an outage runs late rather than never, but midnight UTC is
-  the deadline: an observation is keyed to its date.
+  the deadline: an observation is keyed to its date. Apple Ads popularity is the
+  one exception, because Apple does serve past weeks:
+  `POST /admin/run?job=ads_backfill` recovers the weeks a database holds nothing
+  for. Nothing else here has a second chance.
 - **Visible gaps beat silent garbage.** Every observation carries provenance
   (HTTP status, response time, result count, collector version, archive key);
   Apple's 403-with-empty-results rate limit is recorded as an error, not stored
@@ -74,11 +78,19 @@ indexes only the top 10 and any tracked app, because a row per position would be
 ```
 rankings/v1/{yyyy-mm}/{storefront}/{date}.ndjson     permanent, the rebuild source
 staging/rankings/{date}/{pairId}.json                pre-compaction (7-day lifecycle)
-verbatim/{date}/…                                    failures + 1-in-10 sample (21-day lifecycle)
+verbatim/{date}/…-{throttled,error}.json             failure bodies (21-day lifecycle)
+verbatim/{date}/….json.gz                            1-in-10 success sample, gzipped (21-day lifecycle)
 asc/{appId}/{report}/{granularity}/{date}-….tsv.gz   App Store Connect, as downloaded
-ads/popularity/{week}/{storefront}/{genre}.json      Apple Ads, as fetched
-charts/… lookups/… reviews/…                         as fetched
+ads/popularity/{week}/{storefront}/{genreId}-{CAT}.json  Apple Ads genre list
+ads/popularity-terms/{week}/{storefront}/{n}.json    Apple Ads, by tracked term
+charts/{yyyy-mm}/{sf}/{chart}/{genre|all}/{date}.json.gz  chart feed, gzipped
+lookups/… reviews/…                                  as fetched
 ```
+
+Search samples and chart bodies are gzipped (about 5× smaller) because they were
+most of the bucket: a 200-result search page is ~1.5 MB. Chart objects written
+before 2026-09-15 are plain `.json`, so a reader of `charts/` must accept both
+suffixes.
 
 D1 holds a hot window, the archive holds everything, which is what makes
 pruning, retention and schema changes performance choices rather than lossy
@@ -87,9 +99,19 @@ ones. Rebuild with `pnpm rebuild:d1` (not `pnpm rebuild`, a pnpm built-in).
 It reads `rankings/v1/` and writes `ranking`, its `rank_entry` index (the
 crawler's rule: top 10 plus tracked apps, which is why it also needs wrangler
 auth to read `tracked_app`), and a bare `app` row for any indexed app the
-database has not met, which the next live crawl fills in. The other observation
-tables are recoverable in principle but no script does it, so treat a D1 prune
-as reversible only for rank observations.
+database has not met, which the next live crawl fills in. It also reads the two
+`ads/` prefixes and writes `popularity` and `seed_term`.
+
+Every statement is gap-filling, so a row the collector wrote with better
+provenance is never replaced. Two things it deliberately does not do. It writes
+no `present = 0` rows: the archive holds Apple's answers, not our questions, so
+it cannot say which keywords were tracked in a given week and a rebuilt absence
+would be a guess wearing an observation's clothes. And it skips any
+`ads/popularity/` object whose key names the category without the genre id,
+counting them as it goes, because `PRODUCTIVITY_UTILITIES` maps back to two
+genres. The remaining observation tables (metadata, reviews, ratings, charts)
+are recoverable in principle but no script does it, so treat a D1 prune as
+reversible only for ranks and popularity.
 
 ## Release markers
 
@@ -118,6 +140,15 @@ The Tier-2 global market sweep (to calibrate difficulty against market-wide
 distributions rather than the current absolute scale), brand-versus-generic
 keyword classification, iPad as a separate device dimension, hourly granularity,
 and Google Play.
+
+The sweep is further along than "not started" suggests. `seed_term` fills from
+the Ads genre pull, `job=ads_discover` writes `promote_keyword` suggestions for
+variants of tracked keywords, and accepting one creates the keyword, crawl pair
+and tracking rows. What is still missing is `seed_term.label` /
+`matched_app_id`, which are never populated, and that is what ranking the genre
+list needs most: sorted by popularity alone, the untracked terms in France/Games
+are nine parts competitor brand name (roblox, fortnite, brawl stars) to one part
+anything actionable.
 
 Out of scope: download and revenue estimation for other people's apps, which
 needs panel data this does not have; team accounts and billing; anything with an

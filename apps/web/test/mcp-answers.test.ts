@@ -342,13 +342,15 @@ describe("get_keyword_report", () => {
 		).toBeDefined();
 	});
 
-	it("warns when most keywords have no published volume", async () => {
+	it("warns that coverage is thin, and says which kind of silence it is", async () => {
 		const { data } = await call("get_keyword_report", {
 			appId: APP_ID,
 			storefront: "fr",
 		});
+		// The fixture has never been through a popularity pull, so the note has to
+		// say that rather than claim Apple answered and had nothing.
 		expect((data.provenance as { note: string }).note).toContain(
-			"Absent volume is not zero volume"
+			"have not been through a popularity pull yet"
 		);
 	});
 });

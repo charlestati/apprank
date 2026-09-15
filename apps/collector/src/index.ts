@@ -1,3 +1,5 @@
+import { STOREFRONT_WIDE_GENRE_ID } from "@apprank/core/apple/ads";
+
 import type { Env } from "./env";
 import { authorize } from "./lib/admin";
 import { resolveAdsCategory } from "./lib/ads-genres";
@@ -5,8 +7,12 @@ import type { GenreRow } from "./lib/ads-genres";
 import { collectsPublicEndpoints } from "./lib/mode";
 import { loadPacing, savePacing, maybeRaise } from "./lib/pacing";
 import { tracked } from "./lib/runs";
-import { getState, getStateJson } from "./lib/state";
-import { latestCompleteWeekStart } from "./tasks/ads";
+import { getState, getStateJson, recordFetchError } from "./lib/state";
+import {
+	latestCompleteWeekStart,
+	recentWeekStarts,
+	trackedTerms,
+} from "./tasks/ads";
 import { ascDetectSkippedDates } from "./tasks/asc";
 import { recomputeCadence } from "./tasks/cadence";
 import { recomputeDifficulty } from "./tasks/difficulty";
@@ -120,6 +126,42 @@ async function buildAdsTask(
 	return { queue, type: "ads_pull", weekStart };
 }
 
+/**
+ * Run one piece of daily bookkeeping without letting it cancel the day.
+ *
+ * Pacing, cadence and difficulty all derive from data already held: they
+ * change how often a pair is checked, never what is collected today. They are
+ * also the first D1 calls of the run, so they meet an outage before anything
+ * else does, and a throw here used to abort `runDailyJobs` before `enqueue`,
+ * taking every metadata, review and chart pull of the day with it. That is how
+ * the 2026-09-11 cycle ended with nothing queued, and a day nobody collected
+ * cannot be backfilled (CLAUDE.md, invariant 1). Record the failure and carry
+ * on: tomorrow's run recomputes all three from scratch anyway.
+ */
+async function bestEffort(
+	env: Env,
+	step: string,
+	work: () => Promise<unknown>
+): Promise<void> {
+	try {
+		await work();
+	} catch (error) {
+		try {
+			await recordFetchError(env.DB, {
+				endpoint: `daily:${step}`,
+				errorClass: "task_threw",
+				message:
+					error instanceof Error ? error.message.slice(0, 1200) : "unknown",
+			});
+		} catch {
+			// The same outage that broke the step breaks the row that records it.
+			// Swallow it: re-throwing here would restore the failure this exists to
+			// prevent.
+			console.log(`daily:${step} failed, and so did recording it`);
+		}
+	}
+}
+
 async function runDailyJobs(env: Env): Promise<{
 	queued: number;
 	tasks: string[];
@@ -132,17 +174,19 @@ async function runDailyJobs(env: Env): Promise<{
 		.slice(0, 10);
 
 	// Pacing: raise the learned rate after a clean 24h; reset window counters.
-	await savePacing(env.DB, maybeRaise(await loadPacing(env.DB), today));
+	await bestEffort(env, "pacing", async () =>
+		savePacing(env.DB, maybeRaise(await loadPacing(env.DB), today))
+	);
 
 	// Re-space every tracked pair against the budget the learned rate affords,
 	// now that the rate for the day is settled. Growth in apps or keywords costs
 	// resolution, never coverage.
-	await recomputeCadence(env);
+	await bestEffort(env, "cadence", () => recomputeCadence(env));
 
 	// Difficulty is derived from observations we already hold, so it costs
 	// nothing against the Apple budget and can be re-run whenever the formula
 	// changes.
-	await recomputeDifficulty(env);
+	await bestEffort(env, "difficulty", () => recomputeDifficulty(env));
 
 	// Compact yesterday's staging observations into the permanent archive.
 	tasks.push({ date: yesterday, type: "compact" });
@@ -251,7 +295,10 @@ async function runDailyJobs(env: Env): Promise<{
 	}
 
 	await stub.enqueue(tasks);
-	await ascDetectSkippedDates(env);
+	// Gap *detection*, not collection: it reads what ASC already gave us and
+	// writes notes. Nothing downstream waits on it, so it must not be the thing
+	// that fails a run whose work is already queued.
+	await bestEffort(env, "asc_skipped_dates", () => ascDetectSkippedDates(env));
 	return { queued: tasks.length, tasks: tasks.map((t) => t.type) };
 }
 
@@ -273,15 +320,156 @@ const JOBS = [
 	"daily",
 	"asc",
 	"ads",
+	"ads_backfill",
+	"ads_discover",
 	"step",
 	"crawl",
 	"cadence",
 	"difficulty",
 ] as const;
+
+/**
+ * How many complete weeks of popularity a backfill reaches for. Thirteen is the
+ * report's longest window (90 days) rounded to whole weeks, so the default
+ * fills exactly what the dashboard can draw. Overridable through the
+ * `ads:backfill_weeks` collector_state key, because how far back Apple still
+ * serves is a fact about Apple, not about this code.
+ */
+const BACKFILL_WEEKS = 13;
+
+/**
+ * Queue keyword discovery: one Apple request per tracked keyword per tracked
+ * (user, app, storefront).
+ *
+ * Seeded from the keywords somebody already chose, because that is what makes
+ * the answers relevant. Apple scopes suggestions to the promoted app, so no
+ * brand classification of our own is needed to keep competitors out of the
+ * inbox.
+ *
+ * Nothing here spends crawl budget. It costs one Ads request per seed, on a
+ * credentialed endpoint that has nothing to do with the shared-IP iTunes limit,
+ * and it proposes rows an operator then has to accept.
+ */
+async function buildDiscovery(env: Env): Promise<Task[]> {
+	const rows = await env.DB.prepare(
+		`SELECT DISTINCT tk.user_id AS userId, a.id AS appId,
+            cp.storefront_code AS storefront, cp.locale_code AS localeCode,
+            k.language AS language, k.normalized AS seed
+       FROM tracked_keyword tk
+       JOIN app a ON a.id = tk.app_id
+       JOIN keyword k ON k.id = tk.keyword_id
+       JOIN crawl_pair cp ON cp.keyword_id = k.id AND cp.ref_count > 0
+      ORDER BY tk.user_id, a.id, cp.storefront_code, k.normalized`
+	).all<{
+		userId: string;
+		appId: number;
+		storefront: string;
+		localeCode: string;
+		language: string;
+		seed: string;
+	}>();
+
+	// One task per (user, app, storefront, locale, language), carrying its seeds;
+	// the step walks them one request at a time so a tick stays bounded. Locale
+	// and language belong in the key because the task stamps both onto every
+	// proposal: keyed on storefront alone, a Canadian unit took its locale from
+	// whichever row came first, and accepting a French seed's variant created an
+	// en-CA pair and an English keyword row.
+	const byUnit = new Map<string, Task>();
+	for (const r of rows.results) {
+		const key = `${r.userId}|${r.appId}|${r.storefront}|${r.localeCode}|${r.language}`;
+		const existing = byUnit.get(key);
+		if (existing?.type === "ads_discover") {
+			existing.rest.push(r.seed);
+			continue;
+		}
+		byUnit.set(key, {
+			appAdamId: String(r.appId),
+			appId: r.appId,
+			language: r.language,
+			localeCode: r.localeCode,
+			rest: [],
+			seed: r.seed,
+			storefront: r.storefront,
+			type: "ads_discover",
+			userId: r.userId,
+		});
+	}
+	return [...byUnit.values()];
+}
+
+/**
+ * Queue the by-name popularity pass for every recent week we hold nothing for.
+ *
+ * Only the by-name pass. The genre pull exists to fill `seed_term`, which is
+ * keyed by month and costs 500 writes a unit; replaying a quarter of it would
+ * spend most of a day's row budget re-deriving a discovery list nobody is
+ * waiting for. The tracked keywords are what a backfill is for.
+ */
+async function buildAdsBackfill(env: Env): Promise<Task[]> {
+	const weeks = recentWeekStarts(
+		Number(await getState(env.DB, "ads:backfill_weeks")) || BACKFILL_WEEKS
+	);
+	const storefronts = await env.DB.prepare(
+		`SELECT DISTINCT cp.storefront_code AS code
+       FROM crawl_pair cp
+       JOIN storefront s ON s.code = cp.storefront_code
+      WHERE cp.ref_count > 0 AND s.active = 1`
+	).all<{ code: string }>();
+	const held = await env.DB.prepare(
+		"SELECT DISTINCT storefront_code AS code, week_start FROM popularity WHERE genre_id = ?1"
+	)
+		.bind(STOREFRONT_WIDE_GENRE_ID)
+		.all<{ code: string; week_start: string }>();
+	const have = new Set(held.results.map((r) => `${r.code}:${r.week_start}`));
+
+	const tasks: Task[] = [];
+	for (const s of storefronts.results) {
+		const terms = await trackedTerms(env, s.code);
+		if (terms.length === 0) {
+			continue;
+		}
+		for (const weekStart of weeks) {
+			// A week already held is skipped rather than re-asked: popularity is
+			// weekly and settled, so a second pull of it fetches identical data and
+			// rewrites a row per tracked keyword for nothing.
+			if (have.has(`${s.code}:${weekStart}`)) {
+				continue;
+			}
+			tasks.push({ storefront: s.code, terms, type: "ads_terms", weekStart });
+		}
+	}
+	return tasks;
+}
 type Job = (typeof JOBS)[number];
 
 function json(body: unknown, status = 200): Response {
 	return Response.json(body, { status });
+}
+
+/**
+ * The two Ads jobs that only queue work: build the task list, enqueue it, say
+ * how much. Shared because they differ in nothing but the builder and the word
+ * for the count, and because writing the shape out twice pushed `runJob` past
+ * the complexity ceiling.
+ */
+async function queueAdsJob(
+	env: Env,
+	stub: Awaited<ReturnType<Env["SCHEDULER"]["get"]>>,
+	job: Job,
+	build: (env: Env) => Promise<Task[]>,
+	countLabel: string
+): Promise<Response> {
+	if (!env.ADS_CLIENT_ID) {
+		return json({ error: "ADS secrets not configured", job }, 412);
+	}
+	const tasks = await build(env);
+	await stub.enqueue(tasks);
+	return json({
+		job,
+		queued: await stub.queueDepth(),
+		[countLabel]: tasks.length,
+	});
 }
 
 /**
@@ -328,6 +516,12 @@ async function runJob(
 				verifyOnly: opts.verifyOnly ?? true,
 			});
 			return json({ job, ...result }, result.ok ? 200 : 502);
+		}
+		case "ads_backfill": {
+			return await queueAdsJob(env, stub, job, buildAdsBackfill, "weeks");
+		}
+		case "ads_discover": {
+			return await queueAdsJob(env, stub, job, buildDiscovery, "units");
 		}
 		case "step": {
 			const result = await stub.stepNow();

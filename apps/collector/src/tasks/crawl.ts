@@ -3,7 +3,8 @@
 // Persistence per observation (all idempotent, because alarms are
 // at-least-once):
 //   R2 staging/rankings/{date}/{pairId}.json      normalised observation
-//   R2 verbatim/{date}/{fetchId}.json             failures + 1-in-10 sample
+//   R2 verbatim/{date}/{fetchId}-{throttled,error}.json   failure bodies
+//   R2 verbatim/{date}/{fetchId}.json.gz          1-in-10 success sample
 // D1 ranking (UNIQUE pair_id+date), rank_entry (top-10 + tracked apps), app +
 // app_metadata_version (top-10 + tracked only; full 200-depth app metadata is
 // recoverable from the archive in batch, not worth 200 rows of writes per
@@ -18,6 +19,7 @@ import {
 
 import type { Env } from "../env";
 import { COLLECTOR_VERSION } from "../env";
+import { GZIP_METADATA, gzip, putArchived, tryPut } from "../lib/archive";
 import { recordFetchError } from "../lib/state";
 
 export interface DuePair {
@@ -86,19 +88,8 @@ function nextDue(intervalHours: number, windowStartHour: number): number {
  * where the binding proxy was answering "Network connection lost" and
  * "Connection timed out". R2 is the rebuild source, so an unarchived
  * observation is the one loss no later run can repair, and Apple will not serve
- * that page again. Read back, retry once, then give up and let the caller
- * record a failure rather than a ranking.
+ * that page again. See lib/archive for how the two writes differ.
  */
-async function putArchived(env: Env, key: string, body: string): Promise<void> {
-	for (let attempt = 0; attempt < 2; attempt += 1) {
-		await env.ARCHIVE.put(key, body);
-		if (await env.ARCHIVE.head(key)) {
-			return;
-		}
-	}
-	throw new Error(`archive did not persist: ${key}`);
-}
-
 /** Returns true when the fetch was throttled (caller backs off). */
 export async function crawlPair(
 	env: Env,
@@ -115,24 +106,24 @@ export async function crawlPair(
 	const fetchId = `${date}-p${pair.id}-${Date.now()}`;
 
 	if (outcome.kind === "throttled") {
-		await env.ARCHIVE.put(
-			`verbatim/${date}/${fetchId}-throttled.json`,
-			outcome.bodyText
-		);
+		const key = `verbatim/${date}/${fetchId}-throttled.json`;
+		const archived = await tryPut(env, key, outcome.bodyText);
 		await recordFetchError(env.DB, {
 			endpoint: "itunes:search",
 			errorClass: "throttled",
 			httpStatus: outcome.status,
 			params: `${pair.keyword_text}|${pair.storefront_code}|${pair.locale_code}`,
-			r2Key: `verbatim/${date}/${fetchId}-throttled.json`,
+			r2Key: archived ? key : undefined,
 			responseMs: outcome.responseMs,
 		});
 		return { throttled: true };
 	}
 
 	if (outcome.kind === "error" || !validateSearchResponse(outcome.json)) {
-		await env.ARCHIVE.put(
-			`verbatim/${date}/${fetchId}-error.json`,
+		const key = `verbatim/${date}/${fetchId}-error.json`;
+		const archived = await tryPut(
+			env,
+			key,
 			outcome.bodyText.slice(0, 4_000_000)
 		);
 		await recordFetchError(env.DB, {
@@ -140,7 +131,7 @@ export async function crawlPair(
 			errorClass: outcome.kind === "error" ? "http_error" : "invalid_body",
 			httpStatus: outcome.status,
 			params: `${pair.keyword_text}|${pair.storefront_code}|${pair.locale_code}`,
-			r2Key: `verbatim/${date}/${fetchId}-error.json`,
+			r2Key: archived ? key : undefined,
 			responseMs: outcome.responseMs,
 		});
 		// Not throttling: reschedule the pair for tomorrow rather than wedging
@@ -155,11 +146,17 @@ export async function crawlPair(
 	const { resultIds, resultCount } = extractRanking(json);
 
 	// Verbatim sample: 1-in-10 successes, for parser-bug recovery (R2 lifecycle
-	// expires these at 21 days).
-	const r2Key = Math.random() < 0.1 ? `verbatim/${date}/${fetchId}.json` : null;
-	if (r2Key) {
-		await env.ARCHIVE.put(r2Key, outcome.bodyText);
-	}
+	// expires these at 21 days). Best-effort on purpose, and the column records
+	// only a sample that actually landed. Gzipped, because a 200-result page is
+	// ~1.5 MB and the samples were 88% of the bucket; failure bodies above stay
+	// plain, being a few hundred bytes and read by hand.
+	const sampled =
+		Math.random() < 0.1 ? `verbatim/${date}/${fetchId}.json.gz` : null;
+	const r2Key =
+		sampled &&
+		(await tryPut(env, sampled, await gzip(outcome.bodyText), GZIP_METADATA))
+			? sampled
+			: null;
 
 	// Tracked apps in this response (beyond the top 10).
 	const trackedRows = await env.DB.prepare(

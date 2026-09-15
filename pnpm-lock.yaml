@@ -135,6 +135,8 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
 
+  scripts/keyword-relevance: {}
+
   scripts/mcp-token: {}
 
   scripts/rebuild-d1:

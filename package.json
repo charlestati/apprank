@@ -20,7 +20,8 @@
 		"track": "node scripts/track/track.mjs",
 		"rebuild:d1": "pnpm --filter rebuild-d1 rebuild",
 		"rank-churn": "node scripts/rank-churn/measure.mjs",
-		"test:scripts": "node --test \"scripts/**/*.test.mjs\""
+		"test:scripts": "node --test \"scripts/**/*.test.mjs\"",
+		"relevance": "pnpm --filter keyword-relevance score"
 	},
 	"devDependencies": {
 		"oxfmt": "0.65.0",

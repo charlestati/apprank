@@ -12,9 +12,10 @@ import {
 import type { PacingState } from "./lib/pacing";
 import { recordHeartbeat } from "./lib/runs";
 import { recordFetchError, getStateJson } from "./lib/state";
-import { adsPullStep } from "./tasks/ads";
+import { adsPullStep, adsTermsStep } from "./tasks/ads";
 import { ascPollStep, ascFetchInstanceStep } from "./tasks/asc";
 import { pickDuePair, crawlPair } from "./tasks/crawl";
+import { adsDiscoverStep } from "./tasks/discover";
 import {
 	lookupPullStep,
 	reviewPullStep,
@@ -39,6 +40,25 @@ import type { Task } from "./tasks/types";
  * Alarm contract: at-least-once, auto-retry ×6 with backoff on throw, so every
  * step is idempotent, and we deliberately never call deleteAlarm().
  */
+/**
+ * Whether a step died because this Durable Object went away underneath it.
+ *
+ * Every deploy restarts the object, and an in-flight call is dropped with one
+ * of Cloudflare's own messages. It is not a failed fetch and it costs no
+ * observation: alarms are at-least-once and every step is idempotent, so the
+ * task comes round again. Recording it as `task_threw` put "data lost" on the
+ * dashboard every time the Worker was deployed, which is the false signal the
+ * loss/absorbed split exists to prevent.
+ */
+export function isRestart(message: string): boolean {
+	return (
+		message.includes("Durable Object") &&
+		(message.includes("no longer active") ||
+			message.includes("code was updated") ||
+			message.includes("code has been updated"))
+	);
+}
+
 export class SchedulerDO extends DurableObject<Env> {
 	async enqueue(tasks: Task[]): Promise<void> {
 		if (tasks.length === 0) {
@@ -150,7 +170,7 @@ export class SchedulerDO extends DurableObject<Env> {
 			threw = error instanceof Error ? error.message : "unknown failure";
 			await recordFetchError(this.env.DB, {
 				endpoint: `admin:${task.type}`,
-				errorClass: "task_threw",
+				errorClass: isRestart(threw) ? "do_restarted" : "task_threw",
 				message: threw.slice(0, 1200),
 			});
 			return {
@@ -281,11 +301,13 @@ export class SchedulerDO extends DurableObject<Env> {
 				followUps = await this.#run(task, pacing, "loop");
 			} catch (error) {
 				const attempt = (task.attempt ?? 0) + 1;
+				const message = error instanceof Error ? error.message : "unknown";
 				await recordFetchError(this.env.DB, {
 					endpoint: `task:${task.type}`,
-					errorClass: "task_threw",
-					message:
-						error instanceof Error ? error.message.slice(0, 1200) : "unknown",
+					// The loop is where a deploy actually lands: the task is requeued
+					// below, so a restart here costs nothing and must not read as loss.
+					errorClass: isRestart(message) ? "do_restarted" : "task_threw",
+					message: message.slice(0, 1200),
 				});
 				if (attempt < 3) {
 					followUps = [{ ...task, attempt }];
@@ -371,6 +393,12 @@ export class SchedulerDO extends DurableObject<Env> {
 			}
 			case "ads_pull": {
 				return adsPullStep(this.env, task);
+			}
+			case "ads_terms": {
+				return adsTermsStep(this.env, task);
+			}
+			case "ads_discover": {
+				return adsDiscoverStep(this.env, task);
 			}
 			case "compact": {
 				return compactStep(this.env, task);

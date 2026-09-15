@@ -7,7 +7,23 @@
 // exception: they describe first-party analytics for one app, so they are
 // joined against `tracked_app` and answer only for apps the caller tracks.
 
+import { isLoss } from "./fetch-error-classes";
+
 const DAY_MS = 86_400_000;
+
+/**
+ * Rows in the window that cost an observation. Throttles and Apple-side
+ * findings are excluded, which is the whole reason the badge can be trusted.
+ */
+function lostLast24h(rows: ErrorClassRow[]): number {
+	let total = 0;
+	for (const row of rows) {
+		if (isLoss(row.error_class)) {
+			total += row.n;
+		}
+	}
+	return total;
+}
 
 export interface ErrorClassRow {
 	error_class: string;
@@ -40,10 +56,19 @@ export interface DataHealth {
 		errorClass: string;
 		/** Which Apple endpoint failed. A class on its own names no subject. */
 		endpoint: string;
+		/**
+		 * Whether this class means an observation was lost. Throttles and the
+		 * App Store Connect date detector are not losses, and counting them as
+		 * failures kept the status badge red every day. Still listed, never
+		 * hidden.
+		 */
+		loss: boolean;
 		lastAt: number;
 		message: string | null;
 		n: number;
 	}[];
+	/** Rows in the last 24h that cost us an observation. What the badge counts. */
+	lostLast24h: number;
 	pacing: unknown;
 	tier1Pairs: number;
 }
@@ -188,9 +213,11 @@ export async function dataHealth(
 			endpoint: e.endpoint,
 			errorClass: e.error_class,
 			lastAt: e.last_at,
+			loss: isLoss(e.error_class),
 			message: e.sample_message,
 			n: e.n,
 		})),
+		lostLast24h: lostLast24h(errors.results),
 		pacing: pacing ? JSON.parse(pacing.value) : null,
 		tier1Pairs: due?.n ?? 0,
 	};

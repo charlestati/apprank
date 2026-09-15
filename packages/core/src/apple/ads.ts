@@ -79,6 +79,69 @@ export class AdsRateLimitedError extends Error {
 	}
 }
 
+/**
+ * The quota headers Apple puts on every response, successful or not. Apple asks
+ * clients to pace off these rather than to discover the ceiling by being
+ * refused, so a spent window is treated here exactly like a 429: the caller
+ * backs off before the request that would have earned one.
+ */
+export interface AdsRateLimit {
+	limit: number | null;
+	remaining: number | null;
+	resetSeconds: number | null;
+}
+
+function readRateLimit(headers: Headers): AdsRateLimit {
+	const num = (name: string) => {
+		const raw = headers.get(name);
+		if (raw === null) {
+			return null;
+		}
+		const value = Number(raw);
+		return Number.isFinite(value) ? value : null;
+	};
+	return {
+		limit: num("RateLimit-Limit"),
+		remaining: num("RateLimit-Remaining"),
+		resetSeconds: num("RateLimit-Reset"),
+	};
+}
+
+/**
+ * Turn a refusal into the one error the callers already know how to requeue on.
+ * `Retry-After` wins over `RateLimit-Reset`: Apple documents it as the exact
+ * wait for the request it just rejected.
+ *
+ * Only a 429 is a refusal. A 200 carrying `RateLimit-Remaining: 0` spent the
+ * last request of the window *and got its answer*; throwing there discarded a
+ * body that had already cost quota, before anything archived it, and the retry
+ * spent the quota again. The header still travels back in `rateLimit`.
+ */
+function rateLimitGuard(
+	res: Response,
+	rateLimit: AdsRateLimit
+): AdsRateLimitedError | null {
+	if (res.status !== 429) {
+		return null;
+	}
+	const retryAfter = res.headers.get("Retry-After");
+	return new AdsRateLimitedError(
+		retryAfter ? Math.trunc(Number(retryAfter)) : (rateLimit.resetSeconds ?? 60)
+	);
+}
+
+/**
+ * Genre id for a popularity row that has no genre.
+ *
+ * Apple publishes popularity per country; a genre only ever scopes a *ranking*
+ * within it. A row fetched by search term carries no genre at all, so it is
+ * stored against this sentinel rather than against whichever genre the
+ * discovery pass happened to be walking. Labelling a storefront-wide number
+ * "Games popularity" would claim precision Apple does not provide, and would
+ * make the column incomparable between two keywords.
+ */
+export const STOREFRONT_WIDE_GENRE_ID = 0;
+
 export interface SearchTermPopularityRow {
 	searchTerm: string;
 	rankInGenre?: number;
@@ -86,6 +149,39 @@ export interface SearchTermPopularityRow {
 	searchPopularity1to100?: number;
 	searchPopularity1to5?: number;
 	[key: string]: unknown;
+}
+
+/** One row of `POST /v1/suggestions/keywords/query`. */
+export interface KeywordSuggestionRow {
+	text: string;
+	/**
+	 * Apple's relevance score for this keyword *against this app*, 0-100.
+	 *
+	 * Not search popularity, and it must never be stored as one. Measured
+	 * against the live account on the same storefront and week, a competitor head
+	 * term is 64
+	 * on the insights endpoint and 7 here, while the app's own brand term is 62
+	 * here and 53 there. It ranks how well a term suits the app, which is what a
+	 * discovery feed wants and what a volume column must not be.
+	 */
+	popularity?: number;
+	[key: string]: unknown;
+}
+
+export interface KeywordSuggestionQuery {
+	/** App Store (Adam) id. Suggestions are scoped to one promoted app. */
+	promotedObjectId: string;
+	/** Uppercase ISO-2 codes. */
+	countriesOrRegions?: string[];
+	/**
+	 * Seed terms. Send **one**: Apple narrows on the list rather than answering
+	 * for each entry, so 5 seeds came back with a single row and 100 came back
+	 * with 16. One seed returns that seed plus the terms Apple associates with
+	 * it, which is the whole point.
+	 */
+	terms?: string[];
+	limit?: number;
+	offset?: number;
 }
 
 export interface PopularityQuery {
@@ -162,7 +258,7 @@ export class AdsClient {
 	async searchTermPopularity(q: PopularityQuery): Promise<{
 		rows: SearchTermPopularityRow[];
 		raw: unknown;
-		rateLimitRemaining: string | null;
+		rateLimit: AdsRateLimit;
 	}> {
 		const body = {
 			filters: [
@@ -194,12 +290,10 @@ export class AdsClient {
 				method: "POST",
 			}
 		);
-		const rateLimitRemaining = res.headers.get("RateLimit-Remaining");
-		if (res.status === 429) {
-			const retryAfter = res.headers.get("Retry-After");
-			throw new AdsRateLimitedError(
-				retryAfter ? Math.trunc(Number(retryAfter)) : 60
-			);
+		const rateLimit = readRateLimit(res.headers);
+		const refused = rateLimitGuard(res, rateLimit);
+		if (refused) {
+			throw refused;
 		}
 		if (!res.ok) {
 			throw new Error(
@@ -209,7 +303,85 @@ export class AdsClient {
 		const raw = (await res.json()) as {
 			result?: { rows?: SearchTermPopularityRow[] };
 		};
-		return { rateLimitRemaining, raw, rows: raw.result?.rows ?? [] };
+		return { rateLimit, raw, rows: raw.result?.rows ?? [] };
+	}
+
+	/**
+	 * Keywords Apple associates with this app, for discovery.
+	 *
+	 * Scoped to a promoted app rather than to a genre, which is what makes the
+	 * answers relevant without any classification of our own: the genre top-500
+	 * sorted by popularity is nine parts competitor brand name. Seeded with a
+	 * term we already track, Apple returns the near variants of it that nobody
+	 * thought to add.
+	 *
+	 * `popularity` here is relevance to the app, not search volume. See
+	 * KeywordSuggestionRow.
+	 */
+	async keywordSuggestions(q: KeywordSuggestionQuery): Promise<{
+		rows: KeywordSuggestionRow[];
+		raw: unknown;
+		rateLimit: AdsRateLimit;
+	}> {
+		const body = {
+			filters: [
+				{
+					field: "promotedObjectId",
+					operator: "EQUALS",
+					value: [q.promotedObjectId],
+				},
+				// Required alongside the id; omitting either earns a 400 carrying
+				// MISSING_REQUIRED_FILTER.
+				{
+					field: "promotedObjectType",
+					operator: "EQUALS",
+					value: ["APPSTORE_APP"],
+				},
+				...(q.countriesOrRegions?.length
+					? [
+							{
+								field: "countriesOrRegions",
+								operator: "IN",
+								value: q.countriesOrRegions,
+							},
+						]
+					: []),
+				...(q.terms?.length
+					? [{ field: "terms", operator: "IN", value: q.terms }]
+					: []),
+			],
+			// No `sorting`. Apple's own discussion says to sort by popularity, and
+			// the API answers `INVALID_FIELD_ATTRIBUTE ... 'popularity' is not
+			// queryable`.
+			pagination: { offset: q.offset ?? 0, pageSize: q.limit ?? 500 },
+		};
+		const res = await fetch(`${API_BASE}/v1/suggestions/keywords/query`, {
+			body: JSON.stringify(body),
+			headers: await this.#headers(),
+			method: "POST",
+		});
+		const rateLimit = readRateLimit(res.headers);
+		const refused = rateLimitGuard(res, rateLimit);
+		if (refused) {
+			throw refused;
+		}
+		if (!res.ok) {
+			throw new Error(
+				`Ads keyword suggestions failed: ${res.status} ${await res.text()}`
+			);
+		}
+		// This endpoint returns `result` as the array itself, where the insights
+		// ones wrap rows in `result.rows`. Accept both rather than guess: the
+		// wrong guess yields an empty list, which reads as "Apple knows none".
+		const raw = (await res.json()) as {
+			result?: KeywordSuggestionRow[] | { rows?: KeywordSuggestionRow[] };
+		};
+		const { result } = raw;
+		return {
+			rateLimit,
+			raw,
+			rows: Array.isArray(result) ? result : (result?.rows ?? []),
+		};
 	}
 
 	/**

@@ -366,6 +366,23 @@ describe(chartPullStep, () => {
 		expect(row?.http_status).toBe(200);
 	});
 
+	it("archives the chart body gzipped under a key that says so", async () => {
+		stubFetch(() => Response.json(chartFeed));
+		await chartPullStep(env, {
+			queue: [{ chart: "free", genreId: 7019, storefront: "fr" }],
+		});
+		const row = await env.DB.prepare(
+			"SELECT r2_key FROM chart_ranking LIMIT 1"
+		).first<{ r2_key: string }>();
+		expect(row?.r2_key).toMatch(/^charts\/.+\/fr\/free\/7019\/.+\.json\.gz$/u);
+		const object = await env.ARCHIVE.get(row?.r2_key ?? "");
+		expect(object?.httpMetadata?.contentType).toBe("application/gzip");
+		const text = await new Response(
+			object?.body.pipeThrough(new DecompressionStream("gzip"))
+		).text();
+		expect(JSON.parse(text)).toStrictEqual(chartFeed);
+	});
+
 	it("updates the storefront-wide chart instead of appending a duplicate", async () => {
 		// genre_id IS NULL for the whole-storefront chart, and SQLite counts every
 		// NULL as distinct in a UNIQUE index, so the ordinary conflict target

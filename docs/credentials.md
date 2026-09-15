@@ -139,5 +139,15 @@ curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
   "https://<collector>.workers.dev/admin/run?job=ads"
 ```
 
-`job=ads` verifies without writing: it fetches, archives the response to R2 and
-stops. Add `&write=1` for the full pull.
+`job=ads` verifies without writing: it runs the first unit inline, archives the
+response to R2 and reports the outcome. The rest of the fan-out (the other genre
+units and the by-name chunks) is queued in the same verify mode, so it archives
+and writes nothing to D1. Add `&write=1` for the full pull.
+
+`job=ads_backfill` recovers the popularity weeks the database holds nothing for,
+which is worth running once after the credential first works. Apple serves past
+weeks for this one endpoint, so a week nobody collected is a request away rather
+than a permanent hole. It reaches back thirteen weeks by default, the report's
+longest window; set the `ads:backfill_weeks` row in `collector_state` to go
+further. It queues the by-name pass only, so it costs one request per 100
+tracked keywords per storefront per week and writes no `seed_term` rows.

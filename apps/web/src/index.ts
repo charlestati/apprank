@@ -298,8 +298,6 @@ api.patch("/suggestions/:id", async (c) => {
 	if (changed === 0) {
 		return notFound(c);
 	}
-	// Acceptance side-effects (creating tracking rows) arrive with the Tier-2
-	// sweep that generates these suggestions.
 	return c.json({ ok: true });
 });
 

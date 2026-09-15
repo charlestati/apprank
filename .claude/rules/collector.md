@@ -101,6 +101,39 @@ breaking are that an unchanged config emits **no** statements (D1 charges for a
 conflicting upsert even when it changes nothing), and that a storefront missing
 from the reference data produces a warning rather than a guessed locale.
 
+## Backfill
+
+Popularity is the one thing here that can be recovered after the fact:
+`POST /admin/run?job=ads_backfill` queues the Apple Ads by-name pass for every
+recent week the database holds nothing for, bounded by the `ads:backfill_weeks`
+collector_state key (13 weeks, the report's longest window). Ranks cannot be
+recovered and never will be, so do not reach for a similar job there.
+
+## Keyword discovery
+
+`job=ads_discover` asks Apple's `suggestions/keywords/query` one seed at a time,
+seeded from the keywords somebody already tracks, and writes what comes back to
+`suggestion`. It spends no crawl budget: a proposal is a row, and only an
+operator accepting one creates a pair.
+
+Two filters, in two places, because they can afford different things.
+
+- **In the collector**, a proposal must share a whole word with its seed. That
+  is the best rule a Worker can apply with no model, and it is the floor: it
+  runs whether or not anyone is at a laptop. Token-based, never substring, since
+  "local" sits inside "localisation" and "locality".
+- **On a laptop**, `pnpm relevance` scores what got through against the tracked
+  set with a local embedding model and dismisses the tail. Word overlap admits
+  same-word false friends the model catches easily: measured on the live French
+  set, two such false friends scored 0.700 and 0.689, while the first real
+  variant sat at 0.785. It never proposes anything, only rules out, so a laptop
+  that never runs costs precision and not coverage.
+
+Absolute scores mean little and the cut is model-specific:
+`qwen3-embedding:0.6b` puts short related phrases between 0.69 and 0.99, so only
+the ranking informs. The script prints the whole distribution and dismisses
+nothing without `--apply`.
+
 ## Traps
 
 - `wrangler dev --remote` no longer works for a Worker that declares a Durable
@@ -115,6 +148,16 @@ from the reference data produces a warning rather than a guessed locale.
   starves every unit behind it indefinitely and burns the pause ladder daily,
   leaving `rating_snapshot`, `review` and `chart_ranking` empty with only
   `throttled` rows to show for it.
+
+**Archive writes go through `lib/archive`, never `env.ARCHIVE.put` directly.**
+R2 on this account really does refuse: twenty `put`s failed on 2026-09-11 with
+"We encountered an internal error. Please try again. (10001)", and because the
+refusal arrives as a _throw_, a retry loop that only re-checks `head` never runs
+a second time. `putArchived` retries the call itself and then reads the object
+back, and throws when it did not land, so no row is derived from a response
+nothing can prove we received (invariant 2). `tryPut` is for the diagnostic
+objects only, where losing the sample costs less than losing the observation
+that depends on it.
 
 Task steps swallow a failed unit into `fetch_error` and return normally, so that
 one bad unit cannot wedge the queue. Manual fetches also book their throttles

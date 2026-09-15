@@ -4,6 +4,8 @@
 // Rank semantics throughout: 1 is best, `null` means "observed, but not in the
 // top 200". A missing day is a gap, never a flat line.
 
+import { STOREFRONT_WIDE_GENRE_ID } from "@apprank/core/apple/ads";
+
 import type { Env } from "./env";
 import { classify, isBrandTerm, summarise } from "./insights";
 import type {
@@ -210,26 +212,41 @@ function fetchErrors(env: Env, q: ReportQuery, since: string) {
  * Latest Apple Ads popularity per keyword for this storefront, including the
  * rows that record an *absence*.
  *
- * Apple publishes only the top ~500 terms per country × top-level genre, so a
- * tracked keyword is routinely missing from the list. For this app, 22 of 25
- * are. `present = 0` is the collector saying "we asked, Apple had nothing",
- * which is not the same fact as "nobody searches this", and neither is the
- * same as never having pulled popularity at all. Filtering the absences out
- * here collapsed all three into one null.
+ * `present = 0` is the collector saying "we asked, Apple had nothing", which is
+ * not the same fact as "nobody searches this", and neither is the same as never
+ * having pulled popularity at all. Filtering the absences out here collapsed
+ * all three into one null.
+ *
+ * A keyword can hold two rows for the same week. The discovery pass writes one
+ * per genre it walked, whose absence only means "outside that genre's top 500";
+ * the by-name pass writes one against `STOREFRONT_WIDE_GENRE_ID`, which is the
+ * term's own popularity and the number the report is about. Prefer the latter,
+ * hence the ordering rather than a bare `GROUP BY`, which let SQLite hand back
+ * whichever row it reached first.
+ *
+ * A genre row saying "absent" ranks below everything else, across weeks. The
+ * genre pull writes one for every tracked keyword before the by-name pass runs,
+ * so ordering by week first let this week's "outside the top 500" replace last
+ * week's real measurement whenever the by-name chunk failed or had not run yet.
+ * It is still returned when it is all we hold, so "asked" never reads as
+ * "never asked".
  */
 function fetchPopularity(env: Env, q: ReportQuery) {
 	return env.DB.prepare(
-		`SELECT p.keyword_id, p.present, p.popularity_1_100 AS popularity
-     FROM popularity p
-     JOIN tracked_keyword tk ON tk.keyword_id = p.keyword_id
-       AND tk.app_id = ?1 AND tk.user_id = ?3
-     WHERE p.storefront_code = ?2
-       AND p.week_start = (
-         SELECT MAX(week_start) FROM popularity
-         WHERE keyword_id = p.keyword_id AND storefront_code = ?2)
-     GROUP BY p.keyword_id`
+		`SELECT keyword_id, present, popularity FROM (
+       SELECT p.keyword_id, p.present, p.popularity_1_100 AS popularity,
+              ROW_NUMBER() OVER (
+                PARTITION BY p.keyword_id
+                ORDER BY (p.present = 0 AND p.genre_id <> ?4) ASC,
+                         p.week_start DESC, p.genre_id <> ?4 ASC
+              ) AS pick
+       FROM popularity p
+       JOIN tracked_keyword tk ON tk.keyword_id = p.keyword_id
+         AND tk.app_id = ?1 AND tk.user_id = ?3
+       WHERE p.storefront_code = ?2
+     ) WHERE pick = 1`
 	)
-		.bind(q.appId, q.storefront, q.userId)
+		.bind(q.appId, q.storefront, q.userId, STOREFRONT_WIDE_GENRE_ID)
 		.all<{ keyword_id: number; present: number; popularity: number | null }>();
 }
 

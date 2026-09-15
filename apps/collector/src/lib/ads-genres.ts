@@ -50,6 +50,15 @@ export const ADS_CATEGORIES = [
 	"TRAVEL",
 ] as const;
 
+/**
+ * Apple's genre tree is rooted at "App Store" (the id its own genre endpoint is
+ * queried with), so every top-level genre carries `parent_id = 36`. The root is
+ * not a category anything reports at: lifting Games to it yields no Ads
+ * category, which silently emptied the whole popularity pull for the six weeks
+ * between the reference reseed that added the root row and this constant.
+ */
+export const APP_STORE_ROOT_GENRE_ID = 36;
+
 export interface GenreRow {
 	id: number;
 	parent_id: number | null;
@@ -59,12 +68,18 @@ export interface GenreRow {
  * Resolve a tracked genre to the (top-level id, Apple Ads category) pair the
  * popularity endpoint actually works in. Returns null when the genre maps to
  * no Ads category, so the caller can record why rather than invent a value.
+ *
+ * "Top level" means top level *of the store*, not of the table: a genre whose
+ * parent is the App Store root is already as high as it goes.
  */
 export function resolveAdsCategory(
 	genre: GenreRow,
 	overrides: Record<number, string> = {}
 ): { genreId: number; category: string } | null {
-	const topLevel = genre.parent_id ?? genre.id;
+	const topLevel =
+		genre.parent_id === null || genre.parent_id === APP_STORE_ROOT_GENRE_ID
+			? genre.id
+			: genre.parent_id;
 	const category = overrides[topLevel] ?? ADS_CATEGORY_BY_GENRE_ID[topLevel];
 	return category ? { category, genreId: topLevel } : null;
 }

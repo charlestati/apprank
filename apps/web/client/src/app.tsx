@@ -22,6 +22,7 @@ import {
 	cached,
 	loadPreferences,
 	PREF_APP,
+	PREF_HEALTH_ACK,
 	PREF_LANG,
 	savePreference,
 	setCached,
@@ -87,24 +88,25 @@ function Wordmark() {
 	);
 }
 
+/**
+ * Today's progress, and nothing else.
+ *
+ * Errors used to live here too, and it made the topbar useless: a count that
+ * was red every day of the first twelve stops being read. Failures belong where
+ * there is room to say what they were, so they are on the health page, and the
+ * sidebar carries a badge to get the reader there.
+ */
 function CollectionStatus({ health }: { health: DataHealth | null }) {
 	const t = useT();
 	if (!health) {
 		return null;
 	}
-	const errors = health.errorsLast24h.reduce((a, e) => a + e.n, 0);
 	const complete =
 		health.tier1Pairs > 0 && health.collectedToday >= health.tier1Pairs;
-
-	let tone = "lozenge lozenge-inprogress";
-	let text = t.collecting;
-	if (errors > 0) {
-		tone = "lozenge lozenge-removed";
-		text = `${errors} ${errors === 1 ? t.collectionError : t.collectionErrors}`;
-	} else if (complete) {
-		tone = "lozenge lozenge-success";
-		text = t.complete;
-	}
+	const tone = complete
+		? "lozenge lozenge-success"
+		: "lozenge lozenge-inprogress";
+	const text = complete ? t.complete : t.collecting;
 
 	return (
 		<NavLink className="status-link" to="/health">
@@ -119,6 +121,21 @@ function CollectionStatus({ health }: { health: DataHealth | null }) {
 	);
 }
 
+/**
+ * The newest lost observation in the window, or 0 when nothing was lost.
+ * Throttles and Apple-side findings carry `loss: false` and are ignored here,
+ * the same rule the server uses for `lostLast24h`.
+ */
+function newestLoss(health: DataHealth | null): number {
+	let newest = 0;
+	for (const e of health?.errorsLast24h ?? []) {
+		if (e.loss && e.lastAt > newest) {
+			newest = e.lastAt;
+		}
+	}
+	return newest;
+}
+
 function Shell() {
 	const t = useT();
 	const { setLang } = useI18n();
@@ -126,6 +143,7 @@ function Shell() {
 	const [health, setHealth] = useState<DataHealth | null>(null);
 	const [userId, setUserId] = useState<string | null>(null);
 	const [appId, setAppId] = useState<number | null>(storedAppId);
+	const [healthAck, setHealthAck] = useState(Number(cached(PREF_HEALTH_ACK)));
 
 	// A stored id that is no longer tracked, an app removed since the last
 	// visit, falls back rather than rendering an empty report.
@@ -134,6 +152,15 @@ function Shell() {
 	const selectApp = (id: number) => {
 		setAppId(id);
 		savePreference(PREF_APP, String(id));
+	};
+
+	// Acknowledge up to the newest loss we are showing, not to "now": anything
+	// that arrives after this click is new information and badges again.
+	const lost = newestLoss(health);
+	const unread = lost > 0 && lost > healthAck ? (health?.lostLast24h ?? 0) : 0;
+	const acknowledgeHealth = () => {
+		setHealthAck(lost);
+		savePreference(PREF_HEALTH_ACK, String(lost));
 	};
 
 	// The browser holds the credentials: by the time this renders, the request
@@ -216,6 +243,14 @@ function Shell() {
 					<NavLink to="/health">
 						<Activity aria-hidden="true" size={16} />
 						{t.dataHealth}
+						{unread > 0 && (
+							<span
+								aria-label={fmt(t.lostAria, { n: unread })}
+								className="nav-badge"
+							>
+								{unread}
+							</span>
+						)}
 					</NavLink>
 				</nav>
 
@@ -225,7 +260,12 @@ function Shell() {
 						<Route element={<PairDetail app={app} />} path="/pairs/:pairId" />
 						<Route element={<Reviews app={app} />} path="/reviews" />
 						<Route element={<Suggestions />} path="/suggestions" />
-						<Route element={<Health />} path="/health" />
+						<Route
+							element={
+								<Health onAcknowledge={acknowledgeHealth} unread={unread} />
+							}
+							path="/health"
+						/>
 					</Routes>
 				</main>
 			</div>

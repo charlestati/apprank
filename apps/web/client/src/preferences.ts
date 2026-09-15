@@ -13,6 +13,13 @@
 // acknowledge a click.
 
 export const PREF_APP = "app";
+/**
+ * The newest lost-observation timestamp the reader has dismissed. Stored rather
+ * than derived so the sidebar badge stays cleared across a reload and across
+ * machines, and so a *later* loss raises it again instead of the acknowledgement
+ * silencing the signal for good.
+ */
+export const PREF_HEALTH_ACK = "health:ack";
 // "lang", not "language": this is the key the cache has always used, and
 // renaming it would silently reset every reader who already has one stored.
 export const PREF_LANG = "lang";

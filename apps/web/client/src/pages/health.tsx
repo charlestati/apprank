@@ -117,19 +117,11 @@ function classLabel(t: Dictionary, errorClass: string): string {
 		rate_limited: t.errRateLimited,
 		task_threw: t.errTaskThrew,
 		throttled: t.errThrottled,
+		do_restarted: t.errDoRestarted,
 		upstream_error: t.errUpstreamError,
 	};
 	return known[errorClass] ?? errorClass;
 }
-
-/**
- * Which classes mean the observation is gone rather than retried. A throttle
- * costs nothing on its own, because the pause and the next run absorb it; an
- * abandoned feed or a thrown task is a day nobody recorded, and history cannot
- * be backfilled. Rendering the two identically is what made the count
- * unreadable: it could not say whether to care.
- */
-const COSTS_DATA = new Set(["pull_abandoned", "task_threw"]);
 
 /**
  * One error class at one endpoint, with when it last happened and what the
@@ -147,7 +139,9 @@ function ErrorRow({ entry }: { entry: DataHealth["errorsLast24h"][number] }) {
 			<td className="col-when">{f.time(entry.lastAt)}</td>
 			<td className="col-class">
 				{classLabel(t, entry.errorClass)}
-				{COSTS_DATA.has(entry.errorClass) && (
+				{/* The server decides, because the status badge counts the same
+            classes and two copies of that judgment would drift. */}
+				{entry.loss && (
 					<span className="lozenge lozenge-removed error-cost">
 						{t.errorsCostNote}
 					</span>
@@ -178,7 +172,13 @@ function ErrorRow({ entry }: { entry: DataHealth["errorsLast24h"][number] }) {
 	);
 }
 
-export function Health() {
+export function Health({
+	onAcknowledge,
+	unread,
+}: {
+	onAcknowledge: () => void;
+	unread: number;
+}) {
 	const f = useFormat();
 	const t = useT();
 	const [h, setH] = useState<DataHealth | null>(null);
@@ -282,7 +282,25 @@ export function Health() {
           and a bare one. */}
 			<section className="card table-card error-log">
 				<div className="table-toolbar">
-					<h2 className="section-title">{t.errorsLast24h}</h2>
+					{/* The count rides with the heading rather than sitting apart: the
+              toolbar is space-between, so a third child would push it into the
+              middle of the row where it reads as unrelated to either. */}
+					<div className="toolbar-title">
+						<h2 className="section-title">{t.errorsLast24h}</h2>
+						{h.lostLast24h > 0 && (
+							<span className="lozenge lozenge-removed">
+								{fmt(t.lostCount, { n: h.lostLast24h })}
+							</span>
+						)}
+					</div>
+					{/* Clearing is explicit rather than on arrival: a badge that cleared
+              because you glanced at the page cannot be returned to, and the
+              next loss still has to be able to raise it again. */}
+					{unread > 0 && (
+						<button className="button" onClick={onAcknowledge} type="button">
+							{t.markSeen}
+						</button>
+					)}
 				</div>
 				<div className="table-scroll">
 					<table className="grid">

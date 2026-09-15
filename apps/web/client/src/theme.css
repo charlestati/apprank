@@ -301,6 +301,24 @@ body {
 	background: var(--ds-neutral-subtle-pressed);
 }
 
+/* The count of lost observations, parked at the end of its row.
+   `margin-left: auto` rather than a spacer element so the link stays one flex
+   row and the badge never affects where the label sits. It is the only red in
+   the sidebar, which is what makes it findable at a glance and why it has to be
+   dismissible: a permanent red dot is furniture within a week. */
+.nav-badge {
+	margin-left: auto;
+	min-width: 20px;
+	padding: 0 var(--ds-space-050);
+	border-radius: var(--ds-radius-small);
+	background: var(--ds-bg-danger);
+	color: var(--ds-text-danger);
+	font: var(--ds-font-body);
+	font-weight: var(--ds-weight-bold);
+	line-height: 20px;
+	text-align: center;
+}
+
 /* The selected section reads through weight and text contrast, not colour: an
    accent fill plus an accent rail plus accent text is three signals for one
    bit of state, and it makes the accent stop meaning "link" everywhere else.
@@ -1093,6 +1111,54 @@ line.marker-on {
 	padding: var(--ds-space-150) var(--ds-space-200);
 	border-bottom: 1px solid var(--ds-border);
 }
+/* Heading plus its count, so the pair survives the toolbar's space-between. The
+   title's own bottom margin would misalign it against a 40px control, hence the
+   reset here rather than on `.section-title`, which is right everywhere else. */
+.toolbar-title {
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-100);
+}
+.toolbar-title .section-title {
+	margin: 0;
+}
+
+/* One decision per card: what the term is on the left, the two answers on the
+   right, so a queue of them scans as a column of choices rather than as prose.
+   Wraps rather than shrinking the buttons, because a control whose label is
+   clipped is worse than one on its own line. */
+.suggestion-body {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--ds-space-200);
+}
+.suggestion-term {
+	margin: 0;
+	font: var(--ds-font-heading-small);
+	font-weight: var(--ds-weight-bold);
+}
+.suggestion-why {
+	margin: var(--ds-space-050) 0 0;
+	color: var(--ds-text-subtle);
+}
+.suggestion-actions {
+	display: flex;
+	gap: var(--ds-space-100);
+}
+/* The affirmative answer is the one that spends budget, so it carries the
+   weight; dismissing stays neutral rather than becoming a second call to
+   action. */
+.button-primary {
+	border-color: var(--ds-border-brand, transparent);
+	background: var(--ds-bg-brand-bold, var(--ds-text-information));
+	color: var(--ds-text-inverse, #fff);
+}
+.button-primary:hover {
+	filter: brightness(0.94);
+}
+
 .search {
 	min-width: 240px;
 }
@@ -1400,6 +1466,17 @@ table.grid tbody tr:hover {
    below the digits beside it. */
 .delta svg {
 	vertical-align: -1px;
+}
+
+/* Lucide's triangle is equilateral and wider than it is tall, so at the size
+   that matches 14px digits it needs a nudge to sit on their optical centre
+   rather than on the baseline the flex box gives it. */
+.trend-arrow {
+	flex: none;
+	transform: translateY(-1px);
+}
+.trend-arrow-down {
+	transform: translateY(1px) rotate(180deg);
 }
 .delta-age {
 	position: absolute;

@@ -141,11 +141,27 @@ post() { curl -s --max-time 300 -X POST -H "Authorization: Bearer $TOKEN" "$BASE
 # First authenticated call opens the remote-binding session and can take far
 # longer than a steady-state one. Spend that latency on a job that touches no
 # Apple endpoint, so a slow start never looks like a throttle.
-warm="$(post cadence)"
-case "$warm" in
-  *'"ok":true'*) say "warm-up ok" ;;
-  *) say "FATAL warm-up failed: ${warm:-<empty response>}"; exit 1 ;;
-esac
+#
+# Retried like every other D1-backed request here, and for a stronger reason:
+# this is the one that opens the session cold, so it is the likeliest to catch
+# a dropped connection, and it fires before a single pair has been crawled. A
+# 2026-09-11 run died here on "Network connection lost" and lost the whole day,
+# which no later retry can give back (CLAUDE.md, invariant 1). Cadence only
+# reads state and recomputes intervals, so a repeat costs nothing but the call.
+warm_tries=0
+while :; do
+  warm="$(post cadence)"
+  case "$warm" in
+    *'"ok":true'*) say "warm-up ok"; break ;;
+  esac
+  warm_tries=$((warm_tries + 1))
+  if [ "$warm_tries" -ge "$MAX_MISSES" ]; then
+    say "FATAL warm-up failed $warm_tries times: $(headline "${warm:-<empty response>}")"
+    exit 1
+  fi
+  say "warm-up failed (try $warm_tries of $MAX_MISSES), pausing ${ERROR_PAUSE}s: $(headline "${warm:-<empty response>}")"
+  sleep "$ERROR_PAUSE"
+done
 
 crawled=0
 throttled=0
