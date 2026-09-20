@@ -150,7 +150,18 @@ fi
 # still draining. Short enough that a stall is cheap, long enough that a slow
 # answer is not mistaken for one; MAX_MISSES still ends a wedged session.
 REQUEST_TIMEOUT="${APPRANK_REFRESH_REQUEST_TIMEOUT:-60}"
-post() { curl -s --max-time "$REQUEST_TIMEOUT" -X POST -H "Authorization: Bearer $TOKEN" "$BASE?job=$1"; }
+# The two calls that are not one paced fetch, and must not inherit that
+# ceiling. The warm-up opens the remote-binding session cold, and the daily
+# fan-out recomputes cadence and difficulty across every tracked pair before it
+# queues anything; both have answered in under ten seconds so far, and both
+# grow with the tracked set. Cutting either short costs the whole day rather
+# than one unit, which is the wrong side to be wrong on: they happen once per
+# cycle, so a generous ceiling costs nothing until it is needed.
+SLOW_TIMEOUT="${APPRANK_REFRESH_SLOW_TIMEOUT:-300}"
+post() {
+  curl -s --max-time "${2:-$REQUEST_TIMEOUT}" -X POST \
+    -H "Authorization: Bearer $TOKEN" "$BASE?job=$1"
+}
 
 # First authenticated call opens the remote-binding session and can take far
 # longer than a steady-state one. Spend that latency on a job that touches no
@@ -164,7 +175,7 @@ post() { curl -s --max-time "$REQUEST_TIMEOUT" -X POST -H "Authorization: Bearer
 # reads state and recomputes intervals, so a repeat costs nothing but the call.
 warm_tries=0
 while :; do
-  warm="$(post cadence)"
+  warm="$(post cadence "$SLOW_TIMEOUT")"
   case "$warm" in
     *'"ok":true'*) say "warm-up ok"; break ;;
   esac
@@ -236,7 +247,7 @@ DAILY_MARKER="$STATE_DIR/daily-$(date -u +%F).done"
 if [ "$throttled" -eq 0 ] && [ ! -f "$DAILY_MARKER" ]; then
   tries=0
   while :; do
-    d="$(post daily)"
+    d="$(post daily "$SLOW_TIMEOUT")"
     case "$d" in
       *'"queued"'*) say "daily fan-out queued: $d"; : >"$DAILY_MARKER"; break ;;
     esac

@@ -325,8 +325,16 @@ async function runDailyJobs(env: Env): Promise<{
 	// Every branch is an aggregate rather than a bare column on purpose: SQLite
 	// only pins a bare column to the min()/max() row when there is exactly one
 	// such aggregate, and on ties it picks among them arbitrarily.
-	const targets = await env.DB.prepare(
-		`SELECT app_id, code,
+	//
+	// Best effort, like the reads above: everything from here to `enqueue` is a
+	// D1 call standing between the day's work and the queue it has to reach, and
+	// a throw in any of them takes the compaction and credentialed tasks already
+	// built with it. That is the 2026-09-11 shape exactly. A failure here costs
+	// today's app-level pulls, which is bad; it must not also cost the rest.
+	let targets: { app_id: number; code: string; locale_code: string }[] = [];
+	await bestEffort(env, "pull_targets", async () => {
+		const rows = await env.DB.prepare(
+			`SELECT app_id, code,
             COALESCE(
               MIN(CASE WHEN pref = 0 AND is_default = 1 THEN locale_code END),
               MIN(CASE WHEN pref = 0 THEN locale_code END),
@@ -349,9 +357,11 @@ async function runDailyJobs(env: Env): Promise<{
            JOIN storefront s ON s.code = cp.storefront_code AND s.active = 1
        )
       GROUP BY app_id, code`
-	).all<{ app_id: number; code: string; locale_code: string }>();
+		).all<{ app_id: number; code: string; locale_code: string }>();
+		targets = rows.results;
+	});
 
-	if (targets.results.length > 0 && collectsPublicEndpoints(env)) {
+	if (targets.length > 0 && collectsPublicEndpoints(env)) {
 		// What today already has. These queues live in a Durable Object that, on
 		// the Actions runner, dies with the `wrangler dev` process, so a run cut
 		// short loses every unit it had not reached: on 2026-09-19 the job hit its
@@ -360,11 +370,21 @@ async function runDailyJobs(env: Env): Promise<{
 		// have, and it is worth nothing if it starts by re-fetching what landed.
 		// So each unit is skipped once its marker says today, and the whole fan-out
 		// costs one read to know.
-		const pulled = await pulledOn(env.DB, today);
+		//
+		// Best effort, like pacing above and for the same reason: this read sits
+		// between building the day's work and enqueueing it, and a throw there is
+		// exactly how 2026-09-11 ended with nothing queued at all. An empty set
+		// queues everything, which is what this did before markers existed, and a
+		// duplicated pull costs fetches and rewrites a row that is keyed by day.
+		// Losing the day costs the day.
+		let pulled = new Set<string>();
+		await bestEffort(env, "pull_markers", async () => {
+			pulled = await pulledOn(env.DB, today);
+		});
 		const lookups: LookupUnit[] = [];
 		const reviews: ReviewUnit[] = [];
 		const storefrontSet = new Set<string>();
-		for (const t of targets.results) {
+		for (const t of targets) {
 			const lookup: LookupUnit = {
 				appId: t.app_id,
 				localeCode: t.locale_code,
@@ -391,26 +411,31 @@ async function runDailyJobs(env: Env): Promise<{
 			tasks.push({ type: "review_pull", queue: reviews });
 		}
 
-		// null is the storefront-wide chart, which needs no genre, so charts still
-		// work on day one when no app has been looked up yet.
-		const chartGenres = (await getStateJson<(number | null)[]>(
-			env.DB,
-			"chart_genres"
-		)) ?? [...(await trackedGenreIds(env)), null];
-		const charts: ChartUnit[] = [];
-		for (const code of storefrontSet) {
-			for (const g of chartGenres) {
-				for (const chart of ["free", "paid", "grossing"] as const) {
-					const unit: ChartUnit = { storefront: code, genreId: g, chart };
-					if (!pulled.has(chartMarker(unit))) {
-						charts.push(unit);
+		// Which genres to chart is two more D1 reads, and they come after the
+		// lookups and reviews are already on the list. Guarded so that losing them
+		// costs the charts alone.
+		await bestEffort(env, "chart_units", async () => {
+			// null is the storefront-wide chart, which needs no genre, so charts
+			// still work on day one when no app has been looked up yet.
+			const chartGenres = (await getStateJson<(number | null)[]>(
+				env.DB,
+				"chart_genres"
+			)) ?? [...(await trackedGenreIds(env)), null];
+			const charts: ChartUnit[] = [];
+			for (const code of storefrontSet) {
+				for (const g of chartGenres) {
+					for (const chart of ["free", "paid", "grossing"] as const) {
+						const unit: ChartUnit = { storefront: code, genreId: g, chart };
+						if (!pulled.has(chartMarker(unit))) {
+							charts.push(unit);
+						}
 					}
 				}
 			}
-		}
-		if (charts.length > 0) {
-			tasks.push({ queue: charts, type: "chart_pull" });
-		}
+			if (charts.length > 0) {
+				tasks.push({ queue: charts, type: "chart_pull" });
+			}
+		});
 	}
 
 	await stub.enqueue(tasks);
