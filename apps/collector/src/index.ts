@@ -14,6 +14,12 @@ import {
 import { ascDetectSkippedDates } from "./tasks/asc";
 import { recomputeCadence } from "./tasks/cadence";
 import { recomputeDifficulty } from "./tasks/difficulty";
+import {
+	chartMarker,
+	lookupMarker,
+	pulledOn,
+	reviewMarker,
+} from "./tasks/pulls";
 import type {
 	Task,
 	AdsPullUnit,
@@ -346,22 +352,44 @@ async function runDailyJobs(env: Env): Promise<{
 	).all<{ app_id: number; code: string; locale_code: string }>();
 
 	if (targets.results.length > 0 && collectsPublicEndpoints(env)) {
+		// What today already has. These queues live in a Durable Object that, on
+		// the Actions runner, dies with the `wrangler dev` process, so a run cut
+		// short loses every unit it had not reached: on 2026-09-19 the job hit its
+		// timeout six minutes into the drain with three quarters of the day's
+		// pulls still queued. A second run the same day is the only chance those
+		// have, and it is worth nothing if it starts by re-fetching what landed.
+		// So each unit is skipped once its marker says today, and the whole fan-out
+		// costs one read to know.
+		const pulled = await pulledOn(env.DB, today);
 		const lookups: LookupUnit[] = [];
 		const reviews: ReviewUnit[] = [];
 		const storefrontSet = new Set<string>();
 		for (const t of targets.results) {
-			lookups.push({
+			const lookup: LookupUnit = {
 				appId: t.app_id,
 				localeCode: t.locale_code,
 				storefront: t.code,
-			});
-			reviews.push({ appId: t.app_id, storefront: t.code });
+			};
+			if (!pulled.has(lookupMarker(lookup))) {
+				lookups.push(lookup);
+			}
+			const review: ReviewUnit = { appId: t.app_id, storefront: t.code };
+			if (!pulled.has(reviewMarker(review))) {
+				reviews.push(review);
+			}
+			// The chart set is per storefront, not per target, and a storefront whose
+			// charts are all held still has to be counted here or the ones that are
+			// not would never be built.
 			storefrontSet.add(t.code);
 		}
-		tasks.push(
-			{ queue: lookups, type: "lookup_pull" },
-			{ type: "review_pull", queue: reviews }
-		);
+		// An empty queue is not a task: `lookup_pull` with nothing in it is a tick
+		// spent to discover it has no work, and on a resumed day most of them are.
+		if (lookups.length > 0) {
+			tasks.push({ queue: lookups, type: "lookup_pull" });
+		}
+		if (reviews.length > 0) {
+			tasks.push({ type: "review_pull", queue: reviews });
+		}
 
 		// null is the storefront-wide chart, which needs no genre, so charts still
 		// work on day one when no app has been looked up yet.
@@ -373,11 +401,16 @@ async function runDailyJobs(env: Env): Promise<{
 		for (const code of storefrontSet) {
 			for (const g of chartGenres) {
 				for (const chart of ["free", "paid", "grossing"] as const) {
-					charts.push({ storefront: code, genreId: g, chart });
+					const unit: ChartUnit = { storefront: code, genreId: g, chart };
+					if (!pulled.has(chartMarker(unit))) {
+						charts.push(unit);
+					}
 				}
 			}
 		}
-		tasks.push({ queue: charts, type: "chart_pull" });
+		if (charts.length > 0) {
+			tasks.push({ queue: charts, type: "chart_pull" });
+		}
 	}
 
 	await stub.enqueue(tasks);

@@ -168,6 +168,19 @@ nothing without `--apply`.
   That is why the collector has one public route, `POST /admin/run?job=…` behind
   `ADMIN_TOKEN` (`src/lib/admin.ts`). Without it, verifying an Apple credential
   costs a day (the ASC cron) or a week (the Monday Ads gate).
+- **The task queue lives in Durable Object storage, and on the Actions runner
+  that object dies with the `wrangler dev` process.** A run that hits its
+  workflow timeout mid-drain loses every unit it had not reached: on 2026-09-19
+  the job was killed six minutes into the step loop with three quarters of the
+  day's pulls still queued, and nothing re-queued them. So each lookup, review
+  and chart unit writes a `pull:` marker in `collector_state` carrying the date,
+  and the daily fan-out skips the units today already holds. That is what makes
+  a second run the same day a resumption rather than a repeat, and it is also
+  why an empty queue is never enqueued as a task. A marker is written for a
+  success and for a finding Apple will repeat (`app_not_in_storefront`), never
+  for an HTTP error or a throttle, which collected nothing and must be tried
+  again. Markers are per unit per day and overwritten, so the set stays the size
+  of the tracked fan-out.
 - A throttled batch unit is retried in place twice, then rotated to the back of
   its own queue, and the batch is abandoned for the day once every unit has had
   its turn (`pull_abandoned`). `attempt` must actually be read: a storefront

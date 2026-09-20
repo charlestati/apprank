@@ -20,18 +20,31 @@ export async function getStateJson<T>(
 	return v === null ? null : (JSON.parse(v) as T);
 }
 
+/**
+ * The write half of setState, unrun, so a caller already batching can carry it
+ * along instead of spending a second round trip on it. The daily pull markers
+ * do exactly that: each one belongs to the same batch as the rows whose
+ * arrival it records, so the marker cannot outlive a write that failed.
+ */
+export function setStateStmt(
+	db: D1Database,
+	key: string,
+	value: string
+): D1PreparedStatement {
+	return db
+		.prepare(
+			"INSERT INTO collector_state (key, value, updated_at) VALUES (?, ?, ?) " +
+				"ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
+		)
+		.bind(key, value, Date.now());
+}
+
 export async function setState(
 	db: D1Database,
 	key: string,
 	value: string
 ): Promise<void> {
-	await db
-		.prepare(
-			"INSERT INTO collector_state (key, value, updated_at) VALUES (?, ?, ?) " +
-				"ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
-		)
-		.bind(key, value, Date.now())
-		.run();
+	await setStateStmt(db, key, value).run();
 }
 
 export async function setStateJson(

@@ -13,7 +13,7 @@ import { normalizeApp } from "@apprank/core/normalize/itunes";
 
 import type { Env } from "../env";
 import { GZIP_METADATA, gzip, putArchived } from "../lib/archive";
-import { recordFetchError } from "../lib/state";
+import { recordFetchError, setState, setStateStmt } from "../lib/state";
 import type { Task } from "./types";
 
 function todayUtc(): string {
@@ -33,6 +33,55 @@ export interface ChartUnit {
 	storefront: string;
 	genreId: number | null;
 	chart: "free" | "paid" | "grossing";
+}
+
+/**
+ * Per-unit "done for today" markers in collector_state.
+ *
+ * The day's pull queues live in Durable Object storage, and on the Actions
+ * runner that object is local to one `wrangler dev` process: a run that is
+ * killed mid-drain takes every unit it had not reached with it. The fan-out
+ * therefore has to be able to ask what already landed, so a second run the same
+ * day resumes the queue instead of re-fetching all of it, and these are the
+ * answer. One key per unit per day, overwritten rather than accumulated, in the
+ * same shape as the weekly `ads:pulled:` keys next door.
+ *
+ * Evidence rows would nearly do the job and not quite: a lookup writes
+ * `rating_snapshot`, a chart writes `chart_ranking`, but a review pull of an app
+ * with no new reviews writes nothing at all, and an app absent from a storefront
+ * writes nothing anywhere. A marker records the fetch, which is the thing that
+ * must not be repeated.
+ *
+ * Written only for an outcome Apple will not change today: a success, or a
+ * finding about Apple's own data. An HTTP error leaves no marker on purpose, so
+ * the unit is tried again rather than silently dropped for the day.
+ */
+export function lookupMarker(u: LookupUnit): string {
+	return `pull:lookup:${u.appId}:${u.storefront}:${u.localeCode}`;
+}
+export function reviewMarker(u: ReviewUnit): string {
+	return `pull:review:${u.appId}:${u.storefront}`;
+}
+export function chartMarker(u: ChartUnit): string {
+	return `pull:chart:${u.storefront}:${u.genreId ?? "all"}:${u.chart}`;
+}
+
+/**
+ * Every unit already pulled on `date`, as its marker key. One read for the
+ * whole fan-out: the set is a few dozen keys at most, and the alternative is a
+ * query per unit at the one moment the day's work is being decided.
+ */
+export async function pulledOn(
+	db: D1Database,
+	date: string
+): Promise<Set<string>> {
+	const rows = await db
+		.prepare(
+			"SELECT key FROM collector_state WHERE key LIKE 'pull:%' AND value = ?"
+		)
+		.bind(date)
+		.all<{ key: string }>();
+	return new Set(rows.results.map((r) => r.key));
 }
 
 /**
@@ -123,13 +172,16 @@ export async function lookupPullStep(
 	const date = todayUtc();
 
 	if (!result) {
-		// App absent from this storefront, which is itself worth recording.
+		// App absent from this storefront, which is itself worth recording. It is
+		// also a settled answer, so it marks the unit done: asking again today
+		// would spend a fetch to be told the same thing.
 		await recordFetchError(env.DB, {
 			endpoint: "itunes:lookup",
 			errorClass: "app_not_in_storefront",
 			httpStatus: outcome.status,
 			params: JSON.stringify(unit),
 		});
+		await setState(env.DB, lookupMarker(unit), date);
 		return { followUps: rest, throttled: false };
 	}
 
@@ -222,6 +274,7 @@ export async function lookupPullStep(
 		`lookups/${date}/${unit.appId}-${unit.storefront}-${unit.localeCode}.json`,
 		outcome.bodyText
 	);
+	stmts.push(setStateStmt(env.DB, lookupMarker(unit), date));
 	await env.DB.batch(stmts);
 	return { followUps: rest, throttled: false };
 }
@@ -326,14 +379,17 @@ export async function reviewPullStep(
 	// Archive first, for the same reason as the lookup above: the object is what
 	// a rebuild reads, and reviews are append-only, so a row with no body behind
 	// it is a permanent hole rather than a stale view.
+	const date = todayUtc();
 	await putArchived(
 		env,
-		`reviews/${unit.appId}/${unit.storefront}/${todayUtc()}.json`,
+		`reviews/${unit.appId}/${unit.storefront}/${date}.json`,
 		outcome.bodyText
 	);
-	if (stmts.length > 0) {
-		await env.DB.batch(stmts);
-	}
+	// Always a batch now, where the inserts alone were conditional: an app with
+	// no new reviews writes no `review` rows, and the marker is the only record
+	// that the feed was read at all.
+	stmts.push(setStateStmt(env.DB, reviewMarker(unit), date));
+	await env.DB.batch(stmts);
 	return { followUps: rest, throttled: false };
 }
 
@@ -416,13 +472,13 @@ export async function chartPullStep(
 		unit.genreId === null
 			? "ON CONFLICT(storefront_code, chart, observed_date) WHERE genre_id IS NULL"
 			: "ON CONFLICT(storefront_code, genre_id, chart, observed_date)";
-	await env.DB.prepare(
-		`INSERT INTO chart_ranking (storefront_code, genre_id, chart, observed_date, result_ids, http_status, source, r2_key)
+	await env.DB.batch([
+		env.DB.prepare(
+			`INSERT INTO chart_ranking (storefront_code, genre_id, chart, observed_date, result_ids, http_status, source, r2_key)
      VALUES (?, ?, ?, ?, ?, ?, 'itunes-rss', ?)
      ${conflict} DO UPDATE SET
        result_ids = excluded.result_ids, http_status = excluded.http_status, r2_key = excluded.r2_key`
-	)
-		.bind(
+		).bind(
 			unit.storefront,
 			unit.genreId,
 			unit.chart,
@@ -430,8 +486,9 @@ export async function chartPullStep(
 			JSON.stringify(ids),
 			outcome.status,
 			r2Key
-		)
-		.run();
+		),
+		setStateStmt(env.DB, chartMarker(unit), date),
+	]);
 	return { followUps: rest, throttled: false };
 }
 
