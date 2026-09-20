@@ -12,6 +12,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import worker from "../src/index";
 import { setState } from "../src/lib/state";
 import { latestCompleteWeekStart } from "../src/tasks/ads";
+import { chartMarker, lookupMarker, reviewMarker } from "../src/tasks/pulls";
 import type { Task } from "../src/tasks/types";
 import { generateP8Pem } from "./helpers";
 
@@ -142,6 +143,81 @@ describe("scheduled handler", () => {
 		// Two genre slots (the tracked app's own genre + storefront-wide) × three
 		// charts. The genre is not hardcoded: an app in any category gets its own.
 		expect((charts as { queue: unknown[] }).queue).toHaveLength(6);
+	});
+
+	it("queues only what today still lacks, so a second run resumes the drain", async () => {
+		// The queue lives in a Durable Object local to the `wrangler dev` process
+		// on the Actions runner, so a run that hits its timeout mid-drain takes
+		// every unit it had not reached with it (2026-09-19: killed six minutes
+		// into the step loop). The pulls that did land are marked, and the day's
+		// fan-out is what has to notice.
+		await env.DB.batch([
+			env.DB.prepare(
+				"INSERT INTO app (id, current_name, primary_genre_id, first_seen_at, last_seen_at) VALUES (?, 'Tracked App', 6013, 0, 0)"
+			).bind(APP_ID),
+			env.DB.prepare(
+				"INSERT INTO tracked_app (user_id, app_id, created_at) VALUES ('admin', ?, 0)"
+			).bind(APP_ID),
+			env.DB.prepare(
+				"INSERT INTO app_language (app_id, language) VALUES (?, 'fr')"
+			).bind(APP_ID),
+		]);
+		const today = new Date().toISOString().slice(0, 10);
+		await setState(
+			env.DB,
+			lookupMarker({ appId: APP_ID, localeCode: "fr-FR", storefront: "fr" }),
+			today
+		);
+		await setState(
+			env.DB,
+			chartMarker({ chart: "free", genreId: null, storefront: "fr" }),
+			today
+		);
+
+		await runCron("0 3 * * *");
+		const tasks = await drainQueue();
+
+		// The one lookup the day had is held, so the task has nothing left to do
+		// and is not queued at all: an empty queue is a tick spent learning that.
+		expect(tasks.some((t) => t.type === "lookup_pull")).toBeFalsy();
+		// Reviews were never pulled, so they are queued as usual.
+		expect(tasks.find((t) => t.type === "review_pull")).toMatchObject({
+			queue: [{ appId: APP_ID, storefront: "fr" }],
+		});
+		// Five of six charts remain: the marked one, and only it, is gone.
+		const charts = tasks.find((t) => t.type === "chart_pull") as {
+			queue: { chart: string; genreId: number | null }[];
+		};
+		expect(charts.queue).toHaveLength(5);
+		expect(
+			charts.queue.some((c) => c.chart === "free" && c.genreId === null)
+		).toBeFalsy();
+	});
+
+	it("ignores a marker from another day", async () => {
+		await env.DB.batch([
+			env.DB.prepare(
+				"INSERT INTO app (id, current_name, primary_genre_id, first_seen_at, last_seen_at) VALUES (?, 'Tracked App', 6013, 0, 0)"
+			).bind(APP_ID),
+			env.DB.prepare(
+				"INSERT INTO tracked_app (user_id, app_id, created_at) VALUES ('admin', ?, 0)"
+			).bind(APP_ID),
+			env.DB.prepare(
+				"INSERT INTO app_language (app_id, language) VALUES (?, 'fr')"
+			).bind(APP_ID),
+		]);
+		await setState(
+			env.DB,
+			reviewMarker({ appId: APP_ID, storefront: "fr" }),
+			"2020-01-01"
+		);
+
+		await runCron("0 3 * * *");
+		const tasks = await drainQueue();
+
+		expect(tasks.find((t) => t.type === "review_pull")).toMatchObject({
+			queue: [{ appId: APP_ID, storefront: "fr" }],
+		});
 	});
 
 	it("pulls a storefront tracked by crawl pair alone, in the pair's locale", async () => {

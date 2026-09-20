@@ -45,7 +45,7 @@ SPACING="${APPRANK_REFRESH_SPACING:-3.75}"
 # not the one that does not.
 STEP_SPACING="${APPRANK_REFRESH_STEP_SPACING:-10}"
 # Ceilings on one cycle, in units. Measured: a crawl costs ~10s (Apple's own
-# latency, mostly) and a step ~13s, so these two are roughly 70 and 17 minutes
+# latency, mostly) and a step ~13s, so these two are roughly 83 and 17 minutes
 # of wall clock. The workflow's timeout-minutes keeps far more than that,
 # because a single 403 parks the loop for 30 minutes and the ladder goes to
 # four hours.
@@ -55,7 +55,11 @@ STEP_SPACING="${APPRANK_REFRESH_STEP_SPACING:-10}"
 # starves the lowest-weighted storefront every run rather than sharing the
 # shortfall. Nothing is lost when it does bind, since an uncrawled pair stays
 # due, but it is silent, so keep this above the pair count.
-MAX_UNITS="${APPRANK_REFRESH_MAX_UNITS:-420}"
+#
+# A stalled request burns an iteration too, so the margin over the pair count
+# has to cover the cycle's misses as well: 387 pairs and 25 stalls came within
+# eight iterations of the former ceiling of 420.
+MAX_UNITS="${APPRANK_REFRESH_MAX_UNITS:-500}"
 # Consecutive stalls that mean the dev session is wedged rather than slow. A
 # stall is either a request that timed out or one that came back as a 500. Both
 # count, because D1 has twice now gone away mid-crawl (an "internal error" for
@@ -136,7 +140,17 @@ if ! grep -q "Ready on" "$DEV_LOG" 2>/dev/null; then
   exit 1
 fi
 
-post() { curl -s --max-time 300 -X POST -H "Authorization: Bearer $TOKEN" "$BASE?job=$1"; }
+# A crawl answers in about three seconds and a step in a little over ten, so
+# this ceiling is not a latency allowance: it is how long a *stalled* request
+# costs before the loop can retry it. The remote D1 and R2 bindings fail inside
+# the dev session often enough to matter (hundreds of "internal error;
+# reference=" lines in a normal cycle, a couple of dozen of which never answer
+# at all), and at the former 300s a run spent two of its three and a half hours
+# waiting on them and was killed by the workflow timeout with the step queue
+# still draining. Short enough that a stall is cheap, long enough that a slow
+# answer is not mistaken for one; MAX_MISSES still ends a wedged session.
+REQUEST_TIMEOUT="${APPRANK_REFRESH_REQUEST_TIMEOUT:-60}"
+post() { curl -s --max-time "$REQUEST_TIMEOUT" -X POST -H "Authorization: Bearer $TOKEN" "$BASE?job=$1"; }
 
 # First authenticated call opens the remote-binding session and can take far
 # longer than a steady-state one. Spend that latency on a job that touches no

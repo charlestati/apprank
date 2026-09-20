@@ -17,12 +17,16 @@ plus the round-trip on top of it.
 | One 210-minute run                          | ~1,260  |
 | Less setup, warm-up and the post-run verify | ~60     |
 | Less the daily task steps                   | ~40     |
-| Capped by `APPRANK_REFRESH_MAX_UNITS`       | **420** |
+| Capped by `APPRANK_REFRESH_MAX_UNITS`       | **500** |
 
 So the run window no longer binds; the unit ceiling in
 `scripts/local-refresh/refresh.sh` does, and it has to stay above your pair
 count or the lowest-weighted storefront is starved every run rather than sharing
 the shortfall. Raise it and the window absorbs a good deal more.
+
+Keep a margin rather than matching the pair count exactly: a request that stalls
+spends an iteration of the ceiling without crawling anything, and the remote D1
+and R2 bindings stall a couple of dozen times in a normal cycle.
 
 The other cap is the _learned_ rate, which halves after a throttled day and
 floors at 1/min. At the floor the same set is re-spaced across slower rungs

@@ -8,6 +8,10 @@ import {
 	reviewPullStep,
 	chartPullStep,
 	compactStep,
+	chartMarker,
+	lookupMarker,
+	pulledOn,
+	reviewMarker,
 } from "../src/tasks/pulls";
 import { stubFetch } from "./helpers";
 
@@ -68,8 +72,13 @@ beforeEach(async () => {
 		env.DB.prepare("DELETE FROM tracked_keyword"),
 		env.DB.prepare("DELETE FROM tracked_app"),
 		env.DB.prepare("DELETE FROM app"),
+		// Only this file's own keys: collector_state also holds pacing, and the
+		// files share one database.
+		env.DB.prepare("DELETE FROM collector_state WHERE key LIKE 'pull:%'"),
 	]);
 });
+
+const TODAY = new Date().toISOString().slice(0, 10);
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -451,6 +460,81 @@ describe(chartPullStep, () => {
 			"SELECT endpoint FROM fetch_error ORDER BY id DESC LIMIT 1"
 		).first<{ endpoint: string }>();
 		expect(err?.endpoint).toBe("itunes:charts");
+	});
+});
+
+describe("daily pull markers", () => {
+	// The day's queues live in a Durable Object that dies with the Actions
+	// runner, so a run killed mid-drain loses whatever it had not reached. These
+	// markers are what lets a second run the same day resume rather than refetch,
+	// so what each outcome does or does not write is the contract.
+	it("marks a lookup, a review pull and a chart done for today", async () => {
+		stubFetch((url) => {
+			if (url.includes("/lookup")) {
+				return Response.json(lookupResponse());
+			}
+			if (url.includes("/rss/customerreviews")) {
+				return Response.json(reviewFeed(1));
+			}
+			return Response.json({
+				feed: { entry: [{ id: { attributes: { "im:id": "111" } } }] },
+			});
+		});
+		const lookup = { appId: APP_ID, localeCode: "fr-FR", storefront: "fr" };
+		const review = { appId: APP_ID, storefront: "fr" };
+		const chart = { chart: "free" as const, genreId: 7019, storefront: "fr" };
+		await lookupPullStep(env, { queue: [lookup] });
+		await reviewPullStep(env, { queue: [review] });
+		await chartPullStep(env, { queue: [chart] });
+
+		const pulled = await pulledOn(env.DB, TODAY);
+		expect(pulled.has(lookupMarker(lookup))).toBeTruthy();
+		expect(pulled.has(reviewMarker(review))).toBeTruthy();
+		expect(pulled.has(chartMarker(chart))).toBeTruthy();
+	});
+
+	it("marks a feed with no reviews, which writes no row of its own", async () => {
+		stubFetch(() => Response.json({ feed: { entry: { id: { label: "x" } } } }));
+		const unit = { appId: APP_ID, storefront: "lu" };
+		await reviewPullStep(env, { queue: [unit] });
+		const pulled = await pulledOn(env.DB, TODAY);
+		expect(pulled.has(reviewMarker(unit))).toBeTruthy();
+	});
+
+	it("marks an app absent from a storefront, since asking again today learns nothing", async () => {
+		stubFetch(() => Response.json({ resultCount: 0, results: [] }));
+		const unit = { appId: APP_ID, localeCode: "nl-NL", storefront: "nl" };
+		await lookupPullStep(env, { queue: [unit] });
+		const pulled = await pulledOn(env.DB, TODAY);
+		expect(pulled.has(lookupMarker(unit))).toBeTruthy();
+	});
+
+	it("leaves no marker after an HTTP error, so the unit is tried again", async () => {
+		stubFetch(() => new Response("boom", { status: 500 }));
+		const lookup = { appId: APP_ID, localeCode: "fr-FR", storefront: "fr" };
+		const chart = { chart: "paid" as const, genreId: null, storefront: "fr" };
+		await lookupPullStep(env, { queue: [lookup] });
+		await chartPullStep(env, { queue: [chart] });
+		const pulled = await pulledOn(env.DB, TODAY);
+		expect(pulled.has(lookupMarker(lookup))).toBeFalsy();
+		expect(pulled.has(chartMarker(chart))).toBeFalsy();
+	});
+
+	it("leaves no marker after a throttle, which collected nothing", async () => {
+		stubFetch(() =>
+			Response.json({ resultCount: 0, results: [] }, { status: 403 })
+		);
+		const unit = { appId: APP_ID, storefront: "fr" };
+		await reviewPullStep(env, { queue: [unit] });
+		const pulled = await pulledOn(env.DB, TODAY);
+		expect(pulled.has(reviewMarker(unit))).toBeFalsy();
+	});
+
+	it("reads back only the markers of the day asked for", async () => {
+		stubFetch(() => Response.json(reviewFeed(1)));
+		await reviewPullStep(env, { queue: [{ appId: APP_ID, storefront: "fr" }] });
+		const other = await pulledOn(env.DB, "2020-01-01");
+		expect(other.size).toBe(0);
 	});
 });
 
