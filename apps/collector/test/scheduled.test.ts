@@ -194,6 +194,46 @@ describe("scheduled handler", () => {
 		).toBeFalsy();
 	});
 
+	it("still queues the day when the marker read fails", async () => {
+		// Everything between building the day's work and enqueueing it is a D1
+		// call, and on 2026-09-11 one of them threw and took the whole fan-out
+		// with it. Renaming collector_state breaks the marker read and the chart
+		// genres behind it; what must survive is the queue.
+		await env.DB.batch([
+			env.DB.prepare(
+				"INSERT INTO app (id, current_name, primary_genre_id, first_seen_at, last_seen_at) VALUES (?, 'Tracked App', 6013, 0, 0)"
+			).bind(APP_ID),
+			env.DB.prepare(
+				"INSERT INTO tracked_app (user_id, app_id, created_at) VALUES ('admin', ?, 0)"
+			).bind(APP_ID),
+			env.DB.prepare(
+				"INSERT INTO app_language (app_id, language) VALUES (?, 'fr')"
+			).bind(APP_ID),
+		]);
+		await env.DB.exec(
+			"ALTER TABLE collector_state RENAME TO collector_state_x"
+		);
+		try {
+			await runCron("0 3 * * *");
+		} finally {
+			await env.DB.exec(
+				"ALTER TABLE collector_state_x RENAME TO collector_state"
+			);
+		}
+		const tasks = await drainQueue();
+
+		// Unknown markers mean "nothing pulled yet", so the pulls are queued whole:
+		// a duplicate fetch rewrites a row keyed by day, where losing the day is
+		// permanent.
+		expect(tasks.find((t) => t.type === "lookup_pull")).toMatchObject({
+			queue: [{ appId: APP_ID, localeCode: "fr-FR", storefront: "fr" }],
+		});
+		expect(tasks.some((t) => t.type === "review_pull")).toBeTruthy();
+		// Yesterday's compaction was on the list before any of this ran, and is
+		// what used to be lost with it.
+		expect(tasks.some((t) => t.type === "compact")).toBeTruthy();
+	});
+
 	it("ignores a marker from another day", async () => {
 		await env.DB.batch([
 			env.DB.prepare(
