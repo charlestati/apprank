@@ -8,4 +8,29 @@ allowBuilds:
   esbuild: true
   workerd: true
 
+catalog:
+  "@cloudflare/vitest-plugin": 1.4.1
+  "@vitest/coverage-istanbul": 5.0.4
+  typescript: 7.0.2
+  vitest: 5.0.4
+  wrangler: 4.150.0
+
 minimumReleaseAge: 10080
+
+saveExact: true
+
+overrides:
+  # drizzle-kit 0.31 still loads its config through the deprecated
+  # @esbuild-kit loader, which pins esbuild ~0.18 (GHSA-67mh-4wv8-2f99, dev
+  # server CORS). No drizzle-kit release drops it, so the loader gets the same
+  # esbuild drizzle-kit itself already depends on. Remove once drizzle-kit
+  # stops depending on @esbuild-kit.
+  "@esbuild-kit/core-utils>esbuild": 0.25.12
+
+audit:
+  ignore:
+    # braces <=3.0.3, stack exhaustion on deeply nested patterns; no patched
+    # release exists. Reached only through ultracite > find-workspaces >
+    # fast-glob > micromatch, at lint time, on glob patterns this repository
+    # writes itself, so no untrusted pattern can reach it. Review by 2027-01-20.
+    - GHSA-vfj7-8cjw-p6xm

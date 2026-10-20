@@ -96,29 +96,29 @@ describe("the session gate", () => {
 	});
 });
 
-describe("ownership", () => {
-	/** A second operator with their own app, keyword and crawl pair. */
-	async function seedOtherOperator() {
-		await env.DB.batch([
-			env.DB.prepare(
-				"INSERT INTO app (id, current_name, first_seen_at, last_seen_at) VALUES (?1, 'Their App', 0, 0)"
-			).bind(OTHER_APP),
-			env.DB.prepare(
-				"INSERT INTO tracked_app (user_id, app_id, created_at) VALUES (?1, ?2, 0)"
-			).bind(OTHER_USER, OTHER_APP),
-			env.DB.prepare(
-				"INSERT INTO keyword (id, text, normalized, language) VALUES (9, 'their keyword', 'their keyword', 'fr')"
-			),
-			env.DB.prepare(
-				`INSERT INTO crawl_pair (id, keyword_id, storefront_code, locale_code, tier, ref_count, next_due_at)
+/** A second operator with their own app, keyword and crawl pair. */
+async function seedOtherOperator() {
+	await env.DB.batch([
+		env.DB.prepare(
+			"INSERT INTO app (id, current_name, first_seen_at, last_seen_at) VALUES (?1, 'Their App', 0, 0)"
+		).bind(OTHER_APP),
+		env.DB.prepare(
+			"INSERT INTO tracked_app (user_id, app_id, created_at) VALUES (?1, ?2, 0)"
+		).bind(OTHER_USER, OTHER_APP),
+		env.DB.prepare(
+			"INSERT INTO keyword (id, text, normalized, language) VALUES (9, 'their keyword', 'their keyword', 'fr')"
+		),
+		env.DB.prepare(
+			`INSERT INTO crawl_pair (id, keyword_id, storefront_code, locale_code, tier, ref_count, next_due_at)
          VALUES (9, 9, 'fr', 'fr-FR', 1, 1, 0)`
-			),
-			env.DB.prepare(
-				"INSERT INTO tracked_keyword (user_id, app_id, keyword_id, created_at) VALUES (?1, ?2, 9, 0)"
-			).bind(OTHER_USER, OTHER_APP),
-		]);
-	}
+		),
+		env.DB.prepare(
+			"INSERT INTO tracked_keyword (user_id, app_id, keyword_id, created_at) VALUES (?1, ?2, 9, 0)"
+		).bind(OTHER_USER, OTHER_APP),
+	]);
+}
 
+describe("ownership", () => {
 	it("hides another operator's app behind a 404, not a 403", async () => {
 		await seedOtherOperator();
 		// 403 would confirm the id exists, which is itself information.

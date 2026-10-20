@@ -1,9 +1,6 @@
 import path from "node:path";
 
-import {
-	cloudflareTest,
-	readD1Migrations,
-} from "@cloudflare/vitest-pool-workers";
+import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig(async () => {
@@ -30,6 +27,11 @@ export default defineConfig(async () => {
 			}),
 		],
 		test: {
+			// Vitest 5 persists transformed modules under node_modules/.vitest-cache
+			// by default, but the Workers pool resolves those reads inside workerd,
+			// which cannot see that directory: every suite failed to load with an
+			// ENOENT on a cache hash.
+			fsModuleCache: false,
 			coverage: {
 				// v8 coverage is unavailable inside workerd; istanbul instruments the
 				// source at transform time and works in the Workers pool.

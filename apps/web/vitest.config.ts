@@ -1,9 +1,6 @@
 import path from "node:path";
 
-import {
-	cloudflareTest,
-	readD1Migrations,
-} from "@cloudflare/vitest-pool-workers";
+import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
 import react from "@vitejs/plugin-react";
 import type { ViteUserConfig } from "vitest/config";
 import { defineConfig } from "vitest/config";
@@ -16,6 +13,11 @@ export default defineConfig(async (): Promise<ViteUserConfig> => {
 	);
 	return {
 		test: {
+			// Vitest 5 persists transformed modules under node_modules/.vitest-cache
+			// by default, but the Workers pool resolves those reads inside workerd,
+			// which cannot see that directory: every suite failed to load with an
+			// ENOENT on a cache hash.
+			fsModuleCache: false,
 			coverage: {
 				provider: "istanbul",
 				include: ["src/**/*.ts", "client/src/**/*.ts", "client/src/**/*.tsx"],

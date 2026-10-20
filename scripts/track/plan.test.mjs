@@ -1,3 +1,4 @@
+/* oxlint-disable vitest/no-import-node-test, vitest/prefer-importing-vitest-globals -- `pnpm test:scripts` runs these under node --test, which vitest cannot reach */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -117,6 +118,24 @@ test("a second user tracking the same keyword adds no new pair", () => {
 	assert.equal(summary.tracksAdded, 1);
 });
 
+/** One tracked_keyword_storefront row, joined the way track.mjs reads it. */
+function stored(
+	storefront,
+	locale,
+	normalized,
+	userId = "operator",
+	appId = 1
+) {
+	return {
+		user_id: userId,
+		app_id: appId,
+		normalized,
+		language: "fr",
+		storefront_code: storefront,
+		locale_code: locale,
+	};
+}
+
 /** One operator tracking one keyword in one storefront, already applied. */
 function appliedState(normalized = "obsolete") {
 	return {
@@ -146,24 +165,6 @@ function appliedState(normalized = "obsolete") {
 			},
 		],
 		trackedStorefronts: [stored("fr", "fr-FR", normalized)],
-	};
-}
-
-/** One tracked_keyword_storefront row, joined the way track.mjs reads it. */
-function stored(
-	storefront,
-	locale,
-	normalized,
-	userId = "operator",
-	appId = 1
-) {
-	return {
-		user_id: userId,
-		app_id: appId,
-		normalized,
-		language: "fr",
-		storefront_code: storefront,
-		locale_code: locale,
 	};
 }
 

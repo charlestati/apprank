@@ -24,10 +24,13 @@
 		"relevance": "pnpm --filter keyword-relevance score"
 	},
 	"devDependencies": {
-		"oxfmt": "0.65.0",
-		"oxlint": "1.80.0",
-		"typescript": "7.0.2",
-		"ultracite": "7.10.6"
+		"oxfmt": "0.73.0",
+		"oxlint": "1.88.0",
+		"typescript": "catalog:",
+		"ultracite": "8.0.0"
 	},
-	"packageManager": "pnpm@11.25.0"
+	"engines": {
+		"node": ">=24.0.0 <25"
+	},
+	"packageManager": "pnpm@12.13.0"
 }
