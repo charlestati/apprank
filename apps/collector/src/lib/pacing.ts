@@ -11,7 +11,7 @@
 //          is consumed by other Workers on the same address; halving our own
 //          share on one stray 429 costs coverage and relieves nothing.
 //
-// Start 4/min, ×1.1 per day that stayed within tolerance (ceiling 6/min),
+// Start 4/min, ×1.1 per day that stayed within tolerance (ceiling 18/min),
 // ×0.5 on a day that did not (floor 1/min). Persisted in D1 so redeploys keep
 // discovery.
 

@@ -3,7 +3,27 @@
 // may return follow-up tasks. Everything a step writes must be idempotent:
 // alarms are at-least-once.
 
-export type Task =
+/**
+ * What the scheduler stamps on every queued task, beside the step's own shape.
+ *
+ * `id` is how a finished step finds itself again. A step awaits Apple and D1,
+ * and while it does the object's input gate is open, so `enqueue` and
+ * `stepNow` can change the queue underneath it; writing back the copy read
+ * before the step erased whatever arrived meanwhile (the 03:00 cron's tasks
+ * among them). Tasks queued before ids existed get one on first read.
+ *
+ * `threw` counts throws, apart from `attempt`, which the steps own and spend
+ * on throttles and rate limits. Sharing one counter let two throttles and a
+ * single throw drop a whole batch.
+ */
+interface TaskMeta {
+	id?: string;
+	threw?: number;
+}
+
+export type Task = TaskMeta & TaskBody;
+
+type TaskBody =
 	| {
 			type: "asc_poll";
 			stage?: "init" | "reports" | "instances";

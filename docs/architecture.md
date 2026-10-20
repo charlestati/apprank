@@ -44,6 +44,19 @@ A 10-minute cron re-arms a lost alarm; 03:00 UTC queues the daily jobs.
 Alarms are at-least-once, so writes are idempotent: `ranking` is unique on
 `(pair_id, observed_date)`, reviews key on Apple's review id.
 
+A task stays on the queue while its step runs and is then swapped for its
+follow-ups by id, against the queue as it is at that moment: a step awaits Apple
+and D1, other calls reach the object meanwhile, and writing back the copy read
+before the step erased whatever they had queued. A step that throws is retried
+twice, counted apart from the throttle retries the step spends itself; on the
+third throw its head unit is recorded as lost and the rest of the batch carries
+on. A deploy restart is retried without being counted.
+
+Compaction normally merges yesterday's staging. The daily job also queues any
+day up to six back that still holds staging and has no `compact:{date}` marker
+in `collector_state`, which the compaction writes once every output has landed,
+so a missed night reaches `rankings/v1/` before its staging expires.
+
 ## Cadence
 
 Each day the collector works out what the learned rate affords, subtracts the

@@ -12,6 +12,13 @@ crawl, then reschedules itself at the learned rate. Two crons drive it:
 (compaction, App Store Connect poll, Monday Apple Ads pull, per-app lookups,
 reviews, charts).
 
+Compaction covers yesterday plus any day up to six back that still has staging
+and no `compact:{date}` marker. Staging expires after seven days, so a night
+whose compaction never ran used to vanish from the rebuild source a week later.
+Six, not seven: a day's staging was written across its whole 24 hours, and
+compacting a half-expired day would overwrite a complete output with a fragment.
+The marker is written only after every output landed.
+
 Two things adapt, and they are separate:
 
 - **Rate** (`lib/pacing.ts`): how fast we may fetch. Two brakes, deliberately
@@ -57,6 +64,19 @@ is what makes "is Apple still blocking this IP?" answerable in one request.
 Alarms are **at-least-once with automatic retries**, so every write must be
 idempotent (`ranking` is unique on `(pair_id, observed_date)`; reviews key on
 Apple's own review id). Never call `deleteAlarm()` inside `alarm()`.
+
+**Never write back a queue read before an await that leaves the object.** A
+step's fetch and D1 calls open the input gate, so `enqueue` and `stepNow` run in
+the middle of it; the alarm used to `put` the copy it read before the step and
+erased whatever arrived meanwhile, the 03:00 cron's tasks included. Every task
+carries an `id` (stamped on enqueue, or on first read for anything queued before
+ids existed), stays queued while it runs, and is then removed by id from a fresh
+read, with its follow-ups appended, in one get-and-put that awaits nothing else.
+`stepNow` does the same, which is also why a manual step that throws no longer
+loses its task. Throws count in `threw`, never in `attempt`, which the steps
+spend on throttles: sharing it let two throttles and one throw drop a whole
+batch. Three consecutive throws give up the head unit (recorded as `task_threw`
+with its params) and keep the rest; a `do_restarted` is retried uncounted.
 
 `ensureAlarm()` pulls in an alarm parked more than a minute out, because a stale
 long park (from an old deploy) otherwise blocks newly due work. The one
