@@ -1,0 +1,20 @@
+{
+	"$schema": "https://docs.renovatebot.com/renovate-schema.json",
+	"extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+	"rangeStrategy": "pin",
+	"minimumReleaseAge": "7 days",
+	"internalChecksFilter": "strict",
+	"lockFileMaintenance": { "enabled": true },
+	"packageRules": [
+		{
+			"description": "Group the Cloudflare toolchain: wrangler, workerd and the Vitest plugin are released together and test against each other.",
+			"matchPackageNames": ["wrangler", "@cloudflare/**", "workerd"],
+			"groupName": "Cloudflare toolchain"
+		},
+		{
+			"description": "agents pins exact versions of the MCP SDKs as peers, so they move with it.",
+			"matchPackageNames": ["agents", "@modelcontextprotocol/**"],
+			"groupName": "agents and MCP SDKs"
+		}
+	]
+}
