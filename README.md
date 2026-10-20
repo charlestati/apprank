@@ -46,13 +46,14 @@ pnpm lint          # ultracite (oxlint + oxfmt)
 pnpm knip          # unused files, dependencies and exports
 pnpm typecheck
 pnpm test          # vitest in the Workers runtime, then the script tests
-pnpm coverage      # 80% statements / lines / functions, 70% branches
+pnpm coverage      # 80% statements, lines, functions and branches
 pnpm generate      # drizzle-kit, after a schema change
 pnpm rebuild:d1    # rebuild D1 from the R2 archive
 ```
 
 `pnpm install` points `core.hooksPath` at `.githooks/`, which lints on commit
-and runs the tests on push.
+and runs the tests on push. pnpm skips that step when an install has nothing to
+do, so a clone that was already installed needs `pnpm run prepare` once.
 
 Node 24+, pnpm 12+. `AGENTS.md` is the working context for coding agents.
 

@@ -69,7 +69,7 @@ pnpm typecheck     # wrangler types, then tsc across every workspace
 pnpm types         # regenerate worker-configuration.d.ts after a wrangler.jsonc edit
 pnpm test          # vitest in the Workers runtime, then the script tests
 pnpm test:scripts  # node --test over scripts/, the half vitest cannot reach
-pnpm coverage      # enforces 80% statements/lines/functions, 70% branches per workspace
+pnpm coverage      # enforces 80% statements, lines, functions and branches per workspace
 pnpm generate      # drizzle-kit generate after editing the schema
 pnpm migrate:local # / migrate:remote, seed:local, seed:remote
 pnpm rebuild:d1    # R2 to D1 rebuild (not "rebuild": pnpm rebuild is a built-in)
@@ -111,13 +111,18 @@ Both hooks are bypassable with `--no-verify`: they catch accidents, not policy.
   one-row "class" and buries the counts. Put the body in `message` (wide enough
   to diagnose) and pick a class: `throttled`, `rate_limited`, `http_error`,
   `invalid_body`, `upstream_error`, `task_threw`, `app_not_in_storefront`,
-  `pull_abandoned`, `skipped_processing_date`, `do_restarted`.
+  `pull_abandoned`, `skipped_processing_date`, `duplicate_processing_date`,
+  `stopped_due_to_inactivity`, `do_restarted`.
 - **The table holds three kinds of row, and only one is a failure.** An
   observation that is gone; back-pressure that worked, where the unit is
   requeued and the pair runs late rather than never (`throttled`,
   `rate_limited`, and `do_restarted`, a deploy dropping an in-flight task); and
   a _finding_ about Apple's own data that nothing of ours failed on
-  (`skipped_processing_date`, `app_not_in_storefront`). All three belong in the
+  (`skipped_processing_date`, `duplicate_processing_date`,
+  `app_not_in_storefront`). `stopped_due_to_inactivity` is a loss, not a
+  finding: the replacement ASC request does not cover the days before it. A
+  condition Apple keeps reporting (a permanent gap, a dead request it still
+  lists) is recorded once, not on every poll. All three kinds belong in the
   table and on the data-health page, because the provenance is the point, but a
   single count of them presented as "collection errors" is meaningless: half the
   rows were the last two kinds, 11 of the first 12 days had at least one, and
@@ -159,7 +164,12 @@ Both hooks are bypassable with `--no-verify`: they catch accidents, not policy.
 - **A script name that collides with a pnpm built-in is shadowed silently.**
   `config` and `rebuild` are both built-ins, so `pnpm rebuild` runs pnpm's own
   native-dependency rebuild and never the script. The R2-to-D1 alias is
-  therefore `rebuild:d1`.
+  therefore `rebuild:d1`, and the package script it filters to is `start`:
+  through `pnpm --filter`, a package script named after a built-in runs only
+  when the root defines the same name. `ci` is a built-in that never runs a
+  script at all, so the gate is always `pnpm run ci`; a bare `pnpm ci` is a
+  clean install. `scripts/rebuild-d1/script-names.test.mjs` checks every
+  manifest.
 - macOS is case-insensitive; renaming `Foo.tsx` → `foo.tsx` leaves the old path
   in the git index and breaks Linux CI. `git config core.ignorecase false` and
   re-add.
