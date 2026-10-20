@@ -92,7 +92,12 @@ apart:
   account.
 - Ownership is on the tracked set, not the observations: `crawl_pair` is
   deliberately the union of what everyone tracks, so `ownsPair` asks whether the
-  caller tracks that _keyword_.
+  caller has a `tracked_keyword_storefront` row for that pair's keyword,
+  storefront and locale. It used to ask about the keyword alone, which let an
+  operator tracking a word in France open, list and report on another operator's
+  pair for the same word in Germany. Every read that enumerates the caller's
+  pairs joins through `TRACKED_PAIRS` in `queries/apps.ts` for the same reason;
+  migration 0002 backfilled the rows for tracks that predate the table.
 
 When adding a route that takes an `:appId` or `:pairId`, add the `ownsApp` /
 `ownsPair` guard. `test/access.test.ts` walks every scoped route and fails if
@@ -112,11 +117,17 @@ accounts that never change.
   The flag also makes `wrangler types` ask for `@types/node`, which is installed
   and listed in that workspace's `tsconfig.json` `types` array; it would
   otherwise never load.
-- **The web app's scarce resource is reads, not writes** (5M rows/day free). Its
-  three "latest observation per pair" CTEs are bounded to 90 days: unbounded,
-  they scan the whole `ranking` table on every dashboard load, and that table
-  grows by one row per pair per day, so a year of history means ~45,000 rows
-  read per page view and so ~110 views would exhaust the daily tier. Measured,
-  not assumed: the obvious correlated-subquery rewrite reads _more_ today (400
-  vs 50, being one index seek per pair against a small table) and only overtakes
-  once the table passes ~400 rows.
+- **The web app's scarce resource is reads, not writes** (5M rows/day free). The
+  "latest observation per pair" CTEs (`LATEST_FOR_APP` in `queries/apps.ts`, and
+  the top-results one in `report.ts`) are bounded to 90 days **and driven from
+  the caller's own pairs**. The bound alone bounded nothing: grouping the whole
+  `ranking` index by pair and filtering the date afterwards walked every
+  operator's history, ~36,500 rows for 100 pairs a year in, on every dashboard
+  load. Joined from the caller's pairs it is one index range per pair.
+  `test/query-budget.test.ts` asserts `meta.rows_read`.
+- **Two more D1 ceilings.** A statement binds at most 100 parameters (local
+  workerd enforces this one too), so a set of ids goes in as one JSON parameter
+  through `json_each(?1)`, never as an `IN (?, ?, …)` list. And Workers Free
+  allows 50 queries per invocation, so a tool never issues a query per app or
+  per pair: `pairsCoverage` and `storefrontsByApp` answer for the whole set at
+  once. `test/query-budget.test.ts` counts both.

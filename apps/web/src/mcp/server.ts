@@ -173,7 +173,7 @@ function buildServer(
 					.int()
 					.optional()
 					.describe(
-						"Narrow to one app's position. Omit for the tracked app's own rank."
+						"Narrow to one app's position. Omit for the tracked app's own rank; required when you track this keyword for more than one app."
 					),
 				detail: detailSchema,
 				from: isoDate

@@ -193,6 +193,28 @@ describe("GET /apps/:appId/report", () => {
 		expect(report.dates).toContain(isoDay(1));
 	});
 
+	it("takes the position from the newest observation, ranked or not", async () => {
+		await seedRanking({
+			date: isoDay(2),
+			entries: [[7, APP_ID]],
+			id: 1,
+			pairId: 1,
+		});
+		await seedRanking({
+			date: isoDay(1),
+			entries: [[1, RIVAL_ID]],
+			id: 2,
+			pairId: 1,
+		});
+		const report = await getReport();
+		const row = report.rows.find((r) => r.keyword === KEYWORD_A);
+		// The newer observation is the app's current standing; 7 is history,
+		// though it still counts towards best and worst.
+		expect([row?.position, row?.change]).toStrictEqual([null, null]);
+		expect([row?.best, row?.worst]).toStrictEqual([7, 7]);
+		expect(report.stats.rankedKeywords).toBe(0);
+	});
+
 	it("spans the whole requested window, not just the observed days", async () => {
 		await seedRanking({
 			date: isoDay(1),

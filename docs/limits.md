@@ -42,12 +42,12 @@ pairs, never coverage, because a dropped pair loses its history permanently.
 
 ## Cloudflare's free tier is not what runs out
 
-| Resource         | Free tier     | What this uses                                                                                   |
-| ---------------- | ------------- | ------------------------------------------------------------------------------------------------ |
-| D1 row-writes    | 100,000/day   | ~21 per pair on a cold crawl, far less in steady state. About 4,700 crawls a day before it binds |
-| D1 rows read     | 5,000,000/day | The dashboard's queries are bounded to 90 days precisely so this stays flat as history grows     |
-| R2 storage       | 10 GB         | NDJSON, one file per storefront per month                                                        |
-| Workers requests | 100,000/day   | Asset requests included, since the Worker gates the whole origin                                 |
+| Resource         | Free tier     | What this uses                                                                                                                                                 |
+| ---------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1 row-writes    | 100,000/day   | ~21 per pair on a cold crawl, far less in steady state. About 4,700 crawls a day before it binds                                                               |
+| D1 rows read     | 5,000,000/day | The "latest rank per pair" lookups read at most 90 days per tracked pair, whatever the history; the report and history reads scale with the window you ask for |
+| R2 storage       | 10 GB         | NDJSON, one file per storefront per month                                                                                                                      |
+| Workers requests | 100,000/day   | Asset requests included, since the Worker gates the whole origin                                                                                               |
 
 That 21 is a **cold** crawl, where every app and metadata row is new: 50 pairs
 produced 50 `ranking`, 512 `rank_entry`, 225 `app` and 270

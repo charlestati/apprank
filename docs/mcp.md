@@ -38,8 +38,11 @@ Revoke or rotate, effective on the next call:
 
 ```sh
 npx wrangler d1 execute apprank --remote -c wrangler.local.jsonc --command \
-  "UPDATE mcp_credential SET revoked_at = unixepoch() * 1000 WHERE name = 'laptop'"
+  "UPDATE mcp_credential SET revoked_at = unixepoch() * 1000 WHERE id = '<id>'"
 ```
+
+Revoke by the `id` `issue.mjs` printed, never by name: a name is unique only per
+user, so `WHERE name = 'laptop'` would revoke every operator's laptop.
 
 Rotation is a revoke plus a fresh issue under the same `--user`. `last_used_at`
 and `call_count` make a forgotten credential findable, and every call is logged

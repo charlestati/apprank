@@ -16,6 +16,7 @@ import {
 	seedKeywords,
 	seedRanking,
 	seedTrackedApp,
+	trackEveryActivePair,
 } from "./fixtures";
 import {
 	callTool,
@@ -413,5 +414,111 @@ describe("keyword resolution", () => {
 	it("insists on one identifier or the other", async () => {
 		const { isError } = await call("get_rank_history", {});
 		expect(isError).toBeTruthy();
+	});
+});
+
+describe("get_rank_history without an appId", () => {
+	beforeEach(async () => {
+		for (const [id, offset, mine] of [
+			[1, 1, 5],
+			[2, 0, 3],
+		] as const) {
+			await seedRanking({
+				date: isoDay(offset),
+				entries: [
+					[1, RIVAL_ID],
+					[mine, APP_ID],
+				],
+				id,
+				pairId: 1,
+			});
+		}
+	});
+
+	it("reads the tracked app's own rank, not every app on the page", async () => {
+		const { data } = await call("get_rank_history", {
+			detail: "daily",
+			from: isoDay(5),
+			pairId: 1,
+		});
+		expect(data.points).toStrictEqual([
+			{ date: isoDay(1), position: 5 },
+			{ date: isoDay(0), position: 3 },
+		]);
+	});
+
+	it("asks which app when the caller tracks the keyword for two", async () => {
+		await env.DB.batch([
+			env.DB.prepare(
+				"INSERT INTO tracked_app (user_id, app_id, created_at) VALUES (?1, ?2, 0)"
+			).bind(USER_ID, RIVAL_ID),
+			env.DB.prepare(
+				"INSERT INTO tracked_keyword (user_id, app_id, keyword_id, created_at) VALUES (?1, ?2, 1, 0)"
+			).bind(USER_ID, RIVAL_ID),
+		]);
+		await trackEveryActivePair(USER_ID);
+		const ambiguous = await call("get_rank_history", { pairId: 1 });
+		expect(ambiguous.isError).toBeTruthy();
+		expect(JSON.stringify(ambiguous.data)).toContain("appId");
+
+		const named = await call("get_rank_history", {
+			appId: RIVAL_ID,
+			detail: "daily",
+			from: isoDay(5),
+			pairId: 1,
+		});
+		expect(named.data.points).toStrictEqual([
+			{ date: isoDay(1), position: 1 },
+			{ date: isoDay(0), position: 1 },
+		]);
+	});
+});
+
+describe("windows and filters the tools echo", () => {
+	it("ends get_keyword_report at the requested to date", async () => {
+		await seedRanking({
+			date: isoDay(1),
+			entries: [[5, APP_ID]],
+			id: 1,
+			pairId: 1,
+		});
+		await seedRanking({
+			date: isoDay(0),
+			entries: [[2, APP_ID]],
+			id: 2,
+			pairId: 1,
+		});
+		const { data } = await call("get_keyword_report", {
+			appId: APP_ID,
+			from: isoDay(10),
+			storefront: "fr",
+			to: isoDay(1),
+		});
+		const rows = data.rows as { keyword: string; position: number | null }[];
+		expect(rows.find((r) => r.keyword === KEYWORD_A)?.position).toBe(5);
+		expect(data.dates).toStrictEqual({ first: isoDay(1), last: isoDay(1) });
+	});
+
+	it("filters reviews by rating before the cap, so old ones are reachable", async () => {
+		// The newest hundred are all five stars; the one-star reviews sit behind them.
+		await env.DB.prepare(
+			`INSERT INTO review (id, app_id, storefront_code, rating, reviewed_at, fetched_at)
+       WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM n WHERE i < 102)
+       SELECT 'r' || i, ?1, 'fr', CASE WHEN i < 100 THEN 5 ELSE 1 END, 10000 - i, 0 FROM n`
+		)
+			.bind(APP_ID)
+			.run();
+		const { data } = await call("get_reviews", {
+			appId: APP_ID,
+			limit: 2,
+			maxRating: 1,
+		});
+		const reviews = data.reviews as { rating: number }[];
+		expect(reviews.map((r) => r.rating)).toStrictEqual([1, 1]);
+		expect(data.provenance).toMatchObject({ truncated: true });
+
+		const all = await call("get_reviews", { appId: APP_ID, maxRating: 1 });
+		expect(all.data.reviews).toHaveLength(3);
+		expect(all.data.provenance).toMatchObject({ truncated: false });
 	});
 });

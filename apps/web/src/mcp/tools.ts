@@ -21,14 +21,17 @@ import { ownsApp, ownsPair } from "../access";
 import type { Env } from "../env";
 import { DIFFICULTY_BLOCKED, POPULARITY_MEASURABLE } from "../insights";
 import {
+	TRACKED_PAIRS,
 	appLocalizations,
 	appRatings,
 	appReviews,
-	appStorefronts,
+	currentRankings,
 	listApps,
+	storefrontsByApp,
 } from "../queries/apps";
 import { chartMovement } from "../queries/charts";
-import { isoDay, pairCoverage } from "../queries/coverage";
+import { isoDay, pairCoverage, pairsCoverage } from "../queries/coverage";
+import type { Coverage } from "../queries/coverage";
 import { dataHealth } from "../queries/health";
 import { metadataChanges } from "../queries/metadata";
 import { popularityHistory } from "../queries/popularity";
@@ -36,6 +39,7 @@ import {
 	pairCompetitors,
 	pairHistory,
 	pairResultPage,
+	trackedAppsForPair,
 } from "../queries/rankings";
 import { buildReport } from "../report";
 import type { KeywordRow } from "../report";
@@ -94,7 +98,8 @@ async function resolvePair(
 			`SELECT cp.id
        FROM tracked_keyword tk
        JOIN keyword k ON k.id = tk.keyword_id
-       JOIN crawl_pair cp ON cp.keyword_id = k.id AND cp.storefront_code = ?2
+       ${TRACKED_PAIRS}
+         AND cp.storefront_code = ?2
        WHERE tk.user_id = ?3 AND k.normalized = ?1
        ORDER BY cp.ref_count DESC LIMIT 1`
 		)
@@ -166,7 +171,9 @@ export function summariseSeries(
 	return {
 		best: values[0] ?? null,
 		inflections,
-		latest: ranked.at(-1)?.position ?? null,
+		// The newest observation's, ranked or not: a newer day outside the top
+		// 200 means the older rank is no longer the app's.
+		latest: points.at(-1)?.position ?? null,
 		mean:
 			values.length === 0
 				? null
@@ -215,23 +222,17 @@ export async function listTrackedApps(
 	_args: unknown,
 	ctx: ToolContext
 ): Promise<ToolOutcome> {
-	const apps = await listApps(ctx.db, ctx.principal.userId);
-	const withStorefronts = await Promise.all(
-		apps.results.map(async (a) => {
-			const storefronts = await appStorefronts(
-				ctx.db,
-				ctx.principal.userId,
-				a.id
-			);
-			return {
-				appId: a.id,
-				developer: a.developer_name,
-				name: a.current_name,
-				primaryGenreId: a.primary_genre_id,
-				storefronts: storefronts.results,
-			};
-		})
-	);
+	const [apps, storefronts] = await Promise.all([
+		listApps(ctx.db, ctx.principal.userId),
+		storefrontsByApp(ctx.db, ctx.principal.userId),
+	]);
+	const withStorefronts = apps.results.map((a) => ({
+		appId: a.id,
+		developer: a.developer_name,
+		name: a.current_name,
+		primaryGenreId: a.primary_genre_id,
+		storefronts: storefronts.get(a.id) ?? [],
+	}));
 	return { data: { apps: withStorefronts }, rowCount: withStorefronts.length };
 }
 
@@ -307,6 +308,7 @@ export async function getKeywordReport(
 		appId: args.appId,
 		days: daysIn(w),
 		storefront: args.storefront,
+		to: w.to,
 		userId: ctx.principal.userId,
 	});
 	const limit = clamp(args.limit, CAPS.reports);
@@ -373,6 +375,30 @@ async function pairFromArgs(
 	);
 }
 
+/**
+ * The app whose rank a pair's history is about, when the caller named none.
+ *
+ * Without one, the history query returns every app Apple listed on each day,
+ * so "the tracked app's own rank" summarised two hundred competitors at once.
+ * An operator may track the same keyword for several apps, and then there is
+ * no single answer to guess.
+ */
+async function trackedAppForPair(
+	ctx: ToolContext,
+	pairId: number
+): Promise<number> {
+	const apps = await trackedAppsForPair(ctx.db, ctx.principal.userId, pairId);
+	const [only, ...others] = apps;
+	if (only !== undefined && others.length === 0) {
+		return only;
+	}
+	throw new NotFoundError(
+		only === undefined
+			? `No tracked keyword behind pair ${pairId}. Call get_current_rankings for the pair ids you can read.`
+			: `You track pair ${pairId} for apps ${apps.join(", ")}. Pass appId to say whose rank you want.`
+	);
+}
+
 export async function getRankHistory(
 	args: HistoryArgs,
 	ctx: ToolContext
@@ -380,9 +406,10 @@ export async function getRankHistory(
 	const pairId = await pairFromArgs(ctx, args);
 	const w = window(args.from, args.to, 90);
 	const limit = clamp(args.limit, CAPS.history);
+	const appId = args.appId ?? (await trackedAppForPair(ctx, pairId));
 
 	const [rows, coverage] = await Promise.all([
-		pairHistory(ctx.db, pairId, w.from, args.appId ?? null),
+		pairHistory(ctx.db, pairId, w.from, appId),
 		pairCoverage(ctx.db, pairId, w.from, w.to),
 	]);
 	const points = (
@@ -414,38 +441,12 @@ export async function getCurrentRankings(
 ): Promise<ToolOutcome> {
 	await requireApp(ctx, args.appId);
 	const limit = clamp(args.limit, CAPS.keywords);
-	const result = await ctx.db
-		.prepare(
-			`WITH latest AS (
-         SELECT r.pair_id, MAX(r.observed_date) AS d
-         FROM ranking r WHERE r.valid = 1
-           AND r.observed_date >= date('now', '-90 day')
-         GROUP BY r.pair_id
-       )
-       SELECT k.text AS keyword, cp.id AS pair_id, cp.storefront_code,
-              cp.locale_code, cp.interval_hours, l.d AS observed_date,
-              re.position
-       FROM tracked_keyword tk
-       JOIN keyword k ON k.id = tk.keyword_id
-       JOIN crawl_pair cp ON cp.keyword_id = k.id AND cp.ref_count > 0
-       LEFT JOIN latest l ON l.pair_id = cp.id
-       LEFT JOIN ranking r ON r.pair_id = cp.id AND r.observed_date = l.d AND r.valid = 1
-       LEFT JOIN rank_entry re ON re.ranking_id = r.id AND re.app_id = tk.app_id
-       WHERE tk.app_id = ?1 AND tk.user_id = ?2
-         AND (?3 IS NULL OR cp.storefront_code = ?3)
-       ORDER BY re.position IS NULL, re.position, k.text
-       LIMIT ?4`
-		)
-		.bind(args.appId, ctx.principal.userId, args.storefront ?? null, limit + 1)
-		.all<{
-			keyword: string;
-			pair_id: number;
-			storefront_code: string;
-			locale_code: string;
-			interval_hours: number;
-			observed_date: string | null;
-			position: number | null;
-		}>();
+	const result = await currentRankings(ctx.db, {
+		appId: args.appId,
+		limit,
+		storefront: args.storefront ?? null,
+		userId: ctx.principal.userId,
+	});
 
 	const today = isoDay(0);
 	const { rows, truncated } = capped(result.results, limit);
@@ -762,22 +763,13 @@ export async function getReviews(
 ): Promise<ToolOutcome> {
 	await requireApp(ctx, args.appId);
 	const limit = clamp(args.limit, CAPS.reviews);
-	const result = await appReviews(
-		ctx.db,
-		args.appId,
-		args.storefront,
-		CAPS.reviews
-	);
-	const all = result.results as {
-		rating: number | null;
-		storefront_code: string;
-	}[];
-	const matching = all.filter(
-		(r) =>
-			(args.minRating === undefined || (r.rating ?? 0) >= args.minRating) &&
-			(args.maxRating === undefined || (r.rating ?? 0) <= args.maxRating)
-	);
-	const { rows, truncated } = capped(matching, limit);
+	const result = await appReviews(ctx.db, args.appId, {
+		limit: limit + 1,
+		maxRating: args.maxRating,
+		minRating: args.minRating,
+		storefront: args.storefront,
+	});
+	const { rows, truncated } = capped(result.results, limit);
 	return {
 		data: {
 			provenance: {
@@ -907,7 +899,7 @@ export async function getCollectionHealth(
 			`SELECT cp.id, k.text AS keyword, cp.storefront_code
        FROM tracked_keyword tk
        JOIN keyword k ON k.id = tk.keyword_id
-       JOIN crawl_pair cp ON cp.keyword_id = k.id AND cp.ref_count > 0
+       ${TRACKED_PAIRS}
        WHERE tk.app_id = ?1 AND tk.user_id = ?2
        ORDER BY k.text
        LIMIT ?3`
@@ -915,14 +907,18 @@ export async function getCollectionHealth(
 		.bind(args.appId, ctx.principal.userId, CAPS.keywords)
 		.all<{ id: number; keyword: string; storefront_code: string }>();
 
-	const coverage = await Promise.all(
-		pairs.results.map(async (p) => ({
-			keyword: p.keyword,
-			pairId: p.id,
-			storefront: p.storefront_code,
-			...(await pairCoverage(ctx.db, p.id, w.from, w.to)),
-		}))
+	const byPair = await pairsCoverage(
+		ctx.db,
+		pairs.results.map((p) => p.id),
+		w.from,
+		w.to
 	);
+	const coverage = pairs.results.map((p) => ({
+		keyword: p.keyword,
+		pairId: p.id,
+		storefront: p.storefront_code,
+		...(byPair.get(p.id) as Coverage),
+	}));
 	const degraded = coverage.filter((c) => c.degraded);
 
 	return {

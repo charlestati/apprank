@@ -21,9 +21,11 @@ import {
 } from "./queries/preferences";
 import {
 	pairCompetitors,
+	pairFetchErrors,
 	pairHistory,
 	pairResultPage,
 	sinceDate,
+	trackedAppsForPair,
 } from "./queries/rankings";
 import { listSuggestions, setSuggestionStatus } from "./queries/suggestions";
 import { buildReport } from "./report";
@@ -117,8 +119,7 @@ api.get("/apps/:appId/storefronts", async (c) => {
 	if (!(await callerOwnsApp(c, appId))) {
 		return notFound(c);
 	}
-	const rows = await appStorefronts(c.env.DB, c.get("userId"), appId);
-	return c.json(rows.results);
+	return c.json(await appStorefronts(c.env.DB, c.get("userId"), appId));
 });
 
 // The keyword-performance report: summary tiles, chart series and table rows
@@ -147,13 +148,33 @@ api.get("/pairs/:pairId/results", async (c) => {
 	return c.json(await pairResultPage(c.env.DB, pairId, c.req.query("date")));
 });
 
-/** RFC 4180: quote a field only when it contains a delimiter or a quote. */
+/**
+ * RFC 4180 quoting, plus formula neutralisation.
+ *
+ * Keywords and competitor names are text Apple or another developer chose, and
+ * a spreadsheet runs a cell that opens with = + - or @ as a formula (tab and
+ * CR open one in some of them too). A leading apostrophe makes it a literal.
+ * Only text is neutralised: a negative rank change is a number and must stay
+ * one.
+ */
 function csvEscape(value: string | number | null): string {
 	if (value === null) {
 		return "";
 	}
-	const text = String(value);
-	return /[",\n]/u.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+	let text = String(value);
+	if (typeof value === "string" && /^[=+\-@\t\r]/u.test(text)) {
+		text = `'${text}`;
+	}
+	return /[",\r\n]/u.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+/**
+ * The storefront reaches a response header through the filename, and a header
+ * value with CR or LF in it throws, while a quote ends the filename early. A
+ * storefront code is letters, so anything else is dropped rather than escaped.
+ */
+function filenamePart(raw: string): string {
+	return raw.replaceAll(/[^a-z0-9]/giu, "").slice(0, 16) || "report";
 }
 
 // CSV of the current report, for the spreadsheet the numbers usually end up
@@ -209,7 +230,7 @@ api.get("/apps/:appId/report.csv", async (c) => {
 
 	return new Response(`${lines.join("\n")}\n`, {
 		headers: {
-			"Content-Disposition": `attachment; filename="apprank-${storefront}-${report.dates.at(-1) ?? "report"}.csv"`,
+			"Content-Disposition": `attachment; filename="apprank-${filenamePart(storefront)}-${report.dates.at(-1) ?? "report"}.csv"`,
 			"Content-Type": "text/csv; charset=utf-8",
 		},
 	});
@@ -226,17 +247,41 @@ api.get("/apps/:appId/keywords", async (c) => {
 	return c.json(rows.results);
 });
 
-// Rank history for one pair (optionally for one app; default = the tracked
-// app's position).
+// Rank history for one pair, for one app: the one named, or else the one app
+// the caller tracks the pair's keyword for. Unfiltered, the query returns every
+// app Apple listed each day, which a chart reads as the tracked app's rank.
+// The failed days come with it so the chart can draw them as failures, not as
+// the app dropping out.
 api.get("/pairs/:pairId/history", async (c) => {
 	const pairId = Number(c.req.param("pairId"));
 	if (!(await callerOwnsPair(c, pairId))) {
 		return notFound(c);
 	}
 	const days = bounded(c.req.query("days"), 90, 400);
-	const appId = c.req.query("appId") ? Number(c.req.query("appId")) : null;
-	const rows = await pairHistory(c.env.DB, pairId, sinceDate(days), appId);
-	return c.json(rows.results);
+	let appId = c.req.query("appId") ? Number(c.req.query("appId")) : null;
+	if (appId === null) {
+		const apps = await trackedAppsForPair(c.env.DB, c.get("userId"), pairId);
+		const [only, ...others] = apps;
+		if (only === undefined) {
+			return notFound(c);
+		}
+		if (others.length > 0) {
+			return c.json(
+				{
+					error: `pair ${pairId} is tracked for apps ${apps.join(", ")}; pass appId to say whose rank you want`,
+				},
+				400
+			);
+		}
+		appId = only;
+	}
+	const from = sinceDate(days);
+	const to = sinceDate(0);
+	const [rows, fetchErrors] = await Promise.all([
+		pairHistory(c.env.DB, pairId, from, appId),
+		pairFetchErrors(c.env.DB, pairId, from, to),
+	]);
+	return c.json({ fetchErrors, points: rows.results, window: { from, to } });
 });
 
 // Top-10 competitor timeline for a pair.
@@ -255,7 +300,9 @@ api.get("/apps/:appId/reviews", async (c) => {
 	if (!(await callerOwnsApp(c, appId))) {
 		return notFound(c);
 	}
-	const rows = await appReviews(c.env.DB, appId, c.req.query("storefront"));
+	const rows = await appReviews(c.env.DB, appId, {
+		storefront: c.req.query("storefront"),
+	});
 	return c.json(rows.results);
 });
 
@@ -285,7 +332,13 @@ api.get("/suggestions", async (c) => {
 
 api.patch("/suggestions/:id", async (c) => {
 	const id = Number(c.req.param("id"));
-	const { status } = (await c.req.json()) as { status: string };
+	// A body that is not JSON, or is JSON null, is the client's mistake and
+	// answers 400; destructuring it unguarded answered 500.
+	const body: unknown = await c.req.json().catch(() => null);
+	const status =
+		typeof body === "object" && body !== null && "status" in body
+			? body.status
+			: undefined;
 	if (status !== "accepted" && status !== "dismissed") {
 		return c.json({ error: "status must be accepted|dismissed" }, 400);
 	}

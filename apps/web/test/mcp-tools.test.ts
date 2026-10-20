@@ -234,7 +234,9 @@ describe(summariseSeries, () => {
 		const summary = summariseSeries(points);
 		expect(summary.best).toBe(4);
 		expect(summary.worst).toBe(20);
-		expect(summary.latest).toBe(4);
+		// The newest day saw the app outside the top 200, so 4 is no longer its
+		// rank: latest follows the newest observation, not the newest rank.
+		expect(summary.latest).toBeNull();
 		expect(summary.observations).toBe(3);
 		// A one-place drift is Apple reshuffling; a fifteen-place climb is not.
 		expect(summary.inflections).toStrictEqual([

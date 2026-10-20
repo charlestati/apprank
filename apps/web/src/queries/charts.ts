@@ -93,12 +93,15 @@ export async function chartMovement(
 	const before = positions(first, limit);
 	const after = positions(last, limit);
 	const appIds = [...new Set([...before.keys(), ...after.keys()])];
+	// One JSON parameter rather than one per id: two boards of up to 200 apps
+	// each would pass D1's ceiling of 100 bound parameters, and D1 rejects the
+	// whole statement.
 	const named = await db
 		.prepare(
 			`SELECT id, current_name, developer_name FROM app
-       WHERE id IN (${appIds.map(() => "?").join(",")})`
+       WHERE id IN (SELECT value FROM json_each(?1))`
 		)
-		.bind(...appIds)
+		.bind(JSON.stringify(appIds))
 		.all<{
 			id: number;
 			current_name: string | null;

@@ -30,6 +30,79 @@ export function pairHistory(
 		.all();
 }
 
+/**
+ * The apps a caller tracks a pair's keyword for, in that pair's storefront.
+ *
+ * A pair's history names no app on its own, and without one the history query
+ * returns every app Apple listed that day, so "the tracked app's rank" became
+ * two hundred competitors at once. Both transports default to the single app
+ * this returns; several mean there is no answer to guess.
+ */
+export async function trackedAppsForPair(
+	db: D1Database,
+	userId: string,
+	pairId: number
+): Promise<number[]> {
+	const rows = await db
+		.prepare(
+			`SELECT DISTINCT tk.app_id
+       FROM crawl_pair cp
+       JOIN tracked_keyword tk ON tk.keyword_id = cp.keyword_id AND tk.user_id = ?2
+       JOIN tracked_keyword_storefront tks ON tks.tracked_keyword_id = tk.id
+         AND tks.storefront_code = cp.storefront_code
+         AND tks.locale_code = cp.locale_code
+       WHERE cp.id = ?1
+       ORDER BY tk.app_id`
+		)
+		.bind(pairId, userId)
+		.all<{ app_id: number }>();
+	return rows.results.map((r) => r.app_id);
+}
+
+/** A day the crawl of a pair failed, and what it failed with. */
+export interface PairFetchError {
+	date: string;
+	errorClass: string;
+	count: number;
+}
+
+/**
+ * Failed crawls of one pair per day and class, so a chart can tell Apple's
+ * 403-with-empty-results from a day the cadence never scheduled.
+ *
+ * A failure writes no observation row, so the only link back to the pair is
+ * the params column, "keyword|storefront|locale", the key the report joins on.
+ */
+export async function pairFetchErrors(
+	db: D1Database,
+	pairId: number,
+	since: string,
+	until: string
+): Promise<PairFetchError[]> {
+	const rows = await db
+		.prepare(
+			`SELECT fe.error_class, DATE(fe.fetched_at / 1000, 'unixepoch') AS d,
+            COUNT(*) AS n
+     FROM crawl_pair cp
+     JOIN keyword k ON k.id = cp.keyword_id
+     JOIN fetch_error fe
+       ON fe.params = k.text || '|' || cp.storefront_code || '|' || cp.locale_code
+     WHERE cp.id = ?1
+       AND DATE(fe.fetched_at / 1000, 'unixepoch') >= ?2
+       AND DATE(fe.fetched_at / 1000, 'unixepoch') <= ?3
+     GROUP BY d, fe.error_class
+     ORDER BY d, fe.error_class`
+		)
+		.bind(pairId, since, until)
+		.all<{ error_class: string | null; d: string; n: number }>();
+	// A null class predates the closed vocabulary; it is still a failed day.
+	return rows.results.map((e) => ({
+		count: e.n,
+		date: e.d,
+		errorClass: e.error_class ?? "unknown",
+	}));
+}
+
 /** Top-10 competitor timeline for a pair. */
 export function pairCompetitors(db: D1Database, pairId: number, since: string) {
 	return db

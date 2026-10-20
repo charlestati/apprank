@@ -8,9 +8,12 @@
 //      by walking ids, since app and pair ids are guessable integers)
 //
 // Ranking observations are deliberately shared: `crawl_pair` is the union of
-// what everyone tracks, so two operators watching the same keyword produce one
-// crawl. Ownership therefore gates *access to a pair's data*, not the data
-// itself: you may read a pair when you track that keyword.
+// what everyone tracks, so two operators watching the same keyword in the same
+// storefront produce one crawl. Ownership therefore gates *access to a pair's
+// data*, not the data itself: you may read a pair when you track that keyword
+// in that storefront and locale, which is a `tracked_keyword_storefront` row.
+// The keyword alone is not enough: it let an operator tracking a word in France
+// open another operator's pair for the same word in Germany.
 //
 // The checks take a database and a user id rather than a request context, so
 // that a second transport (anything that is not an HTTP route) enforces the
@@ -43,9 +46,9 @@ export async function ownsApp(
 }
 
 /**
- * Does this operator track the keyword behind this crawl pair? Pairs are
- * shared between operators by design, so the check is on the keyword rather
- * than on the pair row itself.
+ * Does this operator track the keyword behind this crawl pair, in the pair's
+ * own storefront and locale? Pairs are shared between operators by design, so
+ * the check is on the operator's tracking rows rather than on the pair row.
  */
 export async function ownsPair(
 	db: D1Database,
@@ -56,8 +59,11 @@ export async function ownsPair(
 		.prepare(
 			`SELECT 1 AS ok
      FROM crawl_pair cp
-     JOIN tracked_keyword tk ON tk.keyword_id = cp.keyword_id
-     WHERE cp.id = ?1 AND tk.user_id = ?2`
+     JOIN tracked_keyword tk ON tk.keyword_id = cp.keyword_id AND tk.user_id = ?2
+     JOIN tracked_keyword_storefront tks ON tks.tracked_keyword_id = tk.id
+       AND tks.storefront_code = cp.storefront_code
+       AND tks.locale_code = cp.locale_code
+     WHERE cp.id = ?1`
 		)
 		.bind(pairId, userId)
 		.first();
