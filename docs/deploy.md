@@ -90,7 +90,9 @@ observations are identical whichever half fetched them. The Durable Object stays
 local to each process; only the data is shared.
 
 `scripts/local-refresh` runs the same cycle from your own machine, for
-backfilling a day or verifying a credential.
+backfilling a day or verifying a credential. Either way a cycle ends at the
+first throttle, crawl or step, and leaves what is still queued for the next one,
+because every request after it would land on the same rate-limited address.
 
 ## GitHub Actions secrets
 

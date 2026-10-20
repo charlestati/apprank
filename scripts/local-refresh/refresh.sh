@@ -10,8 +10,8 @@
 # same provenance and the same idempotent keys as the scheduler's own.
 #
 # It is deliberately not a second scheduler. It crawls only what D1 says is
-# due, at the rate lib/pacing.ts starts at, and stops dead on the first
-# throttle.
+# due, at the fixed SPACING below rather than lib/pacing.ts's adaptive rate,
+# and ends the cycle on the first throttle, crawl or step alike.
 set -uo pipefail
 
 # launchd starts jobs with a minimal PATH, not the interactive shell's, so
@@ -34,7 +34,7 @@ STATE_DIR="$LOG_DIR/state"
 # limit with room to spare, and above the 3s spacing developers report as
 # reliable. Reputation of the egress IP binds harder than the number does, so
 # treat this as the operating point to walk back from, not a target: the first
-# 403 pauses the loop for 30 minutes anyway.
+# throttle ends the cycle, and loop.sh tries again an INTERVAL later.
 SPACING="${APPRANK_REFRESH_SPACING:-3.75}"
 # The step loop gets its own, slower value. The two loops look alike and are
 # not: a keyword search takes Apple ~2.7s to answer, so the crawl loop is paced
@@ -46,9 +46,8 @@ SPACING="${APPRANK_REFRESH_SPACING:-3.75}"
 STEP_SPACING="${APPRANK_REFRESH_STEP_SPACING:-10}"
 # Ceilings on one cycle, in units. Measured: a crawl costs ~10s (Apple's own
 # latency, mostly) and a step ~13s, so these two are roughly 83 and 17 minutes
-# of wall clock. The workflow's timeout-minutes keeps far more than that,
-# because a single 403 parks the loop for 30 minutes and the ladder goes to
-# four hours.
+# of wall clock. The workflow's timeout-minutes keeps more than that, for the
+# warm-up, the daily fan-out and the ERROR_PAUSE retries around them.
 #
 # The pair ceiling has to clear the tracked set or the tail is never reached:
 # ordering is overdue-age x storefront weight, so a cap below the set count
@@ -158,9 +157,12 @@ REQUEST_TIMEOUT="${APPRANK_REFRESH_REQUEST_TIMEOUT:-60}"
 # than one unit, which is the wrong side to be wrong on: they happen once per
 # cycle, so a generous ceiling costs nothing until it is needed.
 SLOW_TIMEOUT="${APPRANK_REFRESH_SLOW_TIMEOUT:-300}"
+# The token goes to curl on stdin, never on its command line: argv is readable
+# by every process on the machine through ps, which collect.yml goes out of its
+# way to avoid by writing it to .dev.vars rather than the environment.
 post() {
-  curl -s --max-time "${2:-$REQUEST_TIMEOUT}" -X POST \
-    -H "Authorization: Bearer $TOKEN" "$BASE?job=$1"
+  printf 'Authorization: Bearer %s\n' "$TOKEN" |
+    curl -s --max-time "${2:-$REQUEST_TIMEOUT}" -X POST -H @- "$BASE?job=$1"
 }
 
 # First authenticated call opens the remote-binding session and can take far
@@ -261,12 +263,24 @@ if [ "$throttled" -eq 0 ] && [ ! -f "$DAILY_MARKER" ]; then
   done
 fi
 
+# Every step is an Apple fetch from the same address the crawl just got
+# throttled on, so a throttled cycle drains nothing (CLAUDE.md, invariant 4).
+# The queue persists in .wrangler/state and the next cycle picks it up.
 steps=0
 step_fails=0
+[ "$throttled" -eq 1 ] && say "skipping the step drain: throttled"
 for _ in $(seq 1 "$MAX_STEPS"); do
+  [ "$throttled" -eq 1 ] && break
   r="$(post step)"
   case "$r" in
     *'"empty":true'*) [ "$steps" -gt 0 ] && say "queue drained after $steps step(s)"; break ;;
+    *'"errorClass":"throttled"'*|*'"errorClass":"rate_limited"'*)
+      # Back-pressure, not a bad unit: the task is requeued, and retrying it
+      # here is the hammering the throttle asked us to stop. Checked before
+      # "ok" because a task can record a throttle and still return.
+      steps=$((steps + 1)); throttled=1
+      say "THROTTLED on a step, stopping this cycle: $(redact "$r")"
+      break ;;
     *'"ok":true'*)
       steps=$((steps + 1)); step_fails=0
       say "step: $r"
