@@ -59,6 +59,24 @@ describe(tracked, () => {
 		expect(row?.ok).toBeNull();
 	});
 
+	it("still runs the job when the run row cannot be opened", async () => {
+		// The 03:00 cron is not retried, so a failed bracket insert must not
+		// cancel the day's queueing with it.
+		const broken = {
+			prepare: () => {
+				throw new Error("D1_ERROR: database is locked");
+			},
+		} as unknown as D1Database;
+		let ran = false;
+		await expect(
+			tracked(broken, "daily", "cron", () => {
+				ran = true;
+				return Promise.resolve({ queued: 1 });
+			})
+		).resolves.toStrictEqual({ queued: 1 });
+		expect(ran).toBeTruthy();
+	});
+
 	it("ignores a finish for a run that was never opened", async () => {
 		await finishRun(env.DB, 0, true);
 		await expect(runs()).resolves.toHaveLength(0);
@@ -72,5 +90,34 @@ describe(recordHeartbeat, () => {
 		await expect(getStateJson(env.DB, "loop_heartbeat")).resolves.toStrictEqual(
 			{ at: 2000, didWork: false, queued: 0 }
 		);
+	});
+});
+
+describe("tracked edge cases", () => {
+	it("closes a job that reports nothing with no detail rather than a literal null", async () => {
+		await tracked(env.DB, "watchdog", "cron", () => Promise.resolve(null));
+		const [row] = await runs();
+		expect(row?.ok).toBe(1);
+		expect(row?.detail).toBeNull();
+	});
+
+	it("still closes the row when the job rejects with something that is not an Error", async () => {
+		await expect(
+			// oxlint-disable-next-line prefer-promise-reject-errors -- the case under test.
+			tracked(env.DB, "daily", "cron", () => Promise.reject("bare string"))
+		).rejects.toBe("bare string");
+		const [row] = await runs();
+		expect(row?.ok).toBe(0);
+		expect(JSON.parse(row?.detail ?? "{}")).toStrictEqual({ error: "unknown" });
+	});
+
+	it("keeps only the head of a long error, so one failure cannot bloat the row", async () => {
+		await expect(
+			tracked(env.DB, "daily", "cron", () =>
+				Promise.reject(new Error("x".repeat(2000)))
+			)
+		).rejects.toThrow("xxx");
+		const [row] = await runs();
+		expect(JSON.parse(row?.detail ?? "{}").error).toHaveLength(500);
 	});
 });
