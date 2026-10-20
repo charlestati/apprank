@@ -2,7 +2,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { cosine, nearest, scoreCandidates, split } from "./relevance.mjs";
+import {
+	cosine,
+	nearest,
+	scoreByUser,
+	scoreCandidates,
+	split,
+} from "./relevance.mjs";
 
 const tracked = [
 	{ term: "météo locale", vector: [1, 0, 0] },
@@ -58,4 +64,39 @@ test("splits at the threshold the caller chose", () => {
 	const { drop, keep } = split(scored, 0.6);
 	assert.equal(drop.length, 1);
 	assert.equal(keep.length, 1);
+});
+
+test("judges each user's suggestion against that user's tracked set, not everyone's", () => {
+	// Bob tracks weather; Alice tracks calendars. A weather-like suggestion is
+	// relevant to Bob and a false friend for Alice, and another user's set
+	// must neither rescue nor condemn it.
+	const users = [
+		{ term: "météo locale", userId: "bob", vector: [1, 0, 0] },
+		{ term: "calendrier", userId: "alice", vector: [0, 1, 0] },
+	];
+	const { scored } = scoreByUser(
+		[
+			{ id: 1, term: "météo", userId: "alice", vector: [1, 0, 0] },
+			{ id: 2, term: "météo", userId: "bob", vector: [1, 0, 0] },
+		],
+		users
+	);
+	const { drop, keep } = split(scored, 0.75);
+	assert.deepEqual(
+		drop.map((d) => [d.id, d.nearest]),
+		[[1, "calendrier"]]
+	);
+	assert.deepEqual(
+		keep.map((k) => [k.id, k.nearest]),
+		[[2, "météo locale"]]
+	);
+});
+
+test("leaves a user's suggestions unscored when that user tracks nothing to compare against", () => {
+	const { scored, unscored } = scoreByUser(
+		[{ id: 3, term: "météo", userId: "carol", vector: [1, 0, 0] }],
+		[{ term: "météo locale", userId: "bob", vector: [1, 0, 0] }]
+	);
+	assert.deepEqual(scored, []);
+	assert.deepEqual(unscored, [{ id: 3, term: "météo", userId: "carol" }]);
 });

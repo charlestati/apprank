@@ -62,6 +62,38 @@ export function scoreCandidates(candidates, tracked) {
 }
 
 /**
+ * Score each user's candidates against that user's own tracked set.
+ *
+ * A suggestion belongs to the user who tracks the app it concerns, and
+ * "relevant" means relevant to what they track: scored against everyone's
+ * keywords, another user's unrelated set would rescue a false friend, or the
+ * dismissal would land on a user whose own set it was never measured against.
+ * A user who tracks nothing in the storefront has nothing to measure against,
+ * so their candidates are returned unscored rather than scored at -1 and
+ * dropped.
+ */
+export function scoreByUser(candidates, tracked) {
+	const byUser = Map.groupBy(tracked, (t) => t.userId);
+	const scored = [];
+	const unscored = [];
+	for (const c of candidates) {
+		const own = byUser.get(c.userId);
+		if (own) {
+			scored.push(c);
+		} else {
+			unscored.push(c);
+		}
+	}
+	const users = Map.groupBy(scored, (c) => c.userId);
+	return {
+		scored: [...users]
+			.flatMap(([userId, own]) => scoreCandidates(own, byUser.get(userId)))
+			.toSorted((a, b) => a.score - b.score),
+		unscored: unscored.map(({ vector: _vector, ...rest }) => rest),
+	};
+}
+
+/**
  * Split at a threshold. Deliberately not a hard-coded constant: the right cut
  * depends on the model, the language and how broad the tracked set is, so the
  * caller passes one and the report prints the distribution that justifies it.
