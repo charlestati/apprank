@@ -18,7 +18,7 @@
 		"seed:remote": "pnpm --filter collector seed:remote",
 		"deploy": "pnpm --filter collector deploy && pnpm --filter web deploy",
 		"track": "node scripts/track/track.mjs",
-		"rebuild:d1": "pnpm --filter rebuild-d1 rebuild",
+		"rebuild:d1": "pnpm --filter rebuild-d1 start",
 		"rank-churn": "node scripts/rank-churn/measure.mjs",
 		"test:scripts": "node --test \"scripts/**/*.test.mjs\"",
 		"relevance": "pnpm --filter keyword-relevance score",

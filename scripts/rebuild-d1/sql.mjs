@@ -4,7 +4,8 @@
 // Everything here is idempotent and gap-filling: a rebuild is applied to a
 // database that may already hold part of the range, and it must never
 // overwrite a row the collector wrote with better provenance (the collector
-// keeps r2_key; the archive line does not).
+// keeps r2_key; the archive line does not). seed_term, which has no provenance
+// to lose, follows the collector's own latest-week-wins upsert instead.
 
 /** How many leading positions get an index row regardless of tracking. */
 const INDEXED_TOP = 10;
@@ -152,11 +153,21 @@ function popularityInsert(r) {
 	);
 }
 
+/**
+ * seed_term is keyed by month and fed weekly, so four or five archived weeks
+ * land on one row. The collector keeps the latest week's values (its upsert in
+ * tasks/ads.ts), and a rebuild has to agree with it or the rebuilt table holds
+ * the month's first week where the live one held its last. Same upsert, applied
+ * in week order by buildAdsSql. The row carries no provenance, so replacing a
+ * collector-written value with the archive's copy of the same answer loses
+ * nothing.
+ */
 function seedTermInsert(r) {
 	return (
 		`INSERT INTO seed_term (month, storefront_code, genre_id, term, rank_in_genre, popularity_1_100) VALUES (` +
 		`${sqlEscape(r.week.slice(0, 7))}, ${sqlEscape(r.storefront)}, ${r.genreId}, ${sqlEscape(r.searchTerm)}, ${r.rankInGenre ?? "NULL"}, ${r.popularity1to100 ?? "NULL"}) ` +
-		`ON CONFLICT(month, storefront_code, genre_id, term) DO NOTHING;`
+		`ON CONFLICT(month, storefront_code, genre_id, term) DO UPDATE SET rank_in_genre = excluded.rank_in_genre, popularity_1_100 = excluded.popularity_1_100 ` +
+		`WHERE rank_in_genre IS NOT excluded.rank_in_genre OR popularity_1_100 IS NOT excluded.popularity_1_100;`
 	);
 }
 
@@ -183,8 +194,11 @@ export function adsRows(body, dims, fetchedAt) {
 }
 
 /**
- * Popularity SQL, gap-filling like the rest: `DO NOTHING` everywhere, so a row
- * the collector wrote is never replaced by one derived here.
+ * Popularity SQL, gap-filling like the rest: `DO NOTHING`, so a row the
+ * collector wrote is never replaced by one derived here. seed_term is the
+ * exception, latest week wins, for the reason on seedTermInsert; the sort is
+ * stable and ISO weeks order as strings, so the last statement per month is
+ * the latest week whatever order R2 listed the objects in.
  *
  * Absences are deliberately not reconstructed. `present = 0` says the collector
  * asked and Apple had nothing, and the archive holds the answers, not the
@@ -193,7 +207,9 @@ export function adsRows(body, dims, fetchedAt) {
  */
 export function buildAdsSql(genreRows, termRows) {
 	return [
-		...genreRows.map(seedTermInsert),
+		...genreRows
+			.toSorted((a, b) => a.week.localeCompare(b.week))
+			.map(seedTermInsert),
 		...genreRows.map(popularityInsert),
 		...termRows.map(popularityInsert),
 	];

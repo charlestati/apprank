@@ -1,5 +1,6 @@
 /* oxlint-disable vitest/no-import-node-test, vitest/prefer-importing-vitest-globals -- `pnpm test:scripts` runs these under node --test, which vitest cannot reach */
 import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 
 import {
@@ -174,11 +175,65 @@ test("Apple Ads rebuild: matches keywords on the collector's own normalization",
 	);
 });
 
-test("Apple Ads rebuild: never overwrites a row the collector wrote", () => {
+test("Apple Ads rebuild: never overwrites a popularity row the collector wrote", () => {
 	const rows = adsRows(body, parseGenreKey(genreKey), 1000);
-	for (const sql of buildAdsSql(rows, [])) {
+	const popularity = buildAdsSql(rows, rows).filter(
+		(sql) => tableOf(sql) === "popularity"
+	);
+	assert.equal(popularity.length, 2);
+	for (const sql of popularity) {
 		assert.match(sql, /DO NOTHING/u);
 	}
+});
+
+/** One archived week of the genre list, holding a single term. */
+const week = (w, rank, pop) =>
+	adsRows(
+		{
+			result: {
+				rows: [
+					{
+						rankInGenre: rank,
+						searchPopularity1to100: pop,
+						searchTerm: "radar",
+					},
+				],
+			},
+		},
+		parseGenreKey(`ads/popularity/${w}/fr/6014-GAMES.json`),
+		1000
+	);
+
+test("Apple Ads rebuild: a month's seed_term row ends on its latest week, as the collector leaves it", () => {
+	// seed_term is keyed by month and fed weekly. Listed out of order on
+	// purpose: the rebuild must not depend on the order R2 returns keys in.
+	const rows = [
+		...week("2026-08-16", 40, 70),
+		...week("2026-08-02", 90, 30),
+		...week("2026-08-09", 60, 50),
+	];
+	const db = new DatabaseSync(":memory:");
+	db.exec(
+		"CREATE TABLE seed_term (id INTEGER PRIMARY KEY, month TEXT NOT NULL, storefront_code TEXT NOT NULL, genre_id INTEGER NOT NULL, term TEXT NOT NULL, rank_in_genre INTEGER, popularity_1_100 INTEGER);" +
+			"CREATE UNIQUE INDEX st_unique ON seed_term (month, storefront_code, genre_id, term);"
+	);
+	// A row the collector already wrote from an earlier week of the month.
+	db.exec(
+		"INSERT INTO seed_term (month, storefront_code, genre_id, term, rank_in_genre, popularity_1_100) VALUES ('2026-08', 'fr', 6014, 'radar', 90, 30);"
+	);
+	for (const sql of buildAdsSql(rows, []).filter(
+		(line) => tableOf(line) === "seed_term"
+	)) {
+		db.exec(sql);
+	}
+	assert.deepEqual(
+		{
+			...db
+				.prepare("SELECT month, rank_in_genre, popularity_1_100 FROM seed_term")
+				.get(),
+		},
+		{ month: "2026-08", popularity_1_100: 70, rank_in_genre: 40 }
+	);
 });
 
 test("Apple Ads rebuild: writes no absences, because the archive holds answers and not questions", () => {

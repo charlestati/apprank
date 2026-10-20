@@ -7,7 +7,8 @@
 // crawler's own rule), a bare `app` row for any app the index references that
 // the database has not met, and the Apple Ads `popularity` and `seed_term`
 // rows. Every statement is gap-filling: a row the collector already wrote is
-// left alone.
+// left alone. seed_term is the exception: it takes the month's latest week, as
+// the collector's own upsert does.
 //
 // Usage:
 //   R2_ACCOUNT_ID=… R2_ACCESS_KEY_ID=… R2_SECRET_ACCESS_KEY=… \
@@ -23,7 +24,7 @@
 // tracked is reference data that lives only in D1, and the index rule depends
 // on it.
 
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 
 import { AwsClient } from "aws4fetch";
@@ -35,6 +36,7 @@ import {
 	parseGenreKey,
 	parseTermsKey,
 } from "./sql.mjs";
+import { applyHint, d1Args, wranglerConfig } from "./wrangler.mjs";
 
 const BUCKET = "apprank-archive";
 const accountId = process.env.R2_ACCOUNT_ID;
@@ -138,11 +140,14 @@ async function loadAdsRows() {
 
 const collectorDir = new URL("../../apps/collector", import.meta.url).pathname;
 
+const config = wranglerConfig(collectorDir);
+
 function d1(command) {
-	const raw = execSync(
-		`npx wrangler d1 execute apprank --remote --json --command "${command}"`,
-		{ cwd: collectorDir, encoding: "utf-8" }
-	);
+	const raw = execFileSync("npx", d1Args(config, command), {
+		cwd: collectorDir,
+		encoding: "utf-8",
+		maxBuffer: 32 * 1024 * 1024,
+	});
 	const [{ results }] = JSON.parse(raw);
 	return results;
 }
@@ -212,6 +217,4 @@ writeFileSync(outFile, `${lines.join("\n")}\n`);
 console.log(
 	`wrote ${lines.length} statements (ranking, app, rank_entry, seed_term, popularity) to ${outFile}`
 );
-console.log(
-	`apply with: npx wrangler d1 execute apprank --remote --file ${outFile}  (from apps/collector)`
-);
+console.log(`apply with: ${applyHint(config, outFile, collectorDir)}`);
