@@ -18,6 +18,8 @@
 
 import { createHash, randomBytes } from "node:crypto";
 
+import { insertCommand, revokeCommand } from "./commands.mjs";
+
 function arg(flag, fallback) {
 	const i = process.argv.indexOf(`--${flag}`);
 	return i === -1 ? fallback : process.argv[i + 1];
@@ -57,7 +59,6 @@ const token = `apprank_mcp_${id}_${secret}`;
 const secretHash = createHash("sha256").update(secret).digest("hex");
 const now = Date.now();
 const expiresAt = now + days * 86_400_000;
-const quote = (v) => `'${String(v).replaceAll("'", "''")}'`;
 
 console.log(`
 Token (copy it now, it is not stored and cannot be shown again):
@@ -66,9 +67,7 @@ Token (copy it now, it is not stored and cannot be shown again):
 
 Apply the credential (add --remote for the deployed database):
 
-  cd apps/web && npx wrangler d1 execute apprank -c wrangler.local.jsonc --command "\\
-INSERT INTO mcp_credential (id, user_id, name, secret_hash, scopes, created_at, expires_at) VALUES (\\
-${quote(id)}, ${quote(userId)}, ${quote(name)}, ${quote(secretHash)}, ${quote(JSON.stringify(scopes))}, ${now}, ${expiresAt});"
+  ${insertCommand({ expiresAt, id, name, now, scopes, secretHash, userId })}
 
 Connect Claude Code (user scope, never a committed .mcp.json, this repo is public):
 
@@ -76,8 +75,7 @@ Connect Claude Code (user scope, never a committed .mcp.json, this repo is publi
     https://<your-app-url>/mcp \\
     --header "Authorization: Bearer ${token}"
 
-Revoke it later:
+Revoke it later (by its id, ${id}: the name is only unique per user):
 
-  cd apps/web && npx wrangler d1 execute apprank -c wrangler.local.jsonc --command "\\
-UPDATE mcp_credential SET revoked_at = unixepoch() * 1000 WHERE name = ${quote(name)};"
+  ${revokeCommand(id)}
 `);
