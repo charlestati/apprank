@@ -492,7 +492,25 @@ export async function chartPullStep(
 	return { followUps: rest, throttled: false };
 }
 
-/** Nightly: merge yesterday's staging observations into one daily NDJSON per storefront. */
+/**
+ * The `collector_state` key that says `date` has been compacted in full.
+ *
+ * Staging expires after seven days (R2 lifecycle), so a day whose compaction
+ * never ran or never finished is lost from the rebuild source unless somebody
+ * notices within that week. The daily job asks this key which recent days
+ * still need it. An R2 check cannot answer that: staging keys carry the pair,
+ * not the storefront, so the outputs a day should have are unknown until its
+ * staging has been read, and one output present proves nothing about the
+ * rest.
+ */
+export function compactMarker(date: string): string {
+	return `compact:${date}`;
+}
+
+/** Markers past the staging lifecycle can no longer steer anything. */
+const COMPACT_MARKER_DAYS = 7;
+
+/** Nightly: merge one day's staging observations into one daily NDJSON per storefront. */
 export async function compactStep(
 	env: Env,
 	task: { date: string }
@@ -530,6 +548,16 @@ export async function compactStep(
 		);
 	}
 	// Staging objects expire via the R2 lifecycle rule (7 days), so no deletes
-	// are needed.
+	// are needed. The marker goes last, once every output above has landed: a
+	// throw before it leaves the day pending, and recompacting is idempotent.
+	const cutoff = new Date(Date.now() - COMPACT_MARKER_DAYS * 24 * 3_600_000)
+		.toISOString()
+		.slice(0, 10);
+	await env.DB.batch([
+		setStateStmt(env.DB, compactMarker(task.date), task.date),
+		env.DB.prepare(
+			"DELETE FROM collector_state WHERE key LIKE 'compact:%' AND key < ?"
+		).bind(compactMarker(cutoff)),
+	]);
 	return [];
 }

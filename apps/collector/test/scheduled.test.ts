@@ -12,7 +12,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import worker from "../src/index";
 import { setState } from "../src/lib/state";
 import { latestCompleteWeekStart } from "../src/tasks/ads";
-import { chartMarker, lookupMarker, reviewMarker } from "../src/tasks/pulls";
+import {
+	chartMarker,
+	compactMarker,
+	lookupMarker,
+	reviewMarker,
+} from "../src/tasks/pulls";
 import type { Task } from "../src/tasks/types";
 import { generateP8Pem } from "./helpers";
 
@@ -71,6 +76,10 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
+function daysAgo(n: number): string {
+	return new Date(Date.now() - n * 24 * 3_600_000).toISOString().slice(0, 10);
+}
+
 async function runCron(cron: string, overrides: Record<string, unknown> = {}) {
 	const controller = createScheduledController({
 		cron,
@@ -95,6 +104,28 @@ describe("scheduled handler", () => {
 			.toISOString()
 			.slice(0, 10);
 		expect(compact).toMatchObject({ date: yesterday });
+	});
+
+	it("catches up a missed compaction while its staging still exists", async () => {
+		// Only yesterday was ever queued, so a day whose cron or compaction failed
+		// expired out of staging a week later, never reaching rankings/v1.
+		const keys = [3, 4, 9].map((n) => `staging/rankings/${daysAgo(n)}/1.json`);
+		for (const key of keys) {
+			await env.ARCHIVE.put(key, JSON.stringify({ storefront: "fr" }));
+		}
+		await setState(env.DB, compactMarker(daysAgo(4)), daysAgo(4));
+		try {
+			await runCron("0 3 * * *");
+			const queued = await drainQueue();
+			const dates = queued.flatMap((t) =>
+				t.type === "compact" ? [t.date] : []
+			);
+			// Day 4 is already done, and day 9's staging has partly expired: a
+			// compaction there would overwrite a whole day with a fragment.
+			expect(dates.toSorted()).toStrictEqual([daysAgo(3), daysAgo(1)]);
+		} finally {
+			await env.ARCHIVE.delete(keys);
+		}
 	});
 
 	it("skips the Apple API jobs while their secrets are unset", async () => {

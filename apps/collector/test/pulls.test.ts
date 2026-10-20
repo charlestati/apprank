@@ -3,12 +3,14 @@
 import { env } from "cloudflare:test";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
+import { getState, setState } from "../src/lib/state";
 import {
 	lookupPullStep,
 	reviewPullStep,
 	chartPullStep,
 	compactStep,
 	chartMarker,
+	compactMarker,
 	lookupMarker,
 	pulledOn,
 	reviewMarker,
@@ -563,6 +565,30 @@ describe(compactStep, () => {
 		const be = await env.ARCHIVE.get(`rankings/v1/2026-08/be/${date}.ndjson`);
 		const beText = await be?.text();
 		expect(beText?.trim().split("\n")).toHaveLength(1);
+	});
+
+	it("marks the day compacted and forgets markers past the staging lifecycle", async () => {
+		// The daily catch-up reads these to find days whose compaction never
+		// finished, so the marker has to exist once the outputs have landed.
+		const date = new Date(Date.now() - 2 * 24 * 3_600_000)
+			.toISOString()
+			.slice(0, 10);
+		await env.ARCHIVE.put(
+			`staging/rankings/${date}/4.json`,
+			JSON.stringify({ pairId: 4, storefront: "fr" })
+		);
+		await setState(env.DB, compactMarker("2000-01-01"), "2000-01-01");
+		try {
+			await compactStep(env, { date });
+		} finally {
+			// R2 outlives the file, and the daily catch-up in another suite would
+			// otherwise find this day still staged.
+			await env.ARCHIVE.delete(`staging/rankings/${date}/4.json`);
+		}
+		await expect(getState(env.DB, compactMarker(date))).resolves.toBe(date);
+		await expect(
+			getState(env.DB, compactMarker("2000-01-01"))
+		).resolves.toBeNull();
 	});
 
 	it("is a no-op when nothing was staged", async () => {

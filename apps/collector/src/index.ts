@@ -16,6 +16,7 @@ import { recomputeCadence } from "./tasks/cadence";
 import { recomputeDifficulty } from "./tasks/difficulty";
 import {
 	chartMarker,
+	compactMarker,
 	lookupMarker,
 	pulledOn,
 	reviewMarker,
@@ -234,6 +235,47 @@ async function bestEffort(
 	}
 }
 
+/**
+ * The oldest day back the catch-up reaches. Staging expires after seven days
+ * (R2 lifecycle, docs/deploy.md), and a day's objects were written over its
+ * whole 24 hours, so six days back at 03:00 is the last cron that still sees
+ * all of them. Compacting a half-expired day would overwrite a complete
+ * output with a partial one.
+ */
+const COMPACT_CATCHUP_DAYS = 6;
+
+/**
+ * Compactions for days before yesterday that still hold staging and carry no
+ * marker: a cron that never fired, a compaction that threw or was dropped.
+ * Only yesterday was ever queued, so any such day expired out of staging a
+ * week later without reaching `rankings/v1`, the rebuild source (invariant
+ * 2). One marker read, then at most five single-object R2 lists.
+ */
+async function missedCompactions(env: Env): Promise<Task[]> {
+	const marked = await env.DB.prepare(
+		"SELECT key FROM collector_state WHERE key LIKE 'compact:%'"
+	).all<{ key: string }>();
+	const done = new Set(marked.results.map((r) => r.key));
+	const tasks: Task[] = [];
+	// Oldest first: it is the one closest to expiring.
+	for (let back = COMPACT_CATCHUP_DAYS; back >= 2; back -= 1) {
+		const date = new Date(Date.now() - back * 24 * 3_600_000)
+			.toISOString()
+			.slice(0, 10);
+		if (done.has(compactMarker(date))) {
+			continue;
+		}
+		const staged = await env.ARCHIVE.list({
+			limit: 1,
+			prefix: `staging/rankings/${date}/`,
+		});
+		if (staged.objects.length > 0) {
+			tasks.push({ date, type: "compact" });
+		}
+	}
+	return tasks;
+}
+
 async function runDailyJobs(env: Env): Promise<{
 	queued: number;
 	tasks: string[];
@@ -260,8 +302,12 @@ async function runDailyJobs(env: Env): Promise<{
 	// changes.
 	await bestEffort(env, "difficulty", () => recomputeDifficulty(env));
 
-	// Compact yesterday's staging observations into the permanent archive.
+	// Compact yesterday's staging observations into the permanent archive, and
+	// any earlier day still staged but never compacted, while its staging lasts.
 	tasks.push({ date: yesterday, type: "compact" });
+	await bestEffort(env, "compact_catchup", async () => {
+		tasks.push(...(await missedCompactions(env)));
+	});
 
 	// ASC Analytics poll (secrets arrive via `wrangler secret put`; skip quietly
 	// until then rather than filling fetch_error with credential noise).
