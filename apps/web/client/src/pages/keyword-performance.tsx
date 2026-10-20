@@ -40,8 +40,8 @@ const POPULARITY_BANDS = [
 
 const RANGES = [{ days: 7 }, { days: 30 }, { days: 90, label: "90 days" }];
 // Four lines is the readable ceiling for a categorical palette; beyond it the
-// hues stop surviving a colour-vision check side by side. The table's toggles
-// still allow more, because then the reader picked them.
+// hues stop surviving a colour-vision check side by side. Enforced on the drawn
+// set, whatever a stored selection says.
 const CHART_SERIES = 4;
 // Enough of the leaderboard to see who owns the keyword, without wrapping the
 // row onto a second line.
@@ -180,17 +180,154 @@ function useChartSelection(key: string | null): {
 	};
 }
 
+/** State that reads as `initial` again whenever `key` changes. */
+function useKeyedState<T>(
+	key: string | null,
+	initial: T
+): [T, (update: (current: T) => T) => void] {
+	const [state, setState] = useState<{ key: string | null; value: T }>({
+		key,
+		value: initial,
+	});
+	const update = useCallback(
+		(next: (current: T) => T) =>
+			setState((held) => ({
+				key,
+				value: next(held.key === key ? held.value : initial),
+			})),
+		[key, initial]
+	);
+	return [state.key === key ? state.value : initial, update];
+}
+
+const NONE_HIDDEN: number[] = [];
+
+/**
+ * The storefronts an app is tracked in, and which one is chosen.
+ *
+ * Both are stamped with the app they were fetched for. A storefront code names
+ * a pair set in one app only, so the previous app's choice must stop counting
+ * the moment the app changes, not when an effect gets round to clearing it: in
+ * between, the report would be asked for app B in a storefront only app A is
+ * tracked in.
+ */
+function useStorefront(appId: number | null): {
+	options: StorefrontOption[];
+	storefront: string;
+	setStorefront: (code: string | null) => void;
+} {
+	const [listed, setListed] = useState<{
+		appId: number;
+		options: StorefrontOption[];
+	} | null>(null);
+	const [chosen, setChosen] = useState<{ appId: number; code: string } | null>(
+		null
+	);
+
+	useEffect(() => {
+		if (appId === null) {
+			return;
+		}
+		let live = true;
+		(async () => {
+			let options: StorefrontOption[] = [];
+			try {
+				options = await api.storefronts(appId);
+			} catch {
+				// No storefronts is the honest answer to a failed list.
+			}
+			if (!live) {
+				return;
+			}
+			setListed({ appId, options });
+			// The previous choice survives only where the new app is tracked too.
+			setChosen((held) => ({
+				appId,
+				code:
+					held && options.some((o) => o.code === held.code)
+						? held.code
+						: (options[0]?.code ?? ""),
+			}));
+		})();
+		return () => {
+			live = false;
+		};
+	}, [appId]);
+
+	const setStorefront = useCallback(
+		(code: string | null) => {
+			// The select reports a cleared value when its options change under it
+			// (the list empties while the next app's loads); that is not a choice.
+			if (appId !== null && code) {
+				setChosen({ appId, code });
+			}
+		},
+		[appId]
+	);
+
+	return {
+		options: listed?.appId === appId ? listed.options : [],
+		setStorefront,
+		storefront: chosen?.appId === appId ? chosen.code : "",
+	};
+}
+
+/**
+ * The report for one app, storefront and window.
+ *
+ * Stamped with the request it answers, so a report for a previous app,
+ * storefront or window neither renders under the new one nor counts as it
+ * having loaded, and an answer that lands after the reader moved on is
+ * dropped. `loaded` tells "still fetching" from "fetched and failed", so a
+ * failed request shows the empty state rather than a permanent spinner.
+ */
+function useReport(
+	appId: number | null,
+	storefront: string,
+	days: number
+): { report: Report | null; loaded: boolean; reportKey: string | null } {
+	const reportKey =
+		appId !== null && storefront ? `${appId}|${storefront}|${days}` : null;
+	const [fetched, setFetched] = useState<{
+		key: string;
+		report: Report | null;
+	} | null>(null);
+
+	useEffect(() => {
+		if (appId === null || reportKey === null) {
+			return;
+		}
+		let live = true;
+		(async () => {
+			let next: Report | null = null;
+			try {
+				next = await api.report(appId, storefront, days);
+			} catch {
+				// Recorded as fetched with nothing to show.
+			}
+			if (live) {
+				setFetched({ key: reportKey, report: next });
+			}
+		})();
+		return () => {
+			live = false;
+		};
+	}, [appId, storefront, days, reportKey]);
+
+	const answered = fetched?.key === reportKey ? fetched : null;
+	return {
+		loaded: answered !== null,
+		report: answered?.report ?? null,
+		reportKey,
+	};
+}
+
 export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 	const f = useFormat();
 	const t = useT();
-	const [storefronts, setStorefronts] = useState<StorefrontOption[]>([]);
-	const [storefront, setStorefront] = useState("");
 	const [days, setDays] = useState(30);
-	const [report, setReport] = useState<Report | null>(null);
 	const [filter, setFilter] = useState("");
 	const [band, setBand] = useState(0);
-	// Legend visibility, kept apart from membership above.
-	const [hidden, setHidden] = useState<number[]>([]);
 	const [resultsFor, setResultsFor] = useState<KeywordRow | null>(null);
 	// The series the reader is pointing at, from either the chart or the table.
 	// Everything else greys out: contrast is what carries the story, not eight
@@ -198,42 +335,19 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 	const [focused, setFocused] = useState<number | null>(null);
 	/** The release the reader is pointing at, by date; the other pins grey out. */
 	const [focusedMarker, setFocusedMarker] = useState<string | null>(null);
-	const [loaded, setLoaded] = useState(false);
 	const navigate = useNavigate();
 
-	useEffect(() => {
-		if (!app) {
-			return;
-		}
-		(async () => {
-			try {
-				const options = await api.storefronts(app.id);
-				setStorefronts(options);
-				setStorefront((current) => current || (options[0]?.code ?? ""));
-			} catch {
-				setStorefronts([]);
-			}
-		})();
-	}, [app]);
-
-	useEffect(() => {
-		if (!(app && storefront)) {
-			return;
-		}
-		(async () => {
-			// `loaded` distinguishes "still fetching" from "fetched and empty", so a
-			// failed request shows the empty state rather than a permanent spinner.
-			try {
-				setReport(await api.report(app.id, storefront, days));
-			} catch {
-				setReport(null);
-			}
-			// A new report is a new set of pairs; carrying the old ids over would
-			// hide a line the reader never touched.
-			setHidden([]);
-			setLoaded(true);
-		})();
-	}, [app, storefront, days]);
+	const appId = app?.id ?? null;
+	const {
+		options: storefrontOptions,
+		storefront,
+		setStorefront,
+	} = useStorefront(appId);
+	const { report, loaded, reportKey } = useReport(appId, storefront, days);
+	// Legend visibility, kept apart from membership below. A new report is a
+	// new set of pairs; carrying the old ids over would hide a line the reader
+	// never touched.
+	const [hidden, setHidden] = useKeyedState(reportKey, NONE_HIDDEN);
 
 	const key = app && storefront ? chartKey(app.id, storefront) : null;
 	const { effective, choose } = useChartSelection(key);
@@ -244,12 +358,17 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 	// drawn series, so hiding a line took away the only control that could bring
 	// it back.
 	const members = useMemo(() => {
-		const rankedIds = (report?.rows ?? [])
-			.filter((r) => r.position !== null)
-			.slice(0, CHART_SERIES)
-			.map((r) => r.pairId);
-		const ids = new Set(effective ?? rankedIds);
-		return (report?.rows ?? []).filter((r) => ids.has(r.pairId));
+		const all = report?.rows ?? [];
+		// Only ids this report has rows for count, and never more than the
+		// palette holds: a stored choice can name a pair that has since gone, and
+		// one saved before the cap was enforced can name six.
+		const present = new Set(all.map((r) => r.pairId));
+		const chosen =
+			effective === null
+				? all.filter((r) => r.position !== null).map((r) => r.pairId)
+				: effective.filter((id) => present.has(id));
+		const ids = new Set(chosen.slice(0, CHART_SERIES));
+		return all.filter((r) => ids.has(r.pairId));
 	}, [report, effective]);
 
 	// The chart's palette runs out at four, so the table's tick boxes stop
@@ -267,11 +386,10 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 	 * fifth line in a hue the reader cannot separate from the other four.
 	 */
 	const toggleMember = (pairId: number) => {
-		// `effective`, not the session value alone: before the reader has touched
-		// anything this session that is null, and falling back to the drawn
-		// members would compute the new list from the default four and persist
-		// those over whatever they had stored.
-		const base = effective ?? members.map((r) => r.pairId);
+		// The drawn members, which already resolve the stored choice: measuring
+		// against the stored list itself would count ids this report has no row
+		// for, and a chart showing three could refuse a fourth as full.
+		const base = members.map((r) => r.pairId);
 		let next = base;
 		if (base.includes(pairId)) {
 			next = base.filter((id) => id !== pairId);
@@ -342,7 +460,7 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 					<Select
 						label={t.storefront}
 						onValueChange={setStorefront}
-						options={storefronts.map((s) => ({
+						options={storefrontOptions.map((s) => ({
 							label: `${f.region(s.code, s.name)} (${f.number(s.keywords)})`,
 							value: s.code,
 						}))}
@@ -710,7 +828,11 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 																	key={r.appId}
 																	title={`${r.position}. ${r.name}`}
 																>
-																	<AppIcon iconUrl={r.iconUrl} name={r.name} />
+																	<AppIcon
+																		iconUrl={r.iconUrl}
+																		label={`${r.position}. ${r.name}`}
+																		name={r.name}
+																	/>
 																</span>
 															))
 													)}
@@ -743,7 +865,9 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 									{rows.length === 0 ? (
 										<tr>
 											<td className="empty" colSpan={8}>
-												{fmt(t.noKeywordMatch, { filter })}
+												{filter.trim()
+													? fmt(t.noKeywordMatch, { filter })
+													: t.noKeywordInBand}
 											</td>
 										</tr>
 									) : null}

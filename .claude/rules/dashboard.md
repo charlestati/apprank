@@ -95,4 +95,22 @@ enforced, not merely a default: the table's tick boxes disable once four
 keywords are on the chart and say why, rather than accepting a fifth and drawing
 it in a hue nobody can separate from the other four. The tick box also has to be
 a tick box — a bare swatch only answers "is this on the chart?" after it has
-been clicked.
+been clicked. The cap is counted on what is drawn, never on the stored list: a
+stored selection is filtered to the pairs the report has rows for and sliced to
+four, so a selection saved before the cap, or one naming a pair that has gone,
+can neither draw a fifth line nor make a chart showing three refuse a fourth.
+
+The pair page draws the same four states. `/pairs/:id/history` answers
+`{ points, fetchErrors, window }`, the pair's failed crawls joined the way the
+report joins them, and without `appId` it reads the one app the caller tracks
+that keyword for (400 when there are several, rather than guessing). The window
+keeps the days since the last observation on the axis as a gap.
+
+**Every fetch is stamped with what it answers.** The report, the storefront
+choice, reviews and pair history are held with the app (and storefront, window
+or pair) they were fetched for and read back only while that still matches.
+Switching app therefore shows the loading state, never the previous app's
+numbers under the new name and CSV link, and an answer that lands after the
+reader moved on is dropped rather than drawn. The storefront choice survives an
+app switch only where the new app is tracked too; carrying it over blindly asked
+for a report the new app has no pairs for.

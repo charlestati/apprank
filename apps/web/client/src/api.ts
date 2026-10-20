@@ -23,6 +23,25 @@ export interface HistoryPoint {
 	app_id: number | null;
 }
 
+/**
+ * One pair's rank history, with what the chart needs to tell its states apart:
+ * the days collection failed and the window that was asked for.
+ */
+export interface PairHistory {
+	points: HistoryPoint[];
+	fetchErrors: SeriesError[];
+	/** Null when the server did not say; the caller then derives it. */
+	window: { from: string; to: string } | null;
+}
+
+type HistoryBody =
+	| HistoryPoint[]
+	| {
+			points: HistoryPoint[];
+			fetchErrors?: SeriesError[];
+			window?: { from: string; to: string };
+	  };
+
 export interface CompetitorPoint {
 	observed_date: string;
 	position: number;
@@ -263,8 +282,25 @@ export const api = {
 	competitors: (pairId: number, days = 30) =>
 		get<CompetitorPoint[]>(`/pairs/${pairId}/competitors?days=${days}`),
 	health: () => get<DataHealth>("/health/data"),
-	history: (pairId: number, appId: number, days = 90) =>
-		get<HistoryPoint[]>(`/pairs/${pairId}/history?appId=${appId}&days=${days}`),
+	// The endpoint has answered with a bare array of points; the object form
+	// adds the failed days and the window, and both are accepted so the client
+	// works on either side of that change.
+	history: async (
+		pairId: number,
+		appId: number,
+		days = 90
+	): Promise<PairHistory> => {
+		const body = await get<HistoryBody>(
+			`/pairs/${pairId}/history?appId=${appId}&days=${days}`
+		);
+		return Array.isArray(body)
+			? { fetchErrors: [], points: body, window: null }
+			: {
+					fetchErrors: body.fetchErrors ?? [],
+					points: body.points,
+					window: body.window ?? null,
+				};
+	},
 	keywords: (appId: number) => get<KeywordCell[]>(`/apps/${appId}/keywords`),
 	report: (appId: number, storefront: string, days = 30) =>
 		get<Report>(`/apps/${appId}/report?storefront=${storefront}&days=${days}`),

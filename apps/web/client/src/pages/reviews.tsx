@@ -25,19 +25,35 @@ function tone(rating: number | null): string {
 export function Reviews({ app }: { app: TrackedApp | null }) {
 	const f = useFormat();
 	const t = useT();
-	const [reviews, setReviews] = useState<Review[] | null>(null);
+	// Stamped with the app they belong to, so switching apps shows the loading
+	// state rather than the previous app's reviews, and a slow answer for the
+	// previous app cannot land over the current one.
+	const [fetched, setFetched] = useState<{
+		appId: number;
+		reviews: Review[];
+	} | null>(null);
+	const appId = app?.id ?? null;
 	useEffect(() => {
-		if (!app) {
+		if (appId === null) {
 			return;
 		}
+		let live = true;
 		(async () => {
+			let next: Review[] = [];
 			try {
-				setReviews(await api.reviews(app.id));
+				next = await api.reviews(appId);
 			} catch {
-				setReviews([]);
+				// Shown as no reviews, not as a permanent spinner.
+			}
+			if (live) {
+				setFetched({ appId, reviews: next });
 			}
 		})();
-	}, [app]);
+		return () => {
+			live = false;
+		};
+	}, [appId]);
+	const reviews = fetched?.appId === appId ? fetched.reviews : null;
 
 	if (!app) {
 		return <p className="empty">{t.noAppTracked}</p>;

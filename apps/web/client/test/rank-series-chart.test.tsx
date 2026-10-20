@@ -271,6 +271,56 @@ describe("Rank series chart", () => {
 		expect(container.querySelector(".chart-tip-date")).toBeNull();
 	});
 
+	it("clears the crosshair when the chart loses focus", () => {
+		const { container } = render(
+			<RankSeriesChart
+				series={[row({ points: [{ date: "2026-01-01", position: 4 }] })]}
+				styleOf={solid}
+				window={{ from: "2026-01-01", to: "2026-01-02" }}
+			/>
+		);
+		const svg = screen.getByRole("img");
+		fireEvent.keyDown(svg, { key: "End" });
+		expect(container.querySelector(".crosshair")).not.toBeNull();
+		fireEvent.blur(svg);
+		expect(container.querySelector(".crosshair")).toBeNull();
+		expect(container.querySelector(".chart-tip-date")).toBeNull();
+	});
+
+	it("keeps a held crosshair on the plot when the window shrinks", () => {
+		const series = [
+			row({
+				points: [
+					{ date: "2026-01-01", position: 4 },
+					{ date: "2026-01-02", position: 7 },
+				],
+			}),
+		];
+		const { container, rerender } = render(
+			<RankSeriesChart
+				series={series}
+				styleOf={solid}
+				window={{ from: "2026-01-01", to: "2026-01-05" }}
+			/>
+		);
+		fireEvent.keyDown(screen.getByRole("img"), { key: "End" });
+		rerender(
+			<RankSeriesChart
+				series={series}
+				styleOf={solid}
+				window={{ from: "2026-01-01", to: "2026-01-02" }}
+			/>
+		);
+		// The index pointed past the end; it now reads the last day there is.
+		expect(container.querySelector(".chart-tip-date")?.textContent).toBe(
+			"2026-01-02"
+		);
+		fireEvent.keyDown(screen.getByRole("img"), { key: "ArrowLeft" });
+		expect(container.querySelector(".chart-tip-date")?.textContent).toBe(
+			"2026-01-01"
+		);
+	});
+
 	it("announces a failed day as a failure in the live readout", () => {
 		const { container } = render(
 			<RankSeriesChart

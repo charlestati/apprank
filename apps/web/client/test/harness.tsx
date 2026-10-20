@@ -2,6 +2,7 @@
 // neutral fixtures. Nothing here talks to a real server.
 
 import { fireEvent, screen, within } from "@testing-library/dom";
+import { act } from "@testing-library/react";
 import { vi } from "vitest";
 
 import type {
@@ -177,4 +178,38 @@ export function chooseOption(controlName: string | RegExp, option: string) {
 	fireEvent.pointerUp(item, { button: 0, pointerType: "mouse" });
 	fireEvent.mouseUp(item, { button: 0 });
 	fireEvent.click(item, { button: 0 });
+}
+
+/**
+ * A promise the test settles by hand, which is how a response is held in
+ * flight while another one lands first.
+ */
+export function deferred<T>(): {
+	promise: Promise<T>;
+	resolve: (value: T) => void;
+} {
+	const handle: { resolve: (value: T) => void } = {
+		resolve: () => {
+			// Replaced synchronously by the executor below.
+		},
+	};
+	// oxlint-disable-next-line promise/avoid-new -- the one place a promise has to be built by hand: Promise.withResolvers is ES2024 and the client compiles against ES2023.
+	const promise = new Promise<T>((resolve) => {
+		handle.resolve = resolve;
+	});
+	return { promise, resolve: (value) => handle.resolve(value) };
+}
+
+/**
+ * Lets every promise already in flight finish, the stubbed fetch's body read
+ * included. Not a wait for time to pass: one macrotask turn, the point by
+ * which a late answer that was going to render has rendered. A race test needs
+ * it to show the stale answer *did not* render, which no `findBy` can wait for.
+ */
+export async function settle() {
+	await act(async () => {
+		const turn = deferred<null>();
+		setTimeout(() => turn.resolve(null), 0);
+		await turn.promise;
+	});
 }

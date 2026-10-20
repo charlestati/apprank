@@ -39,6 +39,22 @@ describe("App shell", () => {
 		]);
 	});
 
+	it("adopts the stored language without writing it back", async () => {
+		// The server copy wins over this browser's guess, and adopting it is not
+		// a choice: echoing it back would only ever be a chance to clobber it.
+		const calls = stubFetch({
+			"/api/apps": [],
+			"/api/preferences": { lang: "fr" },
+			"health/data": dataHealth(),
+		});
+		render(<App />);
+		await expect(
+			screen.findByText("Performance des mots-clés")
+		).resolves.toBeDefined();
+		expect(localStorage.getItem("apprank.lang")).toBe("fr");
+		expect(calls).not.toContain("/api/preferences/lang");
+	});
+
 	it("names the first tracked app in the top bar", async () => {
 		stubFetch({
 			"/api/apps": [trackedApp],

@@ -405,7 +405,7 @@ export function RankSeriesChart({
 		if (step !== 0) {
 			e.preventDefault();
 			setHover((current) =>
-				Math.max(0, Math.min(last, (current ?? last) + step))
+				Math.max(0, Math.min(last, Math.min(current ?? last, last) + step))
 			);
 			return;
 		}
@@ -419,7 +419,11 @@ export function RankSeriesChart({
 		}
 	}
 
-	const hoveredDate = hover === null ? null : dates[hover];
+	// Clamped on read: the dates can shrink under a held index (a shorter window,
+	// a hidden series), and an index past the end would draw the crosshair off
+	// the plot and read out nothing.
+	const at = hover === null ? null : Math.min(hover, dates.length - 1);
+	const hoveredDate = at === null ? null : dates[at];
 	// Every state the hovered day can be in, named. A day with no row at all is
 	// omitted: nothing was scheduled, and inventing "0" for it is the lie the
 	// whole component exists to avoid.
@@ -489,6 +493,7 @@ export function RankSeriesChart({
 				aria-label={`Rank history for ${series.length} ${
 					series.length === 1 ? "keyword" : "keywords"
 				} over ${dates.length} days, ${dates[0]} to ${dates.at(-1)}. Rank 1 is at the top; gaps are days with no observation.`}
+				onBlur={() => setHover(null)}
 				onMouseLeave={() => {
 					setHover(null);
 					focus(null);
@@ -609,11 +614,11 @@ export function RankSeriesChart({
 						</g>
 					);
 				})}
-				{hover !== null && (
+				{at !== null && (
 					<line
 						className="crosshair"
-						x1={x(hover)}
-						x2={x(hover)}
+						x1={x(at)}
+						x2={x(at)}
 						y1={PAD.top}
 						y2={PLOT_BOTTOM}
 					/>
@@ -731,7 +736,7 @@ export function RankSeriesChart({
 			{hoveredDate && readout.length > 0 && (
 				<div
 					className="chart-tip"
-					style={{ left: `${(x(hover ?? 0) / w) * 100}%` }}
+					style={{ left: `${(x(at ?? 0) / w) * 100}%` }}
 				>
 					<div className="chart-tip-date">{hoveredDate}</div>
 					{readout.slice(0, READOUT_LIMIT).map((r) => (

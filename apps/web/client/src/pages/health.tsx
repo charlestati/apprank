@@ -118,6 +118,9 @@ function classLabel(t: Dictionary, errorClass: string): string {
 		task_threw: t.errTaskThrew,
 		throttled: t.errThrottled,
 		do_restarted: t.errDoRestarted,
+		duplicate_processing_date: t.errDuplicateProcessingDate,
+		skipped_processing_date: t.errSkippedProcessingDate,
+		stopped_due_to_inactivity: t.errStoppedDueToInactivity,
 		upstream_error: t.errUpstreamError,
 	};
 	return known[errorClass] ?? errorClass;
@@ -159,6 +162,7 @@ function ErrorRow({ entry }: { entry: DataHealth["errorsLast24h"][number] }) {
 					<span className="muted">—</span>
 				) : (
 					<button
+						aria-expanded={open}
 						className={open ? "error-detail open" : "error-detail"}
 						onClick={() => setOpen(!open)}
 						title={open ? t.collapse : t.expand}
@@ -199,8 +203,10 @@ export function Health({
 	}
 	const coverage =
 		h.tier1Pairs > 0 ? Math.round((h.collectedToday / h.tier1Pairs) * 100) : 0;
-	const throttled =
-		h.errorsLast24h.find((e) => e.errorClass === "throttled")?.n ?? 0;
+	// Rows are grouped by class and endpoint, so one class can be several rows.
+	const throttled = h.errorsLast24h
+		.filter((e) => e.errorClass === "throttled")
+		.reduce((sum, e) => sum + e.n, 0);
 	const pauseUntil = h.pacing?.pauseUntil ?? 0;
 	const paused = pauseUntil > loadedAt;
 
@@ -319,7 +325,7 @@ export function Health({
 							))}
 							{h.errorsLast24h.length === 0 && (
 								<tr>
-									<td colSpan={5} style={{ color: "var(--good-text)" }}>
+									<td colSpan={5} style={{ color: "var(--ds-text-success)" }}>
 										{t.noErrors}
 									</td>
 								</tr>

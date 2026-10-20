@@ -2,13 +2,29 @@
    dashboard; one populated render is asserted card by card rather than
    re-fetching the same payload four times. */
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { DataHealth } from "../src/api";
 import { Health } from "../src/pages/health";
 import { dataHealth, stubFetch } from "./harness";
 
 const HOUR_MS = 3_600_000;
+
+function errorRow(
+	errorClass: string,
+	endpoint: string,
+	n = 1
+): DataHealth["errorsLast24h"][number] {
+	return {
+		endpoint,
+		errorClass,
+		lastAt: Date.now(),
+		loss: false,
+		message: null,
+		n,
+	};
+}
 
 function statDetail(label: string): string {
 	const card = screen.getByText(label).parentElement;
@@ -152,6 +168,72 @@ describe("Health page", () => {
 		expect(abandoned.querySelector(".error-cost")).not.toBeNull();
 		const throttled = screen.getByText("Rate-limited by Apple");
 		expect(throttled.querySelector(".error-cost")).toBeNull();
+	});
+
+	it("counts throttles at every endpoint, not only the first row", async () => {
+		// Rows are grouped by class and endpoint, so one class arrives as several.
+		stubFetch({
+			"health/data": dataHealth({
+				errorsLast24h: [
+					errorRow("throttled", "itunes:search", 4),
+					errorRow("throttled", "itunes:charts", 3),
+				],
+			}),
+		});
+		render(<Health onAcknowledge={() => {}} unread={0} />);
+		await expect(screen.findByText("Data health")).resolves.toBeDefined();
+		expect(statValue("Throttle hits (24h)")?.textContent).toBe("7");
+	});
+
+	it("names the report findings in words, not as raw classes", async () => {
+		stubFetch({
+			"health/data": dataHealth({
+				errorsLast24h: [
+					errorRow("skipped_processing_date", "asc:report"),
+					errorRow("duplicate_processing_date", "asc:report"),
+					errorRow("stopped_due_to_inactivity", "asc:report"),
+				],
+			}),
+		});
+		render(<Health onAcknowledge={() => {}} unread={0} />);
+		await expect(screen.findByText("Data health")).resolves.toBeDefined();
+		expect(screen.getByText("Apple skipped a report day")).toBeDefined();
+		expect(
+			screen.getByText("Apple delivered a report day twice")
+		).toBeDefined();
+		expect(screen.getByText("Apple stopped an unpolled report")).toBeDefined();
+	});
+
+	it("says whether an upstream message is expanded", async () => {
+		stubFetch({
+			"health/data": dataHealth({
+				errorsLast24h: [
+					{
+						endpoint: "ads:popularity",
+						errorClass: "upstream_error",
+						lastAt: Date.now(),
+						loss: true,
+						message: "upstream body",
+						n: 1,
+					},
+				],
+			}),
+		});
+		render(<Health onAcknowledge={() => {}} unread={0} />);
+		const toggle = await screen.findByRole("button", { name: "upstream body" });
+		expect(toggle.getAttribute("aria-expanded")).toBe("false");
+		fireEvent.click(toggle);
+		expect(toggle.getAttribute("aria-expanded")).toBe("true");
+	});
+
+	it("colours the all-clear with the theme's success text token", async () => {
+		// The page once named a token theme.css never defined, so the all-clear
+		// silently fell back to the body colour. Vitest serves CSS empty, so the
+		// test cannot read the theme and names the token instead.
+		stubFetch({ "health/data": dataHealth({ errorsLast24h: [] }) });
+		render(<Health onAcknowledge={() => {}} unread={0} />);
+		const cell = await screen.findByText("Clean. No errors recorded.");
+		expect(cell.style.color).toBe("var(--ds-text-success)");
 	});
 
 	it("dashes the crawl rate when the collector has no pacing state yet", async () => {

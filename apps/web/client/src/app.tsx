@@ -138,7 +138,7 @@ function newestLoss(health: DataHealth | null): number {
 
 function Shell() {
 	const t = useT();
-	const { setLang } = useI18n();
+	const { adoptLang } = useI18n();
 	const [apps, setApps] = useState<TrackedApp[]>([]);
 	const [health, setHealth] = useState<DataHealth | null>(null);
 	const [userId, setUserId] = useState<string | null>(null);
@@ -195,10 +195,10 @@ function Shell() {
 			}
 			const lang = prefs[PREF_LANG];
 			if (lang === "en" || lang === "fr") {
-				setLang(lang);
+				adoptLang(lang);
 			}
 		})();
-	}, [setLang]);
+	}, [adoptLang]);
 
 	return (
 		<BrowserRouter>

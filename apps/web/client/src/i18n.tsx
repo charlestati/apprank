@@ -11,11 +11,18 @@
 // the API returns. Classification is the server's job and stays there; how it
 // reads is the client's.
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import {
+	createContext,
+	useCallback,
+	useContext,
+	useEffect,
+	useMemo,
+	useState,
+} from "react";
 import type { ReactNode } from "react";
 
 import { Select } from "./components/select";
-import { cached, PREF_LANG, savePreference } from "./preferences";
+import { cached, PREF_LANG, savePreference, setCached } from "./preferences";
 
 export type Lang = "en" | "fr";
 
@@ -194,6 +201,9 @@ const en = {
 	errUpstreamError: "Apple reported a failure",
 	errTaskThrew: "The task failed",
 	errAppNotInStorefront: "Not sold in this storefront",
+	errSkippedProcessingDate: "Apple skipped a report day",
+	errDuplicateProcessingDate: "Apple delivered a report day twice",
+	errStoppedDueToInactivity: "Apple stopped an unpolled report",
 	errPullAbandoned: "A feed gave up today",
 	expand: "Expand",
 	healthIntro:
@@ -225,6 +235,7 @@ const en = {
 	starsLabel: "{n} stars",
 	noCompetitorData: "No competitor data yet.",
 	noKeywordMatch: "No keywords match “{filter}”.",
+	noKeywordInBand: "No keywords in this popularity band.",
 	noRankedObservations:
 		"No ranked observations in this window yet. The collector fills this in daily.",
 	suggestionsEmpty:
@@ -468,6 +479,9 @@ const fr: Dictionary = {
 	errUpstreamError: "Apple a signalé un échec",
 	errTaskThrew: "La tâche a échoué",
 	errAppNotInStorefront: "Non vendue dans cette boutique",
+	errSkippedProcessingDate: "Apple a sauté un jour de rapport",
+	errDuplicateProcessingDate: "Apple a livré un jour de rapport en double",
+	errStoppedDueToInactivity: "Apple a arrêté un rapport non consulté",
 	errPullAbandoned: "Un flux a abandonné",
 	expand: "Développer",
 	healthIntro:
@@ -500,6 +514,7 @@ const fr: Dictionary = {
 	starsLabel: "{n} étoiles",
 	noCompetitorData: "Aucune donnée sur les concurrents pour l'instant.",
 	noKeywordMatch: "Aucun mot-clé ne correspond à « {filter} ».",
+	noKeywordInBand: "Aucun mot-clé dans cette tranche de popularité.",
 	noRankedObservations:
 		"Aucune observation classée sur cette période. Le collecteur la remplit chaque jour.",
 	suggestionsEmpty:
@@ -596,15 +611,21 @@ export function initialLang(): Lang {
 
 interface I18n {
 	lang: Lang;
-	setLang: (lang: Lang) => void;
+	/** The reader picked a language: applied, cached and stored server-side. */
+	chooseLang: (lang: Lang) => void;
+	/** The stored preference arrived: applied and cached, never written back. */
+	adoptLang: (lang: Lang) => void;
 	t: Dictionary;
 }
 
+const noop = () => {
+	// Replaced by the provider; the default keeps `useT` safe outside one.
+};
+
 const I18nContext = createContext<I18n>({
+	adoptLang: noop,
+	chooseLang: noop,
 	lang: "en",
-	setLang: () => {
-		// Replaced by the provider; the default keeps `useT` safe outside one.
-	},
 	t: en,
 });
 
@@ -613,13 +634,24 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
 	useEffect(() => {
 		document.documentElement.lang = lang;
-		// Cache and database both; see `preferences.ts` for why there are two.
-		savePreference(PREF_LANG, lang);
 	}, [lang]);
 
+	// Only a choice the reader made is written to the server. Persisting the
+	// first frame's language, which is merely the browser's guess, would race
+	// the shell's read of the stored preference and overwrite the reader's real
+	// choice from another machine with it.
+	const chooseLang = useCallback((next: Lang) => {
+		setLang(next);
+		savePreference(PREF_LANG, next);
+	}, []);
+	const adoptLang = useCallback((next: Lang) => {
+		setLang(next);
+		setCached(PREF_LANG, next);
+	}, []);
+
 	const value = useMemo(
-		() => ({ lang, setLang, t: DICTIONARIES[lang] }),
-		[lang]
+		() => ({ adoptLang, chooseLang, lang, t: DICTIONARIES[lang] }),
+		[adoptLang, chooseLang, lang]
 	);
 	return <I18nContext value={value}>{children}</I18nContext>;
 }
@@ -639,9 +671,10 @@ export function fmt(
 }
 
 /**
- * Pick the singular or plural key. English and French agree on the only rule
- * this product needs (0 and 2+ take the plural, 1 does not), so a full
- * plural-rules engine would be machinery for a branch.
+ * Pick the singular or plural key. The two languages differ only at zero:
+ * English says "0 days", French (CLDR's "one" category covers 0 and 1) says
+ * "0 jour". Counts here are whole numbers, so that one difference is the whole
+ * rule and a plural-rules engine would be machinery for a branch.
  */
 export function plural(
 	t: Dictionary,
@@ -649,7 +682,8 @@ export function plural(
 	one: keyof Dictionary,
 	many: keyof Dictionary
 ): string {
-	return fmt(n === 1 ? t[one] : t[many], { n });
+	const singular = n === 1 || (n === 0 && t === DICTIONARIES.fr);
+	return fmt(singular ? t[one] : t[many], { n });
 }
 
 /** Shorthand for the common case of needing only the strings. */
@@ -682,12 +716,12 @@ export function reasonText(
 }
 
 export function LanguagePicker() {
-	const { lang, setLang, t } = useI18n();
+	const { chooseLang, lang, t } = useI18n();
 	return (
 		<Select
 			hiddenLabel
 			label={t.language}
-			onValueChange={(next) => setLang(next as Lang)}
+			onValueChange={(next) => chooseLang(next as Lang)}
 			options={LANGUAGES.map((l) => ({ label: l.label, value: l.code }))}
 			tone="quiet"
 			value={lang}

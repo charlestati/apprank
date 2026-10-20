@@ -10,7 +10,13 @@ import { Delta } from "../src/components/delta";
 import { Meter } from "../src/components/meter";
 import { SummaryTiles } from "../src/components/summary-tiles";
 import { KeywordPerformance } from "../src/pages/keyword-performance";
-import { chooseOption, stubFetch, trackedApp } from "./harness";
+import {
+	chooseOption,
+	deferred,
+	settle,
+	stubFetch,
+	trackedApp,
+} from "./harness";
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -708,7 +714,8 @@ describe(Meter, () => {
 
 	it("reads out as no data when the value is missing", () => {
 		render(<Meter label="Popularity" value={null} />);
-		expect(screen.getByLabelText("Popularity: no data")).toBeDefined();
+		// Read as text: an aria-label on a role-less span may never be announced.
+		expect(screen.getByText("Popularity: no data")).toBeDefined();
 		expect(screen.getByText("—")).toBeDefined();
 	});
 });
@@ -781,5 +788,198 @@ describe(SummaryTiles, () => {
 		);
 		const segs = [...document.querySelectorAll<HTMLElement>(".movement-seg")];
 		expect(segs.every((s) => s.style.width === "0%")).toBeTruthy();
+	});
+});
+
+const OTHER_APP = { ...trackedApp, current_name: "Other App", id: 999 };
+
+function renderSwitchable(routes: Record<string, unknown>) {
+	const calls = stubFetch(routes);
+	const view = render(
+		<MemoryRouter>
+			<KeywordPerformance app={trackedApp} />
+		</MemoryRouter>
+	);
+	const switchTo = (app: typeof trackedApp) =>
+		view.rerender(
+			<MemoryRouter>
+				<KeywordPerformance app={app} />
+			</MemoryRouter>
+		);
+	return { calls, switchTo };
+}
+
+describe("Keyword performance across an app switch", () => {
+	it("asks for the new app's storefront, not the previous app's", async () => {
+		const { calls, switchTo } = renderSwitchable({
+			"/apps/999/storefronts": [{ code: "us", keywords: 3, name: "USA" }],
+			"/apps/999/report": report({ storefront: "us" }),
+			report: report(),
+			storefronts,
+		});
+		await screen.findAllByText("example keyword");
+
+		switchTo(OTHER_APP);
+		await vi.waitFor(() =>
+			expect(
+				calls.some((c) => c.includes("/apps/999/report?storefront=us"))
+			).toBeTruthy()
+		);
+		// "fr" is only tracked for the first app: asking for it under the second
+		// is a report for a pair set that does not exist.
+		expect(
+			calls.some((c) => c.includes("/apps/999/report?storefront=fr"))
+		).toBeFalsy();
+	});
+
+	it("keeps the chosen storefront when the new app is tracked there too", async () => {
+		const { calls, switchTo } = renderSwitchable({
+			"/apps/999/storefronts": [
+				{ code: "us", keywords: 3, name: "USA" },
+				{ code: "be", keywords: 3, name: "Belgium" },
+			],
+			report: report(),
+			storefronts,
+		});
+		await screen.findAllByText("example keyword");
+		chooseOption("Storefront", "Belgium (25)");
+		await vi.waitFor(() =>
+			expect(calls.some((c) => c.includes("storefront=be"))).toBeTruthy()
+		);
+
+		switchTo(OTHER_APP);
+		await vi.waitFor(() =>
+			expect(
+				calls.some((c) => c.includes("/apps/999/report?storefront=be"))
+			).toBeTruthy()
+		);
+		expect(
+			calls.some((c) => c.includes("/apps/999/report?storefront=us"))
+		).toBeFalsy();
+	});
+
+	it("never draws the previous app's report under the new one", async () => {
+		const first = deferred<Report>();
+		const second = deferred<Report>();
+		const { switchTo } = renderSwitchable({
+			"/apps/999/report": second.promise,
+			"/apps/999/storefronts": storefronts,
+			report: first.promise,
+			storefronts,
+		});
+		// Let the first app's storefronts land, so its report is in flight.
+		await vi.waitFor(() =>
+			expect(screen.getByLabelText("Storefront").textContent).toContain(
+				"France"
+			)
+		);
+
+		switchTo(OTHER_APP);
+		second.resolve(
+			report({ rows: [keywordRow({ keyword: "current app term" })] })
+		);
+		await screen.findAllByText("current app term");
+
+		// The slower, older answer lands last and must not win.
+		first.resolve(report({ rows: [keywordRow({ keyword: "stale term" })] }));
+		await settle();
+		expect(screen.queryAllByText("stale term")).toHaveLength(0);
+		expect(screen.getAllByText("current app term").length).toBeGreaterThan(0);
+		expect(screen.getByText("Export CSV").getAttribute("href")).toBe(
+			"/api/apps/999/report.csv?storefront=fr&days=30"
+		);
+	});
+
+	it("shows the loading state, not the old report, while the new one loads", async () => {
+		const pending = deferred<Report>();
+		const { switchTo } = renderSwitchable({
+			"/apps/999/report": pending.promise,
+			"/apps/999/storefronts": storefronts,
+			report: report({ rows: [keywordRow({ keyword: "old app term" })] }),
+			storefronts,
+		});
+		await screen.findAllByText("old app term");
+
+		switchTo(OTHER_APP);
+		await vi.waitFor(() =>
+			expect(screen.queryAllByText("old app term")).toHaveLength(0)
+		);
+		expect(screen.getByText("Loading…")).toBeDefined();
+		pending.resolve(report());
+		await screen.findAllByText("example keyword");
+	});
+});
+
+function renderWithStored(rows: KeywordRow[], stored: number[]) {
+	stubFetch({ report: report({ rows }), storefronts });
+	localStorage.setItem(
+		`apprank.chart:${trackedApp.id}:fr`,
+		JSON.stringify(stored)
+	);
+	render(
+		<MemoryRouter>
+			<KeywordPerformance app={trackedApp} />
+		</MemoryRouter>
+	);
+}
+
+describe("Keyword performance chart selection", () => {
+	it("draws no more than four series, whatever was stored", async () => {
+		const rows = [1, 2, 3, 4, 5, 6].map((n) =>
+			keywordRow({ keyword: `keyword ${n}`, pairId: n, position: n })
+		);
+		renderWithStored(rows, [1, 2, 3, 4, 5, 6]);
+		await screen.findAllByText("keyword 1");
+
+		expect(document.querySelectorAll(".legend li")).toHaveLength(4);
+		expect(screen.getByText(/4 of 4 keywords on the chart/u)).toBeDefined();
+		expect(
+			screen
+				.getByRole("button", { name: "Add keyword 5 to the chart" })
+				.hasAttribute("disabled")
+		).toBeTruthy();
+	});
+
+	it("lets a keyword on when the stored ids no longer exist", async () => {
+		// Three of the four stored pairs are gone from this report. Measured
+		// against the stored list the chart is full; measured against what it
+		// draws, it holds one.
+		const rows = [1, 2].map((n) =>
+			keywordRow({ keyword: `keyword ${n}`, pairId: n, position: n })
+		);
+		renderWithStored(rows, [1, 97, 98, 99]);
+		await screen.findAllByText("keyword 1");
+
+		fireEvent.click(
+			screen.getByRole("button", { name: "Add keyword 2 to the chart" })
+		);
+		expect(
+			screen.getByRole("button", { name: "Remove keyword 2 from the chart" })
+		).toBeDefined();
+	});
+});
+
+describe("Keyword performance table details", () => {
+	it("says the band is empty without quoting an empty search", async () => {
+		renderPage({
+			report: report({ rows: [keywordRow({ popularity: 30 })] }),
+			storefronts,
+		});
+		await screen.findAllByText("example keyword");
+
+		chooseOption("Filter by popularity", "Very high (85–100)");
+		expect(
+			screen.getByText("No keywords in this popularity band.")
+		).toBeDefined();
+		expect(screen.queryByText(/No keywords match/u)).toBeNull();
+	});
+
+	it("names each leading competitor icon for a screen reader", async () => {
+		renderPage({ report: report(), storefronts });
+		await screen.findAllByText("example keyword");
+
+		// The image and the letter fallback both carry the name, not a title alone.
+		expect(screen.getByRole("img", { name: "1. Rival App" })).toBeDefined();
+		expect(screen.getByRole("img", { name: "2. Another App" })).toBeDefined();
 	});
 });

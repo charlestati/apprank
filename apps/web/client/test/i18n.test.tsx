@@ -9,11 +9,12 @@ import {
 	LanguagePicker,
 	fmt,
 	initialLang,
+	plural,
 	reasonText,
 	useT,
 } from "../src/i18n";
 import type { Dictionary } from "../src/i18n";
-import { chooseOption } from "./harness";
+import { chooseOption, stubFetch } from "./harness";
 
 beforeEach(() => {
 	// Unstub first: a previous test may have replaced localStorage with one that
@@ -26,6 +27,13 @@ function Probe() {
 	const t = useT();
 	return <p>{t.whatToWorkOn}</p>;
 }
+
+function DaysObserved({ n }: { n: number }) {
+	const t = useT();
+	return <p>{plural(t, n, "dayObserved", "daysObserved")}</p>;
+}
+
+const LANG_WRITE = "/api/preferences/lang";
 
 describe(fmt, () => {
 	it("fills named placeholders", () => {
@@ -92,8 +100,47 @@ describe(reasonText, () => {
 	});
 });
 
+describe(plural, () => {
+	it.each([
+		["en", 0, "0 days observed"],
+		["en", 1, "1 day observed"],
+		["en", 2, "2 days observed"],
+		// French counts zero as singular: CLDR's "one" category is 0 and 1.
+		["fr", 0, "0 jour observé"],
+		["fr", 1, "1 jour observé"],
+		["fr", 2, "2 jours observés"],
+	])("in %s, %i reads as %s", (lang, n, expected) => {
+		stubFetch({});
+		localStorage.setItem("apprank.lang", lang);
+		render(
+			<I18nProvider>
+				<DaysObserved n={n} />
+			</I18nProvider>
+		);
+		expect(screen.getByText(expected)).toBeDefined();
+	});
+});
+
+describe(I18nProvider, () => {
+	it("does not store the browser's guess on mount", () => {
+		// The shell is reading the stored preference at the same moment; a
+		// write of the first frame's language would race it and replace the
+		// reader's real choice from another machine with this browser's default.
+		const calls = stubFetch({});
+		vi.stubGlobal("navigator", { language: "fr-FR" });
+		render(
+			<I18nProvider>
+				<Probe />
+			</I18nProvider>
+		);
+		expect(screen.getByText("Sur quoi travailler")).toBeDefined();
+		expect(calls).toStrictEqual([]);
+	});
+});
+
 describe(LanguagePicker, () => {
 	it("switches the interface and remembers the choice", () => {
+		const calls = stubFetch({});
 		vi.stubGlobal("navigator", { language: "en-US" });
 		render(
 			<I18nProvider>
@@ -107,9 +154,12 @@ describe(LanguagePicker, () => {
 
 		expect(screen.getByText("Sur quoi travailler")).toBeTruthy();
 		expect(localStorage.getItem("apprank.lang")).toBe("fr");
+		// A choice the reader made is the one thing that goes to the server.
+		expect(calls).toStrictEqual([LANG_WRITE]);
 	});
 
 	it("sets the document language, so screen readers switch voice too", () => {
+		stubFetch({});
 		vi.stubGlobal("navigator", { language: "en-US" });
 		render(
 			<I18nProvider>
