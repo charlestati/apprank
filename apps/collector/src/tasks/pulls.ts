@@ -501,7 +501,11 @@ export async function compactStep(
 	const byStorefront = new Map<string, string[]>();
 	let cursor: string | undefined;
 	do {
-		const listing = await env.ARCHIVE.list({ cursor, limit: 500, prefix });
+		const listing = await env.ARCHIVE.list({
+			limit: 500,
+			prefix,
+			...(cursor === undefined ? {} : { cursor }),
+		});
 		for (const obj of listing.objects) {
 			const body = await env.ARCHIVE.get(obj.key);
 			if (!body) {

@@ -7,8 +7,8 @@ export type Task =
 	| {
 			type: "asc_poll";
 			stage?: "init" | "reports" | "instances";
-			appId?: string; // App Store id, from the tracked_app table, never config
-			requestId?: string;
+			appId?: string | undefined; // App Store id, from the tracked_app table, never config
+			requestId?: string | undefined;
 			reportQueue?: AscReportRef[];
 			attempt?: number;
 	  }
@@ -32,7 +32,7 @@ export type Task =
 			 * know Apple answered; making it rewrite 500 terms per unit spent a
 			 * meaningful slice of the daily write budget to learn nothing new.
 			 */
-			verifyOnly?: boolean;
+			verifyOnly?: boolean | undefined;
 	  }
 	| {
 			type: "ads_terms";
@@ -43,7 +43,7 @@ export type Task =
 			terms: string[];
 			attempt?: number;
 			/** As on `ads_pull`: archive the answer, write no rows. */
-			verifyOnly?: boolean;
+			verifyOnly?: boolean | undefined;
 	  }
 	| {
 			type: "ads_discover";
@@ -60,7 +60,7 @@ export type Task =
 			rest: string[];
 			attempt?: number;
 			/** Fetch and archive, propose nothing. */
-			verifyOnly?: boolean;
+			verifyOnly?: boolean | undefined;
 	  }
 	| { type: "lookup_pull"; queue: LookupUnit[]; attempt?: number }
 	| { type: "review_pull"; queue: ReviewUnit[]; attempt?: number }

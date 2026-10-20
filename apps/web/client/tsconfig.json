@@ -6,5 +6,5 @@
 		"types": ["vite/client"],
 		"strictNullChecks": true
 	},
-	"include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.tsx"]
+	"include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts", "test/**/*.tsx"]
 }

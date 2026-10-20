@@ -1,8 +1,9 @@
 {
 	"extends": "../../tsconfig.base.json",
 	"compilerOptions": {
-		"types": [],
+		// The `cloudflare:test` module declaration used by the tests.
+		"types": ["@cloudflare/vitest-plugin/types"],
 		"strictNullChecks": true
 	},
-	"include": ["worker-configuration.d.ts", "src/**/*.ts"]
+	"include": ["worker-configuration.d.ts", "src/**/*.ts", "test/**/*.ts"]
 }

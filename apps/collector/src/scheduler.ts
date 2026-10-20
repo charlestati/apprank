@@ -41,7 +41,7 @@ import type { Task } from "./tasks/types";
  * step is idempotent, and we deliberately never call deleteAlarm().
  */
 /** How soon a crawl that failed for a transient reason is due again. */
-export const CRAWL_RETRY_MS = 30 * 60_000;
+const CRAWL_RETRY_MS = 30 * 60_000;
 
 /**
  * Whether a step died because this Durable Object went away underneath it.
@@ -309,7 +309,7 @@ export class SchedulerDO extends DurableObject<Env> {
 		return due !== null;
 	}
 
-	async alarm(): Promise<void> {
+	override async alarm(): Promise<void> {
 		const pacing = await loadPacing(this.env.DB);
 		const now = Date.now();
 		if (pacing.pauseUntil > now) {

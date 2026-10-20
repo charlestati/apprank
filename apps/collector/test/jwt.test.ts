@@ -4,26 +4,7 @@ import { importP8, signJwt } from "@apprank/core/apple/jwt";
 import { describe, it, expect } from "vitest";
 
 import { latestCompleteWeekStart } from "../src/tasks/ads";
-
-async function generateP8Pem(): Promise<{ pem: string; publicKey: CryptoKey }> {
-	const pair = await crypto.subtle.generateKey(
-		{ name: "ECDSA", namedCurve: "P-256" },
-		true,
-		["sign", "verify"]
-	);
-	const der = new Uint8Array(
-		await crypto.subtle.exportKey("pkcs8", pair.privateKey)
-	);
-	let bin = "";
-	for (const b of der) {
-		bin += String.fromCharCode(b);
-	}
-	const b64 = btoa(bin).replaceAll(/(?<chunk>.{64})/gu, "$<chunk>\n");
-	return {
-		pem: `-----BEGIN PRIVATE KEY-----\n${b64}\n-----END PRIVATE KEY-----\n`,
-		publicKey: pair.publicKey,
-	};
-}
+import { generateP8Pem } from "./helpers";
 
 function b64urlDecode(s: string): Uint8Array {
 	const b64 =

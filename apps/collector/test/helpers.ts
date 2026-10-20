@@ -2,7 +2,7 @@ import { vi } from "vitest";
 
 export interface StubbedCall {
 	url: string;
-	init?: RequestInit;
+	init?: RequestInit | undefined;
 }
 
 /**
@@ -27,13 +27,13 @@ export async function generateP8Pem(): Promise<{
 	pem: string;
 	publicKey: CryptoKey;
 }> {
-	const pair = await crypto.subtle.generateKey(
+	const pair = (await crypto.subtle.generateKey(
 		{ name: "ECDSA", namedCurve: "P-256" },
 		true,
 		["sign", "verify"]
-	);
+	)) as CryptoKeyPair;
 	const der = new Uint8Array(
-		await crypto.subtle.exportKey("pkcs8", pair.privateKey)
+		(await crypto.subtle.exportKey("pkcs8", pair.privateKey)) as ArrayBuffer
 	);
 	let bin = "";
 	for (const b of der) {

@@ -66,7 +66,7 @@ export async function recordFetchError(
 		// per-incident belongs in `message`, never here.
 		errorClass: string;
 		message?: string;
-		r2Key?: string;
+		r2Key?: string | undefined;
 	}
 ): Promise<void> {
 	await db

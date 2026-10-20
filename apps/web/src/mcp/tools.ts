@@ -353,19 +353,19 @@ export async function getKeywordReport(
 }
 
 interface HistoryArgs {
-	pairId?: number;
-	keyword?: string;
-	storefront?: string;
-	appId?: number;
-	from?: string;
-	to?: string;
-	detail?: "summary" | "daily";
-	limit?: number;
+	pairId?: number | undefined;
+	keyword?: string | undefined;
+	storefront?: string | undefined;
+	appId?: number | undefined;
+	from?: string | undefined;
+	to?: string | undefined;
+	detail?: "summary" | "daily" | undefined;
+	limit?: number | undefined;
 }
 
 async function pairFromArgs(
 	ctx: ToolContext,
-	args: { pairId?: number; keyword?: string; storefront?: string }
+	args: Pick<HistoryArgs, "pairId" | "keyword" | "storefront">
 ): Promise<number> {
 	if (args.pairId !== undefined) {
 		await requirePair(ctx, args.pairId);
@@ -411,7 +411,11 @@ export async function getRankHistory(
 }
 
 export async function getCurrentRankings(
-	args: { appId: number; storefront?: string; limit?: number },
+	args: {
+		appId: number;
+		storefront?: string | undefined;
+		limit?: number | undefined;
+	},
 	ctx: ToolContext
 ): Promise<ToolOutcome> {
 	await requireApp(ctx, args.appId);
@@ -557,10 +561,10 @@ export async function getChartMovement(
 	args: {
 		storefront: string;
 		chart: "free" | "paid" | "grossing";
-		genreId?: number;
-		from?: string;
-		to?: string;
-		limit?: number;
+		genreId?: number | undefined;
+		from?: string | undefined;
+		to?: string | undefined;
+		limit?: number | undefined;
 	},
 	ctx: ToolContext
 ): Promise<ToolOutcome> {
@@ -596,10 +600,10 @@ export async function getKeywordPopularity(
 	args: {
 		appId: number;
 		storefront: string;
-		keyword?: string;
-		from?: string;
-		to?: string;
-		limit?: number;
+		keyword?: string | undefined;
+		from?: string | undefined;
+		to?: string | undefined;
+		limit?: number | undefined;
 	},
 	ctx: ToolContext
 ): Promise<ToolOutcome> {
@@ -634,7 +638,12 @@ export async function getKeywordPopularity(
 }
 
 export async function getMetadataChanges(
-	args: { appId: number; from?: string; to?: string; limit?: number },
+	args: {
+		appId: number;
+		from?: string | undefined;
+		to?: string | undefined;
+		limit?: number | undefined;
+	},
 	ctx: ToolContext
 ): Promise<ToolOutcome> {
 	await requireApp(ctx, args.appId);
@@ -722,7 +731,11 @@ export async function findKeywordOpportunities(
 }
 
 export async function getSearchResults(
-	args: { pairId: number; date?: string; limit?: number },
+	args: {
+		pairId: number;
+		date?: string | undefined;
+		limit?: number | undefined;
+	},
 	ctx: ToolContext
 ): Promise<ToolOutcome> {
 	await requirePair(ctx, args.pairId);
@@ -746,10 +759,10 @@ export async function getSearchResults(
 export async function getReviews(
 	args: {
 		appId: number;
-		storefront?: string;
-		minRating?: number;
-		maxRating?: number;
-		limit?: number;
+		storefront?: string | undefined;
+		minRating?: number | undefined;
+		maxRating?: number | undefined;
+		limit?: number | undefined;
 	},
 	ctx: ToolContext
 ): Promise<ToolOutcome> {
@@ -786,11 +799,11 @@ export async function getReviews(
 export async function getRatingsHistory(
 	args: {
 		appId: number;
-		storefront?: string;
-		from?: string;
-		to?: string;
-		detail?: "summary" | "daily";
-		limit?: number;
+		storefront?: string | undefined;
+		from?: string | undefined;
+		to?: string | undefined;
+		detail?: "summary" | "daily" | undefined;
+		limit?: number | undefined;
 	},
 	ctx: ToolContext
 ): Promise<ToolOutcome> {
@@ -857,7 +870,11 @@ export async function getRatingsHistory(
 }
 
 export async function getCollectionHealth(
-	args: { appId?: number; from?: string; to?: string },
+	args: {
+		appId?: number | undefined;
+		from?: string | undefined;
+		to?: string | undefined;
+	},
 	ctx: ToolContext
 ): Promise<ToolOutcome> {
 	const health = await dataHealth(ctx.db, ctx.principal.userId);
