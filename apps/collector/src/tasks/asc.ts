@@ -34,6 +34,29 @@ function ascCreds(env: Env): AscCredentials {
 	};
 }
 
+/**
+ * Records a fetch_error row unless an identical one already exists.
+ *
+ * For conditions Apple reports again on every poll without anything new
+ * having happened. Re-recording them daily inflates the data-health counts
+ * with one incident repeated, which is the noise the closed vocabulary exists
+ * to prevent.
+ */
+async function recordFetchErrorOnce(
+	db: D1Database,
+	e: { endpoint: string; errorClass: string; params: string }
+): Promise<void> {
+	const seen = await db
+		.prepare(
+			"SELECT 1 FROM fetch_error WHERE endpoint = ? AND error_class = ? AND params = ?"
+		)
+		.bind(e.endpoint, e.errorClass, e.params)
+		.first();
+	if (!seen) {
+		await recordFetchError(db, e);
+	}
+}
+
 async function fanOutStep(env: Env): Promise<Task[]> {
 	// The apps to ingest come from the database, never from configuration:
 	// ASC reports exist only for apps the operator owns, which in practice is
@@ -56,19 +79,23 @@ async function initStep(env: Env, appId: string): Promise<Task[]> {
 			r.attributes.accessType === "ONGOING" &&
 			!r.attributes.stoppedDueToInactivity
 	);
-	const stopped = existing.find(
-		(r) =>
-			r.attributes.accessType === "ONGOING" &&
-			r.attributes.stoppedDueToInactivity
-	);
-	if (stopped) {
-		// Known ASC behavior: ONGOING requests die if not polled. Recreate; alert
-		// via fetch_error.
-		await recordFetchError(env.DB, {
-			endpoint: "asc:reportRequest",
-			errorClass: "stopped_due_to_inactivity",
-			params: appId,
-		});
+	// Known ASC behavior: an ONGOING request dies if not polled, and Apple
+	// keeps listing the dead one indefinitely. The replacement only produces
+	// reports from its own creation onwards and the history snapshot fires once
+	// ever, so the days between the stop and the replacement are not recovered:
+	// this is a loss, recorded once per dead request rather than once per day
+	// for as long as Apple lists it.
+	for (const stopped of existing) {
+		if (
+			stopped.attributes.accessType === "ONGOING" &&
+			stopped.attributes.stoppedDueToInactivity
+		) {
+			await recordFetchErrorOnce(env.DB, {
+				endpoint: "asc:reportRequest",
+				errorClass: "stopped_due_to_inactivity",
+				params: `${appId} ${stopped.id}`,
+			});
+		}
 	}
 	if (!ongoing) {
 		ongoing = await asc.createReportRequest(appId, "ONGOING");
@@ -264,19 +291,25 @@ export async function ascFetchInstanceStep(
  * requests are per app, so with the app dimension collapsed, one app's
  * published Monday satisfied the `NOT EXISTS` for every other app's missing
  * Monday and the defect went unreported.
+ *
+ * A skipped date is permanent, so the check runs over the whole history every
+ * day and must not report the same gap twice: each one is recorded once, by
+ * excluding gaps that already have their fetch_error row. There is no cap on
+ * how many are found per run, because a cap without that exclusion re-found
+ * the same oldest gaps every day and never reached a later one.
  */
 export async function ascDetectSkippedDates(env: Env): Promise<void> {
 	const rows = await env.DB.prepare(
-		"SELECT app_id, report_type, MAX(processing_date) AS latest, COUNT(DISTINCT processing_date) AS days FROM asc_report_instance WHERE granularity = 'DAILY' GROUP BY app_id, report_type"
+		"SELECT app_id, report_type, MAX(processing_date) AS latest FROM asc_report_instance WHERE granularity = 'DAILY' GROUP BY app_id, report_type"
 	).all<{
 		app_id: number;
 		report_type: string;
 		latest: string;
-		days: number;
 	}>();
 	for (const r of rows.results) {
+		const prefix = `${r.app_id} ${r.report_type} `;
 		const gaps = await env.DB.prepare(
-			`SELECT DATE(a.processing_date, '+1 day') AS missing FROM asc_report_instance a
+			`SELECT DISTINCT DATE(a.processing_date, '+1 day') AS missing FROM asc_report_instance a
        WHERE a.granularity = 'DAILY' AND a.app_id = ? AND a.report_type = ?
          AND DATE(a.processing_date, '+1 day') < ?
          AND NOT EXISTS (
@@ -284,15 +317,20 @@ export async function ascDetectSkippedDates(env: Env): Promise<void> {
            WHERE b.app_id = a.app_id AND b.report_type = a.report_type
              AND b.granularity = 'DAILY'
              AND b.processing_date = DATE(a.processing_date, '+1 day'))
-       LIMIT 10`
+         AND NOT EXISTS (
+           SELECT 1 FROM fetch_error f
+           WHERE f.endpoint = 'asc:instance'
+             AND f.error_class = 'skipped_processing_date'
+             AND f.params = ? || DATE(a.processing_date, '+1 day'))
+       ORDER BY missing`
 		)
-			.bind(r.app_id, r.report_type, r.latest)
+			.bind(r.app_id, r.report_type, r.latest, prefix)
 			.all<{ missing: string }>();
 		for (const g of gaps.results) {
 			await recordFetchError(env.DB, {
 				endpoint: "asc:instance",
 				errorClass: "skipped_processing_date",
-				params: `${r.app_id} ${r.report_type} ${g.missing}`,
+				params: `${prefix}${g.missing}`,
 			});
 		}
 	}

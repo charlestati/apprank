@@ -85,7 +85,13 @@ paths:
 - App Store Connect `ONGOING` report requests die if not polled
   (`stoppedDueToInactivity`), and Apple sometimes publishes a duplicate
   `processingDate` then skips the next day permanently. Both are detected and
-  recorded; do not treat either as normal.
+  recorded; do not treat either as normal. Both persist in what Apple lists, so
+  each is recorded **once**: a stopped request per request id, a skipped date
+  per app, report and date. The gap check scans the whole history daily with no
+  cap; a `LIMIT 10` without that dedupe re-recorded the same ten gaps every day
+  and never reached the eleventh. A stopped request counts as a loss on the
+  health page (the replacement does not cover the days before it); a duplicated
+  or skipped date is a finding about Apple's data.
 - **ASC bookkeeping is per app, and that column is load-bearing.** Report
   requests are created per app, so `asc_report_instance.app_id` is known at
   write time, and it must be stored. Without it both anomaly detectors answer

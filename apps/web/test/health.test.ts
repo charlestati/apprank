@@ -271,6 +271,14 @@ describe("error classes that cost an observation", () => {
 		expect(isLoss("app_not_in_storefront")).toBeFalsy();
 	});
 
+	it("classifies the two ASC report anomalies by whether data was lost", () => {
+		// A duplicated processingDate is Apple's own defect, and the duplicate is
+		// archived and stored. A request Apple stopped for inactivity leaves the
+		// days before its replacement unreported, and nothing re-fetches them.
+		expect(isLoss("duplicate_processing_date")).toBeFalsy();
+		expect(isLoss("stopped_due_to_inactivity")).toBeTruthy();
+	});
+
 	it("treats a class it does not know as a loss", () => {
 		// A null predates the closed vocabulary and those rows were real
 		// failures; an unrecognised class is new and unexamined. Both should

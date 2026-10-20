@@ -619,6 +619,40 @@ describe(ascPollStep, () => {
 		expect(err?.error_class).toBe("stopped_due_to_inactivity");
 	});
 
+	it("records a stopped request once, however many days Apple keeps listing it", async () => {
+		// Apple lists the dead request on every poll after the replacement
+		// exists; one stop is one incident, not one per day.
+		stubFetch((url, init) =>
+			init?.method === "POST"
+				? Response.json({
+						data: { attributes: { accessType: "ONGOING" }, id: "req-2" },
+					})
+				: Response.json({
+						data: [
+							{
+								attributes: {
+									accessType: "ONGOING",
+									stoppedDueToInactivity: true,
+								},
+								id: "dead",
+							},
+							{ attributes: { accessType: "ONGOING" }, id: "req-2" },
+						],
+					})
+		);
+		for (let day = 0; day < 3; day += 1) {
+			await ascPollStep(ascEnv(), {
+				appId: String(APP_ID),
+				stage: "init",
+				type: "asc_poll",
+			});
+		}
+		const rows = await env.DB.prepare(
+			"SELECT params FROM fetch_error WHERE error_class = 'stopped_due_to_inactivity'"
+		).all<{ params: string }>();
+		expect(rows.results.map((r) => r.params)).toStrictEqual([`${APP_ID} dead`]);
+	});
+
 	it("dumps the report list once and queues only the wanted categories", async () => {
 		stubFetch(() =>
 			Response.json({
@@ -870,6 +904,54 @@ describe(ascDetectSkippedDates, () => {
 		expect(err.results.map((e) => e.params)).toStrictEqual([
 			`${APP_ID} R 2026-08-29`,
 		]);
+	});
+
+	it("records every gap exactly once across daily runs, past the tenth", async () => {
+		// Twelve permanent gaps: every other day of a 25-day run. A capped,
+		// unordered query re-found the same ten each day and never the rest.
+		const days = Array.from({ length: 13 }, (_, i) => {
+			const d = new Date(Date.UTC(2026, 7, 1 + i * 2));
+			return d.toISOString().slice(0, 10);
+		});
+		await env.DB.batch(
+			days.map((d, i) =>
+				env.DB.prepare(
+					"INSERT INTO asc_report_instance (app_id, report_type, granularity, processing_date, instance_id, fetched_at) VALUES (?1, 'R', 'DAILY', ?2, ?3, 0)"
+				).bind(APP_ID, d, `i${i}`)
+			)
+		);
+		await ascDetectSkippedDates(env);
+		await ascDetectSkippedDates(env);
+		const rows = await env.DB.prepare(
+			"SELECT params FROM fetch_error WHERE error_class = 'skipped_processing_date' ORDER BY params"
+		).all<{ params: string }>();
+		const expected = days.slice(0, -1).map((d) => {
+			const next = new Date(`${d}T00:00:00Z`);
+			next.setUTCDate(next.getUTCDate() + 1);
+			return `${APP_ID} R ${next.toISOString().slice(0, 10)}`;
+		});
+		expect(rows.results.map((r) => r.params)).toStrictEqual(expected);
+	});
+
+	it("records the gap after a duplicated date once, not once per instance", async () => {
+		// Apple's defect is exactly this shape: two instances on one date, then
+		// the next date never publishes.
+		await env.DB.batch([
+			env.DB.prepare(
+				`INSERT INTO asc_report_instance (app_id, report_type, granularity, processing_date, instance_id, fetched_at) VALUES (${APP_ID}, 'R', 'DAILY', '2026-08-28', 'i1', 0)`
+			),
+			env.DB.prepare(
+				`INSERT INTO asc_report_instance (app_id, report_type, granularity, processing_date, instance_id, fetched_at) VALUES (${APP_ID}, 'R', 'DAILY', '2026-08-28', 'i1b', 0)`
+			),
+			env.DB.prepare(
+				`INSERT INTO asc_report_instance (app_id, report_type, granularity, processing_date, instance_id, fetched_at) VALUES (${APP_ID}, 'R', 'DAILY', '2026-08-30', 'i2', 0)`
+			),
+		]);
+		await ascDetectSkippedDates(env);
+		const n = await env.DB.prepare(
+			"SELECT COUNT(*) AS n FROM fetch_error WHERE error_class = 'skipped_processing_date'"
+		).first<{ n: number }>();
+		expect(n?.n).toBe(1);
 	});
 
 	it("stays quiet on a contiguous run of days", async () => {

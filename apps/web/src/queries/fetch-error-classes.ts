@@ -32,14 +32,22 @@
  * both put the unit back: Apple rate-limits per
  * IP and Workers egress is shared, so throttles are the normal weather, and the
  * pause plus the next run absorb them, leaving the pair late rather than
- * missing. `skipped_processing_date` and `app_not_in_storefront` are here for a
- * different reason: nothing of ours failed at all. They are findings about
- * Apple's own data that this table is merely the most convenient place to keep.
- * All four stay visible in the breakdown.
+ * missing. `skipped_processing_date`, `duplicate_processing_date` and
+ * `app_not_in_storefront` are here for a different reason: nothing of ours
+ * failed at all. They are findings about Apple's own data that this table is
+ * merely the most convenient place to keep; a duplicated processingDate is
+ * still archived and stored, flagged `duplicate_date`. All of them stay
+ * visible in the breakdown.
+ *
+ * `stopped_due_to_inactivity` is deliberately absent. Apple stops an ONGOING
+ * report request nobody polled, the replacement reports only from its own
+ * creation, and the history snapshot fires once ever, so the days in between
+ * are gone: a loss, even though the collector recovers on its own.
  */
 const ABSORBED_ERROR_CLASSES = new Set([
 	"app_not_in_storefront",
 	"do_restarted",
+	"duplicate_processing_date",
 	"rate_limited",
 	"skipped_processing_date",
 	"throttled",
