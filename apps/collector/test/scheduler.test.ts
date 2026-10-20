@@ -4,7 +4,7 @@
 import { env, runDurableObjectAlarm } from "cloudflare:test";
 import { describe, it, expect, afterEach, vi } from "vitest";
 
-// vitest-pool-workers runs tests in the same isolate as the Worker (and its
+// The Workers test pool runs tests in the same isolate as the Worker (and its
 // Durable Objects), so a global fetch stub intercepts the crawler's requests.
 function stubItunes(handler: (url: string) => Response) {
 	const original = globalThis.fetch;

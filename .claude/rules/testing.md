@@ -6,8 +6,8 @@ paths:
 
 # Tests
 
-- `@cloudflare/vitest-pool-workers` 0.20 has **no isolated storage** and **no
-  `fetchMock`**. Reset the database in `beforeEach` (see
+- `@cloudflare/vitest-plugin` (formerly `vitest-pool-workers`) has **no isolated
+  storage** and **no `fetchMock`**. Reset the database in `beforeEach` (see
   `apps/web/test/fixtures.ts`) and stub `globalThis.fetch` via `vi.stubGlobal`
   (see `apps/collector/test/helpers.ts`). Tests share the isolate with the
   Worker, so a global stub intercepts its outbound calls.

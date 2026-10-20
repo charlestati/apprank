@@ -1,6 +1,6 @@
 # Deploying
 
-Requirements: Node 24+, pnpm 11+, `wrangler login`, and accounts on both
+Requirements: Node 24+, pnpm 12+, `wrangler login`, and accounts on both
 Cloudflare and GitHub.
 
 ## Cloudflare resources

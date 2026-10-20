@@ -41,7 +41,9 @@ binding at that size. [The numbers](docs/limits.md).
 ## Development
 
 ```sh
+pnpm run ci        # every gate CI runs
 pnpm lint          # ultracite (oxlint + oxfmt)
+pnpm knip          # unused files, dependencies and exports
 pnpm typecheck
 pnpm test          # vitest in the Workers runtime, then the script tests
 pnpm coverage      # 80% statements / lines / functions, 70% branches
@@ -52,7 +54,7 @@ pnpm rebuild:d1    # rebuild D1 from the R2 archive
 `pnpm install` points `core.hooksPath` at `.githooks/`, which lints on commit
 and runs the tests on push.
 
-Node 24+, pnpm 11+. `CLAUDE.md` is the working context for coding agents.
+Node 24+, pnpm 12+. `AGENTS.md` is the working context for coding agents.
 
 ## License
 

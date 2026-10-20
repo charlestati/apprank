@@ -6,7 +6,7 @@ export interface StubbedCall {
 }
 
 /**
- * Stub global fetch for the duration of a test. vitest-pool-workers runs tests
+ * Stub global fetch for the duration of a test. The Workers test pool runs tests
  * in the same isolate as the Worker and its Durable Objects, so this
  * intercepts the collector's own outbound requests too.
  */
