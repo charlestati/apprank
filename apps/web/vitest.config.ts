@@ -23,7 +23,7 @@ export default defineConfig(async (): Promise<ViteUserConfig> => {
 				include: ["src/**/*.ts", "client/src/**/*.ts", "client/src/**/*.tsx"],
 				exclude: ["src/env.ts", "client/src/main.tsx", "**/*.d.ts"],
 				reporter: ["text-summary", "json-summary"],
-				thresholds: { branches: 70, functions: 80, lines: 80, statements: 80 },
+				thresholds: { branches: 80, functions: 80, lines: 80, statements: 80 },
 			},
 			projects: [
 				{

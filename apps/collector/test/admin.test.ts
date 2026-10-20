@@ -111,6 +111,13 @@ describe(authorize, () => {
 });
 
 describe("POST /admin/run", () => {
+	it("starts every test unconfigured, whatever .dev.vars holds", () => {
+		// wrangler loads a developer's .dev.vars through configPath; CI has none.
+		// Pinned in vitest.config.ts so both see the same env, and each test
+		// below configures the route explicitly.
+		expect(env.ADMIN_TOKEN).toBeFalsy();
+	});
+
 	it("hides the route entirely when ADMIN_TOKEN is unset", async () => {
 		// Not 401: an unconfigured collector must not advertise that a trigger
 		// would otherwise live here.

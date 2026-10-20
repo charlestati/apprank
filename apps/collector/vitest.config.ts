@@ -13,6 +13,10 @@ export default defineConfig(async () => {
 				miniflare: {
 					bindings: {
 						TEST_MIGRATIONS: migrations,
+						// Pinned so a developer's .dev.vars (which wrangler loads through
+						// configPath below) cannot hand tests a real token CI never sees.
+						// Tests that need the route configured pass their own.
+						ADMIN_TOKEN: "",
 						// Dummy secrets so steps can be exercised against mocked fetch.
 						ASC_ISSUER_ID: "",
 						ASC_KEY_ID: "",
@@ -39,7 +43,7 @@ export default defineConfig(async () => {
 				include: ["src/**/*.ts", "../../packages/core/src/**/*.ts"],
 				exclude: ["src/env.ts", "**/*.d.ts"],
 				reporter: ["text-summary", "json-summary"],
-				thresholds: { branches: 70, functions: 80, lines: 80, statements: 80 },
+				thresholds: { branches: 80, functions: 80, lines: 80, statements: 80 },
 			},
 			// One file at a time. Storage is shared across the whole run (there is no
 			// isolated storage in this pool), so a file emptying collector_state in
