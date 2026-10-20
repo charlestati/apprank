@@ -7,7 +7,7 @@
 // keeps r2_key; the archive line does not).
 
 /** How many leading positions get an index row regardless of tracking. */
-export const INDEXED_TOP = 10;
+const INDEXED_TOP = 10;
 
 export function sqlEscape(s) {
 	return s === null || s === undefined
@@ -108,7 +108,7 @@ export function buildSql(observations, trackedIds) {
 export const STOREFRONT_WIDE_GENRE_ID = 0;
 
 /** Apple echoes the term as searched; match on the same normalization. */
-export function normalizeTerm(term) {
+function normalizeTerm(term) {
 	return term.toLowerCase().normalize("NFC").trim();
 }
 

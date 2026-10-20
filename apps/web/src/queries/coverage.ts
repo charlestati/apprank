@@ -15,7 +15,7 @@
 
 const DAY_MS = 86_400_000;
 
-export interface ErrorWindow {
+interface ErrorWindow {
 	from: string;
 	to: string;
 	errorClass: string;
@@ -48,7 +48,7 @@ export interface Coverage {
 /** Below this, the window is not a fair basis for a movement claim. */
 const DEGRADED_BELOW = 0.9;
 
-export function daysBetween(from: string, to: string): number {
+function daysBetween(from: string, to: string): number {
 	return Math.max(
 		1,
 		Math.round((Date.parse(to) - Date.parse(from)) / DAY_MS) + 1

@@ -84,7 +84,7 @@ export function appKeywords(db: D1Database, userId: string, appId: number) {
  * The cap is the query's, not the caller's: a review list is unbounded in
  * principle and every transport wants the same ceiling.
  */
-export const REVIEW_LIMIT = 100;
+const REVIEW_LIMIT = 100;
 
 export function appReviews(
 	db: D1Database,

@@ -8,7 +8,6 @@ import type {
 	CompetitorPoint,
 	DataHealth,
 	HistoryPoint,
-	KeywordCell,
 	Review,
 	Suggestion,
 	TrackedApp,
@@ -76,20 +75,6 @@ export function stubFetch(routes: Routes): string[] {
 	};
 	vi.stubGlobal("fetch", vi.fn(impl));
 	return calls;
-}
-
-export function keywordCell(over: Partial<KeywordCell> = {}): KeywordCell {
-	return {
-		keyword: "example keyword",
-		keyword_id: 1,
-		locale_code: "fr-FR",
-		observed_date: "2026-01-10",
-		pair_id: 1,
-		popularity: null,
-		rank: null,
-		storefront_code: "fr",
-		...over,
-	};
 }
 
 export function historyPoint(over: Partial<HistoryPoint> = {}): HistoryPoint {

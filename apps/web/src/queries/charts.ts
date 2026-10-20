@@ -6,7 +6,7 @@
 // come from the undocumented legacy RSS feeds. A caller comparing two dates is
 // entitled to know whether the same endpoint served both.
 
-export interface ChartMove {
+interface ChartMove {
 	appId: number;
 	name: string | null;
 	developer: string | null;

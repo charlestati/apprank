@@ -574,7 +574,7 @@ const fr: Dictionary = {
 
 const DICTIONARIES: Record<Lang, Dictionary> = { en, fr };
 
-export const LANGUAGES: { code: Lang; label: string }[] = [
+const LANGUAGES: { code: Lang; label: string }[] = [
 	{ code: "en", label: "English" },
 	{ code: "fr", label: "Français" },
 ];

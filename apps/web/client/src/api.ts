@@ -108,7 +108,7 @@ export interface StorefrontOption {
 	keywords: number;
 }
 
-export interface SeriesPoint {
+interface SeriesPoint {
 	date: string;
 	position: number | null;
 }
@@ -121,13 +121,13 @@ export interface MetadataMarker {
 }
 
 /** A day the crawl failed: the reason a hole in a series is a hole. */
-export interface SeriesError {
+interface SeriesError {
 	date: string;
 	errorClass: string;
 	count: number;
 }
 
-export interface TopResult {
+interface TopResult {
 	position: number;
 	appId: number;
 	name: string;
@@ -144,7 +144,7 @@ export interface Difficulty {
 	formulaVersion: string;
 }
 
-export interface SearchResultRow {
+interface SearchResultRow {
 	position: number;
 	appId: number;
 	name: string | null;
@@ -158,7 +158,7 @@ export interface ResultPage {
 	results: SearchResultRow[];
 }
 
-export type Opportunity =
+type Opportunity =
 	| "winning"
 	| "close"
 	| "blocked"
@@ -167,9 +167,9 @@ export type Opportunity =
 	| "unknown";
 
 /** Whether Apple published a volume for a term. Absent is not zero. */
-export type PopularityStatus = "measured" | "absent" | "unqueried";
+type PopularityStatus = "measured" | "absent" | "unqueried";
 
-export interface KeywordVerdict {
+interface KeywordVerdict {
 	opportunity: Opportunity;
 	/** Stable key for the explanation, so the client renders it in its own language. */
 	reasonKey?: string;

@@ -7,7 +7,7 @@
 // pulled popularity for that keyword at all. Every read here keeps the three
 // apart.
 
-export interface PopularityPoint {
+interface PopularityPoint {
 	weekStart: string;
 	present: boolean;
 	popularity1_100: number | null;

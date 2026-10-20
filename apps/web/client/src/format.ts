@@ -148,12 +148,12 @@ export function formatDay(iso: string, lang: Lang): string {
  * Read in UTC like every observed_date, so a review and a rank collected in
  * the same hour never land on different days.
  */
-export function formatDayAt(at: number, lang: Lang): string {
+function formatDayAt(at: number, lang: Lang): string {
 	return dayFormatter(lang).format(new Date(at));
 }
 
 /** Clock time for collector activity, in the operator's own convention. */
-export function formatTime(at: number, lang: Lang): string {
+function formatTime(at: number, lang: Lang): string {
 	return cached(
 		dates,
 		`${lang}:time`,

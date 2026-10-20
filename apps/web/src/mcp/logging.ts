@@ -20,7 +20,7 @@ export class NotFoundError extends Error {
 	}
 }
 
-export class ScopeError extends Error {
+class ScopeError extends Error {
 	constructor(scope: string) {
 		super(`This credential does not carry the ${scope} scope.`);
 		this.name = "ScopeError";
@@ -51,7 +51,7 @@ interface LogEntry {
 	outcome: "ok" | "denied" | "error" | "rate_limited";
 }
 
-export async function recordToolCall(
+async function recordToolCall(
 	db: D1Database,
 	principal: Principal,
 	entry: LogEntry

@@ -37,7 +37,7 @@
  * Apple's own data that this table is merely the most convenient place to keep.
  * All four stay visible in the breakdown.
  */
-export const ABSORBED_ERROR_CLASSES = new Set([
+const ABSORBED_ERROR_CLASSES = new Set([
 	"app_not_in_storefront",
 	"do_restarted",
 	"rate_limited",

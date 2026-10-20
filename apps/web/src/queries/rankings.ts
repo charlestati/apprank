@@ -45,7 +45,7 @@ export function pairCompetitors(db: D1Database, pairId: number, since: string) {
 		.all();
 }
 
-export interface ResultPageEntry {
+interface ResultPageEntry {
 	position: number;
 	appId: number;
 	name: string | null;

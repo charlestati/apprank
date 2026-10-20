@@ -21,9 +21,12 @@
 		"rebuild:d1": "pnpm --filter rebuild-d1 rebuild",
 		"rank-churn": "node scripts/rank-churn/measure.mjs",
 		"test:scripts": "node --test \"scripts/**/*.test.mjs\"",
-		"relevance": "pnpm --filter keyword-relevance score"
+		"relevance": "pnpm --filter keyword-relevance score",
+		"knip": "knip",
+		"ci": "pnpm lint && pnpm knip && pnpm typecheck && pnpm coverage && pnpm test:scripts"
 	},
 	"devDependencies": {
+		"knip": "6.41.0",
 		"oxfmt": "0.73.0",
 		"oxlint": "1.88.0",
 		"typescript": "catalog:",

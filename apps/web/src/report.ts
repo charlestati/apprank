@@ -32,7 +32,7 @@ interface ObservationRow {
 	result_count: number | null;
 }
 
-export interface SeriesPoint {
+interface SeriesPoint {
 	date: string;
 	position: number | null;
 }
@@ -43,20 +43,20 @@ export interface SeriesPoint {
  * Without it the chart cannot tell Apple's 403-with-empty-results from a day
  * the cadence never scheduled, and both look like the app losing the keyword.
  */
-export interface SeriesError {
+interface SeriesError {
 	date: string;
 	errorClass: string;
 	count: number;
 }
 
-export interface TopResult {
+interface TopResult {
 	position: number;
 	appId: number;
 	name: string;
 	iconUrl: string | null;
 }
 
-export interface Difficulty {
+interface Difficulty {
 	score: number;
 	entrenchment: number;
 	incumbentStrength: number;
@@ -108,13 +108,13 @@ export interface KeywordRow {
  * three of them in a fortnight are indistinguishable from each other. The
  * changed-field list comes from the same diff `queries/metadata.ts` serves.
  */
-export interface MetadataMarker {
+interface MetadataMarker {
 	date: string;
 	version: string | null;
 	changed: string[];
 }
 
-export interface ReportStats {
+interface ReportStats {
 	trackedKeywords: number;
 	rankedKeywords: number;
 	averageRank: number | null;
@@ -146,12 +146,6 @@ export interface Report {
 	metadataChanges: MetadataMarker[];
 	rows: KeywordRow[];
 }
-
-// Four is the readable ceiling for categorical series; past it the palette
-// runs out of hues that survive a colour-vision check side by side. More can
-// still be switched on from the table, where the reader is choosing them
-// deliberately.
-const CHART_SERIES_LIMIT = 4;
 
 function isoToday(): string {
 	return new Date().toISOString().slice(0, 10);
@@ -544,11 +538,4 @@ export async function buildReport(env: Env, q: ReportQuery): Promise<Report> {
 		storefront: q.storefront,
 		window: { from: since, to: isoToday() },
 	};
-}
-
-/** The keywords the chart plots by default: best-ranked first. */
-export function chartSeries(report: Report): KeywordRow[] {
-	return report.rows
-		.filter((r) => r.position !== null)
-		.slice(0, CHART_SERIES_LIMIT);
 }

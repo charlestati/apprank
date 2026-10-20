@@ -62,14 +62,11 @@ export function clamp(requested: number | undefined, cap: number): number {
 }
 
 /** Take at most `cap` rows and say whether more existed. */
-export function capped<T>(rows: T[], cap: number) {
+function capped<T>(rows: T[], cap: number) {
 	return { rows: rows.slice(0, cap), truncated: rows.length > cap };
 }
 
-export async function requireApp(
-	ctx: ToolContext,
-	appId: number
-): Promise<void> {
+async function requireApp(ctx: ToolContext, appId: number): Promise<void> {
 	if (!(await ownsApp(ctx.db, ctx.principal.userId, appId))) {
 		// Identical whether the app is absent or another operator's.
 		throw new NotFoundError(
@@ -78,10 +75,7 @@ export async function requireApp(
 	}
 }
 
-export async function requirePair(
-	ctx: ToolContext,
-	pairId: number
-): Promise<void> {
+async function requirePair(ctx: ToolContext, pairId: number): Promise<void> {
 	if (!(await ownsPair(ctx.db, ctx.principal.userId, pairId))) {
 		throw new NotFoundError(
 			`No tracked keyword behind pair ${pairId}. Call get_current_rankings for the pair ids you can read.`
@@ -90,7 +84,7 @@ export async function requirePair(
 }
 
 /** Resolve a keyword + storefront to the crawl pair the caller tracks. */
-export async function resolvePair(
+async function resolvePair(
 	ctx: ToolContext,
 	keyword: string,
 	storefront: string
@@ -120,7 +114,7 @@ interface Window {
 }
 
 /** Default window when the caller names neither end. */
-export function window(from?: string, to?: string, fallbackDays = 30): Window {
+function window(from?: string, to?: string, fallbackDays = 30): Window {
 	return { from: from ?? isoDay(fallbackDays), to: to ?? isoDay(0) };
 }
 

@@ -26,7 +26,7 @@ export interface Heartbeat {
 	tasks?: Record<string, number>;
 }
 
-export const HEARTBEAT_KEY = "loop_heartbeat";
+const HEARTBEAT_KEY = "loop_heartbeat";
 
 export async function recordHeartbeat(
 	db: D1Database,

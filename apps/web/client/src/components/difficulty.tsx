@@ -12,7 +12,7 @@ import type { Difficulty as DifficultyValue } from "../api";
 import type { Dictionary } from "../i18n";
 import { fmt, useT } from "../i18n";
 
-export function difficultyBand(t: Dictionary, score: number): string {
+function difficultyBand(t: Dictionary, score: number): string {
 	if (score >= 80) {
 		return t.diffVeryHard;
 	}

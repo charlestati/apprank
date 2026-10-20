@@ -15,16 +15,16 @@
 import type { KeywordRow } from "./report";
 
 export const POPULARITY_MEASURABLE = 5;
-export const POPULARITY_HEAD = 30;
-export const TAP_ZONE = 10;
-export const VISIBLE_ZONE = 20;
+const POPULARITY_HEAD = 30;
+const TAP_ZONE = 10;
+const VISIBLE_ZONE = 20;
 /** Above this, the incumbents are entrenched enough that metadata alone loses. */
 export const DIFFICULTY_BLOCKED = 80;
 const UNPROVEN_DAYS = 2;
 
 export type PopularityStatus = "measured" | "absent" | "unqueried";
 
-export type Opportunity =
+type Opportunity =
 	| "winning"
 	| "close"
 	| "blocked"
@@ -37,7 +37,7 @@ export type Opportunity =
  * language. `reason` stays as the canonical English prose for the CSV export
  * and any API consumer that is not the dashboard.
  */
-export type ReasonKey =
+type ReasonKey =
 	| "winning"
 	| "vanity"
 	| "unknownTapZone"

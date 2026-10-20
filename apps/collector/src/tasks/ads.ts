@@ -93,7 +93,7 @@ export function recentWeekStarts(n: number, now = new Date()): string[] {
 }
 
 /** The Saturday closing the Sun–Sat week that `start` opens. */
-export function weekEnd(start: string): string {
+function weekEnd(start: string): string {
 	const d = new Date(`${start}T00:00:00Z`);
 	d.setUTCDate(d.getUTCDate() + 6);
 	return d.toISOString().slice(0, 10);
@@ -113,13 +113,10 @@ export const TERM_CHUNK = 100;
  * asked for exactly 500 and received exactly 500, which looks identical to our
  * own page size being the binding limit.
  */
-export const GENRE_PAGE = 500;
+const GENRE_PAGE = 500;
 
 /** Every keyword somebody tracks in this storefront, normalized as stored. */
-export async function trackedTerms(
-	env: Env,
-	storefront: string
-): Promise<string[]> {
+async function trackedTerms(env: Env, storefront: string): Promise<string[]> {
 	const rows = await env.DB.prepare(
 		`SELECT DISTINCT k.normalized AS term
        FROM crawl_pair cp
@@ -146,7 +143,7 @@ export function normalize(term: string): string {
  * queue behind it. Everything here is weekly and re-queued by the next pass or
  * a backfill, so abandoning it costs a delay, and `pull_abandoned` says so.
  */
-export const MAX_RATE_LIMITED_ATTEMPTS = 5;
+const MAX_RATE_LIMITED_ATTEMPTS = 5;
 
 /**
  * Requeue a refused unit, or give up on it alone.
@@ -189,7 +186,7 @@ export async function rateLimited<T extends Task>(
  * every keyword tracked after the week was first pulled, which is exactly the
  * keyword a backfill exists for: one accepted from the suggestions inbox.
  */
-export async function missingTerms(
+async function missingTerms(
 	env: Env,
 	storefront: string,
 	weekStart: string
