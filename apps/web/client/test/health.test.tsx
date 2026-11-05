@@ -36,6 +36,13 @@ function statValue(label: string): HTMLElement | null {
 	return card?.querySelector<HTMLElement>(".stat-value") ?? null;
 }
 
+async function renderLoop(over: Partial<DataHealth>) {
+	stubFetch({ "health/data": dataHealth(over) });
+	render(<Health onAcknowledge={() => {}} unread={0} />);
+	await expect(screen.findByText("Data health")).resolves.toBeDefined();
+	return statValue("Work loop");
+}
+
 describe("Health page", () => {
 	afterEach(() => {
 		vi.unstubAllGlobals();
@@ -242,5 +249,71 @@ describe("Health page", () => {
 		await expect(screen.findByText("Data health")).resolves.toBeDefined();
 		expect(statValue("Crawl rate")?.textContent).toBe("–");
 		expect(statDetail("Crawl rate")).toBe("fetches/min, learned");
+	});
+	describe("work loop", () => {
+		const MIN_MS = 60_000;
+		const daily = (startedAt: number, queued: number | null) => ({
+			finishedAt: startedAt + MIN_MS,
+			ok: true,
+			queued,
+			startedAt,
+			trigger: "cron",
+		});
+
+		it("stays neutral when it has been idle for hours with nothing queued", async () => {
+			// The credentialed Worker drains its few daily tasks and parks; a
+			// six-hour-old heartbeat is the normal afternoon, not a fault.
+			const now = Date.now();
+			const value = await renderLoop({
+				lastDailyRun: daily(now - 400 * MIN_MS, 4),
+				loop: { at: now - 395 * MIN_MS, didWork: true, queued: 0 },
+			});
+			expect(value?.textContent).toBe("395m");
+			expect(value?.className).not.toContain("stat-bad");
+			expect(statDetail("Work loop")).toBe(
+				"since last tick · idle, nothing queued"
+			);
+		});
+
+		it("turns red when queued work has gone untouched past the watchdog", async () => {
+			const value = await renderLoop({
+				loop: {
+					at: Date.now() - 30 * MIN_MS,
+					didWork: true,
+					queued: 2,
+					tasks: { asc_poll: 2 },
+				},
+			});
+			expect(value?.className).toContain("stat-bad");
+			expect(statDetail("Work loop")).toBe("since last tick · asc_poll ×2");
+		});
+
+		it("stays neutral while queued work is still inside the watchdog window", async () => {
+			const value = await renderLoop({
+				loop: { at: Date.now() - 5 * MIN_MS, didWork: true, queued: 2 },
+			});
+			expect(value?.className).not.toContain("stat-bad");
+		});
+
+		it("turns red when a daily run queued work that no tick followed", async () => {
+			// The heartbeat says the queue was empty, but only as of a tick that
+			// predates the run: the run's tasks are what the loop never picked up.
+			const now = Date.now();
+			const value = await renderLoop({
+				lastDailyRun: daily(now - 60 * MIN_MS, 4),
+				loop: { at: now - 120 * MIN_MS, didWork: true, queued: 0 },
+			});
+			expect(value?.className).toContain("stat-bad");
+			expect(statDetail("Work loop")).toBe("since last tick · 4 queued");
+		});
+
+		it("stays neutral during a backoff pause, which parks the loop on purpose", async () => {
+			const now = Date.now();
+			const value = await renderLoop({
+				loop: { at: now - 60 * MIN_MS, didWork: true, queued: 3 },
+				pacing: { lastErrorAt: now, pauseUntil: now + HOUR_MS, ratePerMin: 12 },
+			});
+			expect(value?.className).not.toContain("stat-bad");
+		});
 	});
 });

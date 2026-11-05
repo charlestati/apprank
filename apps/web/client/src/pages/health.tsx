@@ -17,13 +17,49 @@ function queueSummary(tasks?: Record<string, number>): string | null {
 	return parts.length > 0 ? parts.join(", ") : null;
 }
 
+/** The watchdog cron re-arms the loop every ten minutes, plus slack. */
+const LOOP_STALL_MS = 15 * 60_000;
+
 /**
- * The work loop parks with no alarm once everything due is collected, so
- * silence is only alarming against the 10-minute watchdog cron's promise to
- * re-arm it. A heartbeat that is missing entirely is a different, worse thing
- * than one that is merely old.
+ * When work has been waiting for the loop, or null when none is.
+ *
+ * The work loop parks with no alarm once everything due is collected, and on
+ * the credentialed Worker that is most of the day: it only ever runs the few
+ * App Store Connect and Apple Ads tasks the daily job queues. An old heartbeat
+ * is therefore normal, and colouring it red on age alone made the tile red
+ * every afternoon. Silence is a fault only against queued work the watchdog
+ * should have picked up: either the queue the last tick left behind, or a
+ * daily run that queued tasks after that tick and was never followed by one.
  */
-function LoopTile({ loop, now }: { loop: DataHealth["loop"]; now: number }) {
+function loopWaitingSince(
+	loop: NonNullable<DataHealth["loop"]>,
+	run: DataHealth["lastDailyRun"]
+): number | null {
+	if (loop.queued > 0) {
+		return loop.at;
+	}
+	if (run !== null && (run.queued ?? 0) > 0 && run.startedAt > loop.at) {
+		return run.startedAt;
+	}
+	return null;
+}
+
+/**
+ * A heartbeat that is missing entirely is a different, worse thing than one
+ * that is merely old. A backoff pause parks the loop on purpose, with work
+ * queued, so it is not a stall either; the crawl-rate tile already says so.
+ */
+function LoopTile({
+	loop,
+	now,
+	paused,
+	run,
+}: {
+	loop: DataHealth["loop"];
+	now: number;
+	paused: boolean;
+	run: DataHealth["lastDailyRun"];
+}) {
 	const t = useT();
 	if (loop === null) {
 		return (
@@ -35,17 +71,23 @@ function LoopTile({ loop, now }: { loop: DataHealth["loop"]; now: number }) {
 		);
 	}
 	const ageMin = Math.round((now - loop.at) / 60_000);
+	const waitingSince = loopWaitingSince(loop, run);
+	const stalled =
+		!paused && waitingSince !== null && now - waitingSince > LOOP_STALL_MS;
+	let queue = t.loopIdle;
+	if (loop.queued > 0) {
+		queue = queueSummary(loop.tasks) ?? fmt(t.loopQueued, { n: loop.queued });
+	} else if (waitingSince !== null) {
+		queue = fmt(t.loopQueued, { n: run?.queued ?? 0 });
+	}
 	return (
 		<div className="tile">
 			<div className="tile-title">{t.workLoop}</div>
-			<div className={ageMin > 15 ? "stat-value stat-bad" : "stat-value"}>
+			<div className={stalled ? "stat-value stat-bad" : "stat-value"}>
 				{ageMin}m
 			</div>
 			<div className="tile-note">
-				{t.loopSinceTick} ·{" "}
-				{loop.queued === 0
-					? t.loopQueueEmpty
-					: (queueSummary(loop.tasks) ?? fmt(t.loopQueued, { n: loop.queued }))}
+				{t.loopSinceTick} · {queue}
 			</div>
 		</div>
 	);
@@ -267,7 +309,12 @@ export function Health({
 							: t.budgetPending}
 					</div>
 				</div>
-				<LoopTile loop={h.loop} now={loadedAt} />
+				<LoopTile
+					loop={h.loop}
+					now={loadedAt}
+					paused={paused}
+					run={h.lastDailyRun}
+				/>
 				<DailyRunTile run={h.lastDailyRun} />
 				<OverdueTile n={h.overduePairs} />
 				<div className="tile">
