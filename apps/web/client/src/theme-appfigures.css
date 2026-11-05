@@ -1,0 +1,367 @@
+/* Appfigures skin. A second set of values for the same --ds-* tokens, plus the
+ * few structural differences tokens cannot express (sidebar spanning the full
+ * height, orange accent on the current page, pill-track segmented control).
+ *
+ * It applies only under html[data-skin="appfigures"], which index.html sets.
+ * The Atlassian skin in theme.css stays intact underneath: removing that
+ * attribute brings it back. There is deliberately no switcher in the UI.
+ *
+ * Dark values were read from the computed styles of Appfigures' own
+ * keyword-performance report; the light values are derived from them.
+ */
+
+:root[data-skin="appfigures"] {
+	--af-accent: #f2551d;
+	--af-accent-soft: #ff69331a;
+	--af-meter: #1a7ee6;
+	--af-segment-track: #eef0f2;
+
+	--ds-surface: #ffffff;
+	--ds-surface-sunken: #f6f7f8;
+	--ds-surface-raised: #ffffff;
+	--ds-surface-overlay: #ffffff;
+	--ds-surface-hovered: #f1f2f4;
+	--ds-surface-pressed: #e6e8eb;
+
+	--ds-border: #0c0d0e1f;
+	--ds-border-bold: #0c0d0e52;
+	--ds-border-input: #0c0d0e29;
+	--ds-border-focused: #1a7ee6;
+	--ds-border-selected: #1a7ee6;
+
+	--ds-text: #0c0d0e;
+	--ds-text-subtle: #0c0d0eb8;
+	--ds-text-subtlest: #0c0d0e8f;
+	--ds-text-inverse: #ffffff;
+	--ds-link: #1a7ee6;
+	--ds-link-pressed: #1466bd;
+
+	--ds-neutral-subtle-hovered: #0c0d0e0a;
+	--ds-neutral-subtle-pressed: #0c0d0e14;
+	--ds-background-neutral: #0c0d0e14;
+
+	--ds-background-selected: #1a7ee614;
+	--ds-text-selected: #1a7ee6;
+
+	--ds-bg-success: #16a34a1a;
+	--ds-text-success: #15803d;
+	--ds-bg-danger: #dc26261a;
+	--ds-text-danger: #c81e1e;
+	--ds-bg-warning: #f59e0b1f;
+	--ds-text-warning: #a35200;
+	--ds-bg-information: #1a7ee61a;
+	--ds-text-information: #1466bd;
+
+	--ds-chart-1: #4f7df0;
+	--ds-chart-2: #2fa865;
+	--ds-chart-3: #8b6fe0;
+	--ds-chart-4: #d83a6f;
+	--ds-chart-5: #1466bd;
+	--ds-chart-6: #6b4fc4;
+	--ds-chart-7: #1f9fc4;
+	--ds-chart-8: #c2410c;
+	--ds-chart-success: #13a36e;
+	--ds-chart-danger: #c0283a;
+	--ds-chart-neutral: #0c0d0e1f;
+
+	/* Rank distribution: a lavender ramp, deepest for the best bucket. */
+	--af-dist-1: #5856c4;
+	--af-dist-2: #7472cf;
+	--af-dist-3: #9896d6;
+	--af-dist-4: #bdbbd6;
+
+	--ds-shadow-raised: 0 1px 2px #0c0d0e0d;
+	--ds-shadow-overlay: 0 8px 24px #0c0d0e1f, 0 0 0 1px #0c0d0e14;
+
+	--ds-font-sans:
+		"Inter Variable", Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont,
+		"Segoe UI", "Helvetica Neue", sans-serif;
+	--ds-weight-medium: 500;
+	--ds-weight-bold: 600;
+
+	--ds-font-heading-xlarge: normal 500 2.5rem/2.5rem var(--ds-font-sans);
+	--ds-font-heading-large: normal 600 2rem/2.5rem var(--ds-font-sans);
+	--ds-font-heading-medium: normal 600 1.25rem/1.5rem var(--ds-font-sans);
+	--ds-font-heading-small: normal 500 0.9375rem/1.25rem var(--ds-font-sans);
+	--ds-font-heading-xsmall: normal 500 0.875rem/1.25rem var(--ds-font-sans);
+	--ds-font-body-large: normal 400 0.9375rem/1.375rem var(--ds-font-sans);
+	--ds-font-body: normal 400 0.875rem/1.25rem var(--ds-font-sans);
+
+	--ds-radius-medium: 8px;
+	--ds-radius-large: 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root[data-skin="appfigures"]:not([data-theme="light"]) {
+		--af-accent: #ff6933;
+		--af-accent-soft: #ff69331f;
+		--af-meter: #2a8cf0;
+		--af-segment-track: #151719;
+
+		/* Page and sidebar share one surface; tiles and the chart sit one step
+		   up; the keyword table drops back to the page surface. */
+		--ds-surface: #151719;
+		--ds-surface-sunken: #151719;
+		--ds-surface-raised: #212324;
+		--ds-surface-overlay: #2a2c2e;
+		--ds-surface-hovered: #2a2c2e;
+		--ds-surface-pressed: #323436;
+
+		--ds-border: #ffffff29;
+		--ds-border-bold: #ffffff52;
+		--ds-border-input: #ffffff29;
+		--ds-border-focused: #50a3f6;
+		--ds-border-selected: #50a3f6;
+
+		--ds-text: #ffffff;
+		--ds-text-subtle: #ffffffb8;
+		--ds-text-subtlest: #ffffff8f;
+		--ds-text-inverse: #0c0d0e;
+		--ds-link: #50a3f6;
+		--ds-link-pressed: #7bb8f8;
+
+		--ds-neutral-subtle-hovered: #ffffff0f;
+		--ds-neutral-subtle-pressed: #ffffff1a;
+		--ds-background-neutral: #ffffff1a;
+
+		--ds-background-selected: #50a3f61a;
+		--ds-text-selected: #50a3f6;
+
+		--ds-bg-success: #22c55e1f;
+		--ds-text-success: #4ade80;
+		--ds-bg-danger: #ef44441f;
+		--ds-text-danger: #f87171;
+		--ds-bg-warning: #f59e0b1f;
+		--ds-text-warning: #fbbf24;
+		--ds-bg-information: #50a3f61f;
+		--ds-text-information: #7bb8f8;
+
+		--ds-chart-1: #749eff;
+		--ds-chart-2: #66cc8c;
+		--ds-chart-3: #ae97ef;
+		--ds-chart-4: #ec5185;
+		--ds-chart-5: #50a3f6;
+		--ds-chart-6: #8b6fe0;
+		--ds-chart-7: #42b2d7;
+		--ds-chart-8: #ff6933;
+		--ds-chart-success: #13a36e;
+		--ds-chart-danger: #c0283a;
+		--ds-chart-neutral: #ffffff29;
+
+		--af-dist-1: #6b69c9;
+		--af-dist-2: #8583d3;
+		--af-dist-3: #a3a1db;
+		--af-dist-4: #c9c7dc;
+
+		--ds-shadow-raised: none;
+		--ds-shadow-overlay: 0 8px 24px #0000008c, 0 0 0 1px #ffffff29;
+	}
+}
+
+/* ── Shell: the sidebar runs the full height, the top bar sits over main ── */
+
+[data-skin="appfigures"] .shell {
+	position: relative;
+	grid-template-columns: 245px 1fr;
+}
+
+[data-skin="appfigures"] .topbar {
+	grid-column: 2;
+	grid-row: 1;
+	padding: var(--ds-space-100) var(--ds-space-300);
+	background: transparent;
+	border-bottom: 0;
+}
+
+[data-skin="appfigures"] .sidebar {
+	grid-column: 1;
+	grid-row: 1 / -1;
+	/* Room for the wordmark, which is lifted out of the top bar into here. */
+	padding: 64px var(--ds-space-100) var(--ds-space-200);
+	gap: 0;
+}
+
+[data-skin="appfigures"] .wordmark {
+	position: absolute;
+	top: 16px;
+	left: 16px;
+	gap: 1px;
+}
+[data-skin="appfigures"] .wordmark span,
+[data-skin="appfigures"] .wordmark span:nth-child(4) {
+	width: auto;
+	height: auto;
+	background: none;
+	color: var(--af-accent);
+	font: normal 600 1.375rem/1.5rem var(--ds-font-sans);
+	letter-spacing: -0.02em;
+	text-transform: lowercase;
+}
+
+[data-skin="appfigures"] .nav-heading {
+	margin: var(--ds-space-200) 0 var(--ds-space-050);
+	padding: 0 var(--ds-space-150);
+	font: normal 500 0.875rem/1rem var(--ds-font-sans);
+	color: var(--ds-text-subtlest);
+}
+
+[data-skin="appfigures"] .sidebar a {
+	padding: 7px var(--ds-space-150);
+	gap: var(--ds-space-150);
+	border-radius: var(--ds-radius-medium);
+	color: var(--ds-text-subtle);
+	font: normal 500 1rem/1.25rem var(--ds-font-sans);
+}
+[data-skin="appfigures"] .sidebar a svg {
+	color: inherit;
+}
+[data-skin="appfigures"] .sidebar a.active {
+	background: var(--af-accent-soft);
+	color: var(--af-accent);
+	font-weight: 500;
+}
+
+[data-skin="appfigures"] main {
+	padding: var(--ds-space-100) var(--ds-space-300) var(--ds-space-300);
+}
+
+/* ── Page furniture ──────────────────────────────────────────────────── */
+
+[data-skin="appfigures"] .page-sub {
+	font: normal 400 1rem/1.5rem var(--ds-font-sans);
+}
+
+[data-skin="appfigures"] .card,
+[data-skin="appfigures"] .tile {
+	box-shadow: var(--ds-shadow-raised);
+}
+
+/* Appfigures' filters sit on the page, not in a card of their own. */
+[data-skin="appfigures"] .filter-bar {
+	padding: 0;
+	background: transparent;
+	border: 0;
+	gap: var(--ds-space-150);
+}
+
+[data-skin="appfigures"] .field-label {
+	color: var(--ds-text-subtlest);
+}
+
+[data-skin="appfigures"] .tile-title {
+	font-weight: 500;
+}
+
+[data-skin="appfigures"] .dist-col:nth-child(1) .dist-bar {
+	background: var(--af-dist-1);
+}
+[data-skin="appfigures"] .dist-col:nth-child(2) .dist-bar {
+	background: var(--af-dist-2);
+}
+[data-skin="appfigures"] .dist-col:nth-child(3) .dist-bar {
+	background: var(--af-dist-3);
+}
+[data-skin="appfigures"] .dist-col:nth-child(4) .dist-bar {
+	background: var(--af-dist-4);
+}
+
+/* ── Controls: 36px, quiet borders, a pill track for segmented choices ── */
+
+[data-skin="appfigures"] .ui-trigger,
+[data-skin="appfigures"] .search {
+	height: 36px;
+	padding: 0 10px;
+	border-color: var(--ds-border-input);
+	color: var(--ds-text-subtle);
+	box-shadow: 0 1px 2px #0c0d0e0d;
+}
+[data-skin="appfigures"] .ui-trigger-quiet {
+	height: 32px;
+	box-shadow: none;
+}
+[data-skin="appfigures"] .ui-option[data-selected] {
+	font-weight: 500;
+}
+
+[data-skin="appfigures"] .segmented {
+	height: 36px;
+	padding: 2px;
+	border: 0;
+	border-radius: 10px;
+	background: var(--af-segment-track);
+}
+[data-skin="appfigures"] .seg {
+	padding: 0 10px;
+	border-radius: var(--ds-radius-medium);
+	background: transparent;
+	color: var(--ds-text-subtle);
+}
+[data-skin="appfigures"] .seg + .seg {
+	border-left: 0;
+}
+[data-skin="appfigures"] .seg[data-pressed] {
+	background: var(--ds-surface-overlay);
+	color: var(--ds-text);
+	font-weight: 400;
+	box-shadow:
+		0 1px 3px #0c0d0e1a,
+		0 1px 2px #0c0d0e1a;
+}
+
+/* ── Table: tinted header cells, ruled columns, Appfigures' meter blue ── */
+
+[data-skin="appfigures"] table.grid th {
+	background: var(--ds-surface);
+	background-image: linear-gradient(
+		var(--ds-neutral-subtle-hovered),
+		var(--ds-neutral-subtle-hovered)
+	);
+	color: var(--ds-text);
+	font-weight: 500;
+}
+[data-skin="appfigures"] .group-row th {
+	background: var(--ds-surface);
+	color: var(--ds-text);
+	font: normal 500 0.9375rem/1.25rem var(--ds-font-sans);
+	text-align: center;
+}
+[data-skin="appfigures"] table.grid td + td,
+[data-skin="appfigures"] table.grid th + th {
+	border-left: 1px solid var(--ds-border);
+}
+[data-skin="appfigures"] .table-card {
+	background: var(--ds-surface);
+}
+[data-skin="appfigures"] table.report {
+	color: var(--ds-text);
+}
+/* Appfigures names the keyword in body text, not as a link, and prints the
+   rank as a plain right-aligned figure rather than a tinted pill. */
+[data-skin="appfigures"] .report .kw .link {
+	color: var(--ds-text);
+}
+[data-skin="appfigures"] .report .rank {
+	background: none;
+	color: var(--ds-text);
+	font-weight: 400;
+}
+[data-skin="appfigures"] .meter-fill {
+	background: var(--af-meter);
+}
+[data-skin="appfigures"] .meter-value {
+	color: var(--ds-text);
+}
+
+@media (max-width: 900px) {
+	[data-skin="appfigures"] .topbar,
+	[data-skin="appfigures"] .sidebar {
+		grid-column: 1;
+		grid-row: auto;
+	}
+	[data-skin="appfigures"] .sidebar {
+		padding: var(--ds-space-100);
+	}
+	[data-skin="appfigures"] .wordmark {
+		position: static;
+	}
+}

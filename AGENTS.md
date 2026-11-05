@@ -142,7 +142,13 @@ Both hooks are bypassable with `--no-verify`: they catch accidents, not policy.
 - **The dashboard follows the Appfigures keyword-performance layout** (sidebar,
   filter bar, three summary tiles, multi-series inverted rank chart, dense
   grouped-header table) styled with **Atlassian Design System tokens**, defined
-  as CSS variables in `apps/web/client/src/theme.css`.
+  as CSS variables in `apps/web/client/src/theme.css`. The shipped look is the
+  **Appfigures skin** in `theme-appfigures.css`: the same `--ds-*` tokens
+  re-valued (and a few structural overrides) under
+  `html[data-skin="appfigures"]`, which `client/index.html` sets. Removing that
+  attribute restores the Atlassian look; there is deliberately no switcher in
+  the UI. Style through the tokens, so a change reads correctly under both
+  skins.
 
 ## Traps that apply anywhere
 
