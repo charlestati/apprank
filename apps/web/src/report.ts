@@ -13,14 +13,26 @@ import type {
 	OpportunitySummary,
 	PopularityStatus,
 } from "./insights";
+import { TRACKED_PAIRS } from "./queries/apps";
 import { metadataChanges } from "./queries/metadata";
-import { sinceDate } from "./queries/rankings";
+import { appPositionSql, sinceDate } from "./queries/rankings";
 
 export interface ReportQuery {
 	appId: number;
 	userId: string;
 	storefront: string;
 	days: number;
+	/**
+	 * First day of the window, inclusive. Defaults to `days` ago.
+	 *
+	 * A caller that was given dates passes them: turning a start date into a day
+	 * count and back went through two roundings against the current instant, so
+	 * the window opened a day or two early, and one that ended long ago started
+	 * after it ended and came back empty.
+	 */
+	from?: string | undefined;
+	/** Last day of the window, inclusive. Defaults to today. */
+	to?: string | undefined;
 }
 
 interface ObservationRow {
@@ -32,7 +44,7 @@ interface ObservationRow {
 	result_count: number | null;
 }
 
-export interface SeriesPoint {
+interface SeriesPoint {
 	date: string;
 	position: number | null;
 }
@@ -43,20 +55,20 @@ export interface SeriesPoint {
  * Without it the chart cannot tell Apple's 403-with-empty-results from a day
  * the cadence never scheduled, and both look like the app losing the keyword.
  */
-export interface SeriesError {
+interface SeriesError {
 	date: string;
 	errorClass: string;
 	count: number;
 }
 
-export interface TopResult {
+interface TopResult {
 	position: number;
 	appId: number;
 	name: string;
 	iconUrl: string | null;
 }
 
-export interface Difficulty {
+interface Difficulty {
 	score: number;
 	entrenchment: number;
 	incumbentStrength: number;
@@ -75,9 +87,22 @@ export interface KeywordRow {
 	points: SeriesPoint[];
 	/** Days the fetch failed, so a throttled window is not read as a rank loss. */
 	fetchErrors: SeriesError[];
-	/** Change against the previous *different* rank, and how long ago that was. */
+	/**
+	 * Change against the previous *different* rank, and the days between that
+	 * observation and the newest one.
+	 */
 	change: number | null;
 	changeDaysAgo: number | null;
+	/**
+	 * Days the current rank has been held, counted from the first observation of
+	 * its unbroken run to the end of the window. Null when the newest observation
+	 * is unranked or there is none.
+	 *
+	 * This, not `changeDaysAgo`, is what "has it settled?" asks. The distance to
+	 * the previous different rank is at least the crawl interval, so on a pair
+	 * checked weekly a rank seen exactly once always looked a week old.
+	 */
+	heldDays: number | null;
 	best: number | null;
 	worst: number | null;
 	popularity: number | null;
@@ -108,13 +133,13 @@ export interface KeywordRow {
  * three of them in a fortnight are indistinguishable from each other. The
  * changed-field list comes from the same diff `queries/metadata.ts` serves.
  */
-export interface MetadataMarker {
+interface MetadataMarker {
 	date: string;
 	version: string | null;
 	changed: string[];
 }
 
-export interface ReportStats {
+interface ReportStats {
 	trackedKeywords: number;
 	rankedKeywords: number;
 	averageRank: number | null;
@@ -147,32 +172,32 @@ export interface Report {
 	rows: KeywordRow[];
 }
 
-// Four is the readable ceiling for categorical series; past it the palette
-// runs out of hues that survive a colour-vision check side by side. More can
-// still be switched on from the table, where the reader is choosing them
-// deliberately.
-const CHART_SERIES_LIMIT = 4;
-
 function isoToday(): string {
 	return new Date().toISOString().slice(0, 10);
 }
 
 /** Positions of the tracked app, per keyword, per observed day. */
-function fetchObservations(env: Env, q: ReportQuery, since: string) {
+function fetchObservations(
+	env: Env,
+	q: ReportQuery,
+	since: string,
+	until: string
+) {
 	return env.DB.prepare(
 		`SELECT cp.id AS pair_id, k.id AS keyword_id, k.text AS keyword,
-            r.observed_date, re.position, r.result_count
+            r.observed_date, ${appPositionSql("tk.app_id")} AS position,
+            r.result_count
      FROM tracked_keyword tk
      JOIN keyword k ON k.id = tk.keyword_id
-     JOIN crawl_pair cp ON cp.keyword_id = k.id AND cp.ref_count > 0
+     ${TRACKED_PAIRS}
        AND cp.storefront_code = ?2
      LEFT JOIN ranking r ON r.pair_id = cp.id AND r.valid = 1
-       AND r.observed_date >= ?3
+       AND r.observed_date >= ?3 AND r.observed_date <= ?5
      LEFT JOIN rank_entry re ON re.ranking_id = r.id AND re.app_id = tk.app_id
      WHERE tk.app_id = ?1 AND tk.user_id = ?4
      ORDER BY k.text, r.observed_date`
 	)
-		.bind(q.appId, q.storefront, since, q.userId)
+		.bind(q.appId, q.storefront, since, q.userId, until)
 		.all<ObservationRow>();
 }
 
@@ -184,22 +209,23 @@ function fetchObservations(env: Env, q: ReportQuery, since: string) {
  * the pair is `fetch_error.params`, which the crawl task fills with
  * "keyword|storefront|locale", the same key `queries/coverage.ts` joins on.
  */
-function fetchErrors(env: Env, q: ReportQuery, since: string) {
+function fetchErrors(env: Env, q: ReportQuery, since: string, until: string) {
 	return env.DB.prepare(
 		`SELECT cp.id AS pair_id, fe.error_class,
             DATE(fe.fetched_at / 1000, 'unixepoch') AS d, COUNT(*) AS n
      FROM tracked_keyword tk
      JOIN keyword k ON k.id = tk.keyword_id
-     JOIN crawl_pair cp ON cp.keyword_id = k.id AND cp.ref_count > 0
+     ${TRACKED_PAIRS}
        AND cp.storefront_code = ?2
      JOIN fetch_error fe
        ON fe.params = k.text || '|' || cp.storefront_code || '|' || cp.locale_code
      WHERE tk.app_id = ?1 AND tk.user_id = ?4
        AND DATE(fe.fetched_at / 1000, 'unixepoch') >= ?3
+       AND DATE(fe.fetched_at / 1000, 'unixepoch') <= ?5
      GROUP BY cp.id, d, fe.error_class
      ORDER BY d`
 	)
-		.bind(q.appId, q.storefront, since, q.userId)
+		.bind(q.appId, q.storefront, since, q.userId, until)
 		.all<{
 			pair_id: number;
 			error_class: string | null;
@@ -251,21 +277,23 @@ function fetchPopularity(env: Env, q: ReportQuery) {
 }
 
 /**
- * The apps holding the top five slots on each keyword's latest observation,
- * with their icons, from the newest metadata version we hold for each.
+ * The apps holding the top five slots on each keyword's latest observation in
+ * the window, with their icons, from the newest metadata version we hold for
+ * each.
  */
-function fetchTopResults(env: Env, q: ReportQuery) {
+function fetchTopResults(env: Env, q: ReportQuery, until: string) {
 	return env.DB.prepare(
 		`WITH latest AS (
        SELECT cp.id AS pair_id, MAX(r.observed_date) AS d
        FROM tracked_keyword tk
-       JOIN crawl_pair cp ON cp.keyword_id = tk.keyword_id AND cp.ref_count > 0
+       ${TRACKED_PAIRS}
          AND cp.storefront_code = ?2
        JOIN ranking r ON r.pair_id = cp.id AND r.valid = 1
        WHERE tk.app_id = ?1 AND tk.user_id = ?3
          -- Same bound as queries/apps.ts: reads scale with history, and the
          -- top-of-page snapshot only has meaning if it is recent.
-         AND r.observed_date >= date('now', '-90 day')
+         AND r.observed_date <= ?4
+         AND r.observed_date >= date(?4, '-90 day')
        GROUP BY cp.id
      ),
      newest_meta AS (
@@ -284,7 +312,7 @@ function fetchTopResults(env: Env, q: ReportQuery) {
        AND amv.captured_at = nm.captured_at
      ORDER BY l.pair_id, re.position`
 	)
-		.bind(q.appId, q.storefront, q.userId)
+		.bind(q.appId, q.storefront, q.userId, until)
 		.all<{
 			pair_id: number;
 			position: number;
@@ -303,6 +331,9 @@ function fetchDifficulty(env: Env, q: ReportQuery) {
      JOIN crawl_pair cp ON cp.id = kd.pair_id AND cp.storefront_code = ?2
      JOIN tracked_keyword tk ON tk.keyword_id = cp.keyword_id
        AND tk.app_id = ?1 AND tk.user_id = ?3
+     JOIN tracked_keyword_storefront tks ON tks.tracked_keyword_id = tk.id
+       AND tks.storefront_code = cp.storefront_code
+       AND tks.locale_code = cp.locale_code
      WHERE kd.observed_date = (
        SELECT MAX(observed_date) FROM keyword_difficulty
        WHERE pair_id = kd.pair_id)
@@ -330,6 +361,7 @@ function groupObservations(rows: ObservationRow[]): Map<number, KeywordRow> {
 				best: null,
 				change: null,
 				changeDaysAgo: null,
+				heldDays: null,
 				keyword: r.keyword,
 				fetchErrors: [],
 				keywordId: r.keyword_id,
@@ -360,18 +392,45 @@ function groupObservations(rows: ObservationRow[]): Map<number, KeywordRow> {
 /** Releases in the window, with the fields each one changed. */
 const MARKER_LIMIT = 50;
 
-/** Latest rank, its move against the previous *different* rank, and extremes. */
-function summarisePoints(row: KeywordRow): void {
+/**
+ * Latest rank, its move against the previous *different* rank, and extremes.
+ *
+ * The position is the newest observation's, even when that observation found
+ * the app outside the top 200: taking the newest *ranked* point instead kept
+ * showing a rank the app had already lost, and fed it to the verdict lanes,
+ * the average and the CSV. Best and worst stay over ranked days only.
+ */
+function summarisePoints(row: KeywordRow, until: string): void {
 	const ranked = row.points.filter(
 		(p): p is { date: string; position: number } => p.position !== null
 	);
+	if (ranked.length === 0) {
+		return;
+	}
+	row.best = Math.min(...ranked.map((p) => p.position));
+	row.worst = Math.max(...ranked.map((p) => p.position));
+	// The newest point is the newest ranked one only when it was ranked.
 	const latest = ranked.at(-1);
-	if (!latest) {
+	if (!latest || row.points.at(-1) !== latest) {
 		return;
 	}
 	row.position = latest.position;
-	row.best = Math.min(...ranked.map((p) => p.position));
-	row.worst = Math.max(...ranked.map((p) => p.position));
+
+	// The run is over every observation, not only the ranked ones: a day outside
+	// the top 200 in between means the rank was lost and regained, so it has
+	// been held only since it came back.
+	let heldSince = latest.date;
+	for (let i = row.points.length - 2; i >= 0; i -= 1) {
+		const earlier = row.points[i];
+		if (!earlier || earlier.position !== latest.position) {
+			break;
+		}
+		heldSince = earlier.date;
+	}
+	row.heldDays = Math.max(
+		0,
+		Math.round((Date.parse(until) - Date.parse(heldSince)) / 86_400_000)
+	);
 
 	for (let i = ranked.length - 2; i >= 0; i -= 1) {
 		const earlier = ranked[i];
@@ -431,7 +490,8 @@ function computeStats(rows: KeywordRow[]): ReportStats {
 }
 
 export async function buildReport(env: Env, q: ReportQuery): Promise<Report> {
-	const since = sinceDate(q.days);
+	const since = q.from ?? sinceDate(q.days);
+	const until = q.to ?? isoToday();
 	const [
 		observations,
 		popularity,
@@ -441,12 +501,12 @@ export async function buildReport(env: Env, q: ReportQuery): Promise<Report> {
 		errors,
 		appRow,
 	] = await Promise.all([
-		fetchObservations(env, q, since),
+		fetchObservations(env, q, since, until),
 		fetchPopularity(env, q),
-		fetchTopResults(env, q),
+		fetchTopResults(env, q, until),
 		fetchDifficulty(env, q),
-		metadataChanges(env.DB, q.appId, since, isoToday(), MARKER_LIMIT),
-		fetchErrors(env, q, since),
+		metadataChanges(env.DB, q.appId, since, until, MARKER_LIMIT),
+		fetchErrors(env, q, since, until),
 		env.DB.prepare("SELECT current_name FROM app WHERE id = ?1")
 			.bind(q.appId)
 			.first<{ current_name: string | null }>(),
@@ -501,7 +561,7 @@ export async function buildReport(env: Env, q: ReportQuery): Promise<Report> {
 
 	const rows = [...byPair.values()];
 	for (const row of rows) {
-		summarisePoints(row);
+		summarisePoints(row, until);
 		const pop = popByKeyword.get(row.keywordId);
 		row.popularity = pop?.popularity ?? null;
 		row.popularityStatus = pop?.status ?? "unqueried";
@@ -542,13 +602,6 @@ export async function buildReport(env: Env, q: ReportQuery): Promise<Report> {
 		rows: sorted,
 		stats: computeStats(sorted),
 		storefront: q.storefront,
-		window: { from: since, to: isoToday() },
+		window: { from: since, to: until },
 	};
-}
-
-/** The keywords the chart plots by default: best-ranked first. */
-export function chartSeries(report: Report): KeywordRow[] {
-	return report.rows
-		.filter((r) => r.position !== null)
-		.slice(0, CHART_SERIES_LIMIT);
 }

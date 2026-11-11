@@ -16,6 +16,8 @@
 //   pnpm track --apply          add it
 //   pnpm track --pull           rewrite the file from the database (additive)
 //   pnpm track --prune          also remove what the file does not list
+//   pnpm track --activate       also switch on a listed storefront that the
+//                               reference data holds inactive
 //   pnpm track --prune --apply
 //
 // `--local` targets the local D1 instead of the remote one.
@@ -34,10 +36,11 @@ const CONFIG_NAME = path.relative(ROOT, CONFIG);
 const apply = process.argv.includes("--apply");
 const pull = process.argv.includes("--pull");
 const prune = process.argv.includes("--prune");
+const activate = process.argv.includes("--activate");
 const local = process.argv.includes("--local");
 const target = local ? "--local" : "--remote";
 
-if (pull && (apply || prune)) {
+if (pull && (apply || prune || activate)) {
 	console.error(
 		"--pull only rewrites the file. Run it on its own, then plan again."
 	);
@@ -82,6 +85,7 @@ function currentState() {
        FROM crawl_pair cp JOIN keyword k ON k.id = cp.keyword_id`
 		),
 		keywords: query("SELECT id, normalized, language FROM keyword"),
+		storefronts: query("SELECT code, active FROM storefront"),
 		storefrontLocales: query(
 			`SELECT sl.storefront_code, sl.locale_code, sl.is_default, l.language
        FROM storefront_locale sl JOIN locale l ON l.code = sl.locale_code`
@@ -129,14 +133,21 @@ if (!config) {
 	process.exit(1);
 }
 
-const { statements, summary, unlisted, warnings } = planChanges(
+const { errors, statements, summary, unlisted, warnings } = planChanges(
 	config,
 	currentState(),
-	{ prune }
+	{ activate, prune }
 );
 
 for (const w of warnings) {
 	console.warn(`warning: ${w}`);
+}
+if (errors.length > 0) {
+	for (const e of errors) {
+		console.error(`error: ${e}`);
+	}
+	console.error(`Fix ${CONFIG_NAME} and run again. Nothing was written.`);
+	process.exit(1);
 }
 
 if (unlisted.length > 0) {
@@ -167,6 +178,7 @@ console.log(
 		`tracks added:    ${summary.tracksAdded}`,
 		`tracks removed:  ${summary.tracksRemoved}`,
 		`storefronts +/-: ${summary.storefrontsAdded} / ${summary.storefrontsRemoved} (${summary.storefrontsMoved} moved to a new locale)`,
+		`storefronts on:  ${summary.storefrontsActivated}`,
 		`pairs activated: ${summary.pairsActivated}`,
 		`pairs retired:   ${summary.pairsRetired}   (history kept)`,
 		`statements:      ${statements.length}`,

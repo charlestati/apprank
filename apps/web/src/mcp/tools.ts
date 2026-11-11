@@ -21,14 +21,17 @@ import { ownsApp, ownsPair } from "../access";
 import type { Env } from "../env";
 import { DIFFICULTY_BLOCKED, POPULARITY_MEASURABLE } from "../insights";
 import {
+	TRACKED_PAIRS,
 	appLocalizations,
 	appRatings,
 	appReviews,
-	appStorefronts,
+	currentRankings,
 	listApps,
+	storefrontsByApp,
 } from "../queries/apps";
 import { chartMovement } from "../queries/charts";
-import { isoDay, pairCoverage } from "../queries/coverage";
+import { isoDay, pairCoverage, pairsCoverage } from "../queries/coverage";
+import type { Coverage } from "../queries/coverage";
 import { dataHealth } from "../queries/health";
 import { metadataChanges } from "../queries/metadata";
 import { popularityHistory } from "../queries/popularity";
@@ -36,10 +39,11 @@ import {
 	pairCompetitors,
 	pairHistory,
 	pairResultPage,
+	trackedAppsForPair,
 } from "../queries/rankings";
 import { buildReport } from "../report";
 import type { KeywordRow } from "../report";
-import { NotFoundError } from "./logging";
+import { InvalidArgumentsError, NotFoundError } from "./logging";
 import type { ToolContext, ToolOutcome } from "./logging";
 
 /** Hard ceilings. A tool clamps to these; it never takes the caller's word. */
@@ -62,14 +66,11 @@ export function clamp(requested: number | undefined, cap: number): number {
 }
 
 /** Take at most `cap` rows and say whether more existed. */
-export function capped<T>(rows: T[], cap: number) {
+function capped<T>(rows: T[], cap: number) {
 	return { rows: rows.slice(0, cap), truncated: rows.length > cap };
 }
 
-export async function requireApp(
-	ctx: ToolContext,
-	appId: number
-): Promise<void> {
+async function requireApp(ctx: ToolContext, appId: number): Promise<void> {
 	if (!(await ownsApp(ctx.db, ctx.principal.userId, appId))) {
 		// Identical whether the app is absent or another operator's.
 		throw new NotFoundError(
@@ -78,10 +79,7 @@ export async function requireApp(
 	}
 }
 
-export async function requirePair(
-	ctx: ToolContext,
-	pairId: number
-): Promise<void> {
+async function requirePair(ctx: ToolContext, pairId: number): Promise<void> {
 	if (!(await ownsPair(ctx.db, ctx.principal.userId, pairId))) {
 		throw new NotFoundError(
 			`No tracked keyword behind pair ${pairId}. Call get_current_rankings for the pair ids you can read.`
@@ -90,7 +88,7 @@ export async function requirePair(
 }
 
 /** Resolve a keyword + storefront to the crawl pair the caller tracks. */
-export async function resolvePair(
+async function resolvePair(
 	ctx: ToolContext,
 	keyword: string,
 	storefront: string
@@ -100,7 +98,8 @@ export async function resolvePair(
 			`SELECT cp.id
        FROM tracked_keyword tk
        JOIN keyword k ON k.id = tk.keyword_id
-       JOIN crawl_pair cp ON cp.keyword_id = k.id AND cp.storefront_code = ?2
+       ${TRACKED_PAIRS}
+         AND cp.storefront_code = ?2
        WHERE tk.user_id = ?3 AND k.normalized = ?1
        ORDER BY cp.ref_count DESC LIMIT 1`
 		)
@@ -120,7 +119,7 @@ interface Window {
 }
 
 /** Default window when the caller names neither end. */
-export function window(from?: string, to?: string, fallbackDays = 30): Window {
+function window(from?: string, to?: string, fallbackDays = 30): Window {
 	return { from: from ?? isoDay(fallbackDays), to: to ?? isoDay(0) };
 }
 
@@ -172,7 +171,9 @@ export function summariseSeries(
 	return {
 		best: values[0] ?? null,
 		inflections,
-		latest: ranked.at(-1)?.position ?? null,
+		// The newest observation's, ranked or not: a newer day outside the top
+		// 200 means the older rank is no longer the app's.
+		latest: points.at(-1)?.position ?? null,
 		mean:
 			values.length === 0
 				? null
@@ -221,23 +222,17 @@ export async function listTrackedApps(
 	_args: unknown,
 	ctx: ToolContext
 ): Promise<ToolOutcome> {
-	const apps = await listApps(ctx.db, ctx.principal.userId);
-	const withStorefronts = await Promise.all(
-		apps.results.map(async (a) => {
-			const storefronts = await appStorefronts(
-				ctx.db,
-				ctx.principal.userId,
-				a.id
-			);
-			return {
-				appId: a.id,
-				developer: a.developer_name,
-				name: a.current_name,
-				primaryGenreId: a.primary_genre_id,
-				storefronts: storefronts.results,
-			};
-		})
-	);
+	const [apps, storefronts] = await Promise.all([
+		listApps(ctx.db, ctx.principal.userId),
+		storefrontsByApp(ctx.db, ctx.principal.userId),
+	]);
+	const withStorefronts = apps.results.map((a) => ({
+		appId: a.id,
+		developer: a.developer_name,
+		name: a.current_name,
+		primaryGenreId: a.primary_genre_id,
+		storefronts: storefronts.get(a.id) ?? [],
+	}));
 	return { data: { apps: withStorefronts }, rowCount: withStorefronts.length };
 }
 
@@ -250,12 +245,34 @@ interface ReportArgs {
 	limit?: number;
 }
 
-/** buildReport takes a day count; the tools take explicit dates. */
-function daysIn(w: Window): number {
-	return Math.min(
-		400,
-		Math.max(1, Math.round((Date.now() - Date.parse(w.from)) / 86_400_000) + 1)
-	);
+/** The widest window the report reads, in days, both ends included. */
+const REPORT_MAX_DAYS = 400;
+
+/**
+ * Days in a window, both ends included, or a refusal the caller can act on.
+ *
+ * A window the report cannot serve is said to be one. Clamping it silently
+ * answered a different question under the dates that were asked, and every
+ * keyword in the unread stretch came back as never observed.
+ */
+function reportDays(w: Window): number {
+	const days = Math.round((Date.parse(w.to) - Date.parse(w.from)) / 86_400_000);
+	if (!Number.isFinite(days)) {
+		throw new InvalidArgumentsError(
+			`"${w.from}" to "${w.to}" is not a pair of calendar dates.`
+		);
+	}
+	if (days < 0) {
+		throw new InvalidArgumentsError(
+			`The window ends (${w.to}) before it starts (${w.from}).`
+		);
+	}
+	if (days + 1 > REPORT_MAX_DAYS) {
+		throw new InvalidArgumentsError(
+			`The window spans ${days + 1} days; the report reads at most ${REPORT_MAX_DAYS}. Narrow it, or call get_rank_history per keyword.`
+		);
+	}
+	return days + 1;
 }
 
 /**
@@ -288,13 +305,19 @@ function rowSummary(r: KeywordRow) {
 		change: r.change,
 		changeDaysAgo: r.changeDaysAgo,
 		difficulty: r.difficulty?.score ?? null,
+		heldDays: r.heldDays,
 		isBrand: r.brand ?? false,
 		keyword: r.keyword,
+		lastObserved: r.points.at(-1)?.date ?? null,
+		// Zero is its own answer: a null position on a row with no observation
+		// is not "outside the top 200", it is "nobody looked".
+		observations: r.points.length,
 		pairId: r.pairId,
 		popularity: r.popularity,
 		popularityStatus: r.popularityStatus,
 		position: r.position,
 		reason: r.verdict?.reason ?? null,
+		reasonKey: r.verdict?.reasonKey ?? null,
 		resultCount: r.resultCount,
 		unproven: r.verdict?.unproven ?? false,
 		verdict: r.verdict?.opportunity ?? null,
@@ -311,8 +334,10 @@ export async function getKeywordReport(
 	const w = window(args.from, args.to);
 	const report = await buildReport(env, {
 		appId: args.appId,
-		days: daysIn(w),
+		days: reportDays(w),
+		from: w.from,
 		storefront: args.storefront,
+		to: w.to,
 		userId: ctx.principal.userId,
 	});
 	const limit = clamp(args.limit, CAPS.reports);
@@ -339,6 +364,7 @@ export async function getKeywordReport(
 				observedDates: report.dates.length,
 				requested: w,
 				truncated,
+				unobservedKeywords: report.insights.unobserved,
 			},
 			rows: rows.map((r) =>
 				args.detail === "rows"
@@ -353,19 +379,19 @@ export async function getKeywordReport(
 }
 
 interface HistoryArgs {
-	pairId?: number;
-	keyword?: string;
-	storefront?: string;
-	appId?: number;
-	from?: string;
-	to?: string;
-	detail?: "summary" | "daily";
-	limit?: number;
+	pairId?: number | undefined;
+	keyword?: string | undefined;
+	storefront?: string | undefined;
+	appId?: number | undefined;
+	from?: string | undefined;
+	to?: string | undefined;
+	detail?: "summary" | "daily" | undefined;
+	limit?: number | undefined;
 }
 
 async function pairFromArgs(
 	ctx: ToolContext,
-	args: { pairId?: number; keyword?: string; storefront?: string }
+	args: Pick<HistoryArgs, "pairId" | "keyword" | "storefront">
 ): Promise<number> {
 	if (args.pairId !== undefined) {
 		await requirePair(ctx, args.pairId);
@@ -379,6 +405,30 @@ async function pairFromArgs(
 	);
 }
 
+/**
+ * The app whose rank a pair's history is about, when the caller named none.
+ *
+ * Without one, the history query returns every app Apple listed on each day,
+ * so "the tracked app's own rank" summarised two hundred competitors at once.
+ * An operator may track the same keyword for several apps, and then there is
+ * no single answer to guess.
+ */
+async function trackedAppForPair(
+	ctx: ToolContext,
+	pairId: number
+): Promise<number> {
+	const apps = await trackedAppsForPair(ctx.db, ctx.principal.userId, pairId);
+	const [only, ...others] = apps;
+	if (only !== undefined && others.length === 0) {
+		return only;
+	}
+	throw new NotFoundError(
+		only === undefined
+			? `No tracked keyword behind pair ${pairId}. Call get_current_rankings for the pair ids you can read.`
+			: `You track pair ${pairId} for apps ${apps.join(", ")}. Pass appId to say whose rank you want.`
+	);
+}
+
 export async function getRankHistory(
 	args: HistoryArgs,
 	ctx: ToolContext
@@ -386,9 +436,10 @@ export async function getRankHistory(
 	const pairId = await pairFromArgs(ctx, args);
 	const w = window(args.from, args.to, 90);
 	const limit = clamp(args.limit, CAPS.history);
+	const appId = args.appId ?? (await trackedAppForPair(ctx, pairId));
 
 	const [rows, coverage] = await Promise.all([
-		pairHistory(ctx.db, pairId, w.from, args.appId ?? null),
+		pairHistory(ctx.db, pairId, w.from, appId),
 		pairCoverage(ctx.db, pairId, w.from, w.to),
 	]);
 	const points = (
@@ -411,50 +462,28 @@ export async function getRankHistory(
 }
 
 export async function getCurrentRankings(
-	args: { appId: number; storefront?: string; limit?: number },
+	args: {
+		appId: number;
+		storefront?: string | undefined;
+		limit?: number | undefined;
+	},
 	ctx: ToolContext
 ): Promise<ToolOutcome> {
 	await requireApp(ctx, args.appId);
 	const limit = clamp(args.limit, CAPS.keywords);
-	const result = await ctx.db
-		.prepare(
-			`WITH latest AS (
-         SELECT r.pair_id, MAX(r.observed_date) AS d
-         FROM ranking r WHERE r.valid = 1
-           AND r.observed_date >= date('now', '-90 day')
-         GROUP BY r.pair_id
-       )
-       SELECT k.text AS keyword, cp.id AS pair_id, cp.storefront_code,
-              cp.locale_code, cp.interval_hours, l.d AS observed_date,
-              re.position
-       FROM tracked_keyword tk
-       JOIN keyword k ON k.id = tk.keyword_id
-       JOIN crawl_pair cp ON cp.keyword_id = k.id AND cp.ref_count > 0
-       LEFT JOIN latest l ON l.pair_id = cp.id
-       LEFT JOIN ranking r ON r.pair_id = cp.id AND r.observed_date = l.d AND r.valid = 1
-       LEFT JOIN rank_entry re ON re.ranking_id = r.id AND re.app_id = tk.app_id
-       WHERE tk.app_id = ?1 AND tk.user_id = ?2
-         AND (?3 IS NULL OR cp.storefront_code = ?3)
-       ORDER BY re.position IS NULL, re.position, k.text
-       LIMIT ?4`
-		)
-		.bind(args.appId, ctx.principal.userId, args.storefront ?? null, limit + 1)
-		.all<{
-			keyword: string;
-			pair_id: number;
-			storefront_code: string;
-			locale_code: string;
-			interval_hours: number;
-			observed_date: string | null;
-			position: number | null;
-		}>();
+	const result = await currentRankings(ctx.db, {
+		appId: args.appId,
+		limit,
+		storefront: args.storefront ?? null,
+		userId: ctx.principal.userId,
+	});
 
 	const today = isoDay(0);
 	const { rows, truncated } = capped(result.results, limit);
 	return {
 		data: {
 			provenance: {
-				note: "position null means the app was observed outside Apple's top 200 on that date, not that the fetch failed. staleDays counts days since the last valid observation; a pair on a stretched cadence is expected to be several days old.",
+				note: "position null with an observedDate means the app was observed outside Apple's top 200 on that date, not that the fetch failed. position null with a null observedDate means no valid observation in the last 90 days, which says nothing about the rank. staleDays counts days since the last valid observation; a pair on a stretched cadence is expected to be several days old.",
 				truncated,
 			},
 			rankings: rows.map((r) => ({
@@ -557,10 +586,10 @@ export async function getChartMovement(
 	args: {
 		storefront: string;
 		chart: "free" | "paid" | "grossing";
-		genreId?: number;
-		from?: string;
-		to?: string;
-		limit?: number;
+		genreId?: number | undefined;
+		from?: string | undefined;
+		to?: string | undefined;
+		limit?: number | undefined;
 	},
 	ctx: ToolContext
 ): Promise<ToolOutcome> {
@@ -570,7 +599,6 @@ export async function getChartMovement(
 		chart: args.chart,
 		from: w.from,
 		genreId: args.genreId ?? null,
-		limit,
 		storefront: args.storefront,
 		to: w.to,
 	});
@@ -596,10 +624,10 @@ export async function getKeywordPopularity(
 	args: {
 		appId: number;
 		storefront: string;
-		keyword?: string;
-		from?: string;
-		to?: string;
-		limit?: number;
+		keyword?: string | undefined;
+		from?: string | undefined;
+		to?: string | undefined;
+		limit?: number | undefined;
 	},
 	ctx: ToolContext
 ): Promise<ToolOutcome> {
@@ -634,7 +662,12 @@ export async function getKeywordPopularity(
 }
 
 export async function getMetadataChanges(
-	args: { appId: number; from?: string; to?: string; limit?: number },
+	args: {
+		appId: number;
+		from?: string | undefined;
+		to?: string | undefined;
+		limit?: number | undefined;
+	},
 	ctx: ToolContext
 ): Promise<ToolOutcome> {
 	await requireApp(ctx, args.appId);
@@ -683,6 +716,12 @@ export async function findKeywordOpportunities(
 		if (args.lane && r.verdict?.opportunity !== args.lane) {
 			return false;
 		}
+		// A lane is a judgement on a rank. A keyword nobody observed has none, so
+		// it answers no lane filter, the "unknown" one included: that lane means
+		// ranked with no published volume.
+		if (args.lane && r.verdict?.reasonKey === "noObservation") {
+			return false;
+		}
 		if (!(args.includeBrand ?? false) && r.brand) {
 			return false;
 		}
@@ -722,7 +761,11 @@ export async function findKeywordOpportunities(
 }
 
 export async function getSearchResults(
-	args: { pairId: number; date?: string; limit?: number },
+	args: {
+		pairId: number;
+		date?: string | undefined;
+		limit?: number | undefined;
+	},
 	ctx: ToolContext
 ): Promise<ToolOutcome> {
 	await requirePair(ctx, args.pairId);
@@ -746,31 +789,22 @@ export async function getSearchResults(
 export async function getReviews(
 	args: {
 		appId: number;
-		storefront?: string;
-		minRating?: number;
-		maxRating?: number;
-		limit?: number;
+		storefront?: string | undefined;
+		minRating?: number | undefined;
+		maxRating?: number | undefined;
+		limit?: number | undefined;
 	},
 	ctx: ToolContext
 ): Promise<ToolOutcome> {
 	await requireApp(ctx, args.appId);
 	const limit = clamp(args.limit, CAPS.reviews);
-	const result = await appReviews(
-		ctx.db,
-		args.appId,
-		args.storefront,
-		CAPS.reviews
-	);
-	const all = result.results as {
-		rating: number | null;
-		storefront_code: string;
-	}[];
-	const matching = all.filter(
-		(r) =>
-			(args.minRating === undefined || (r.rating ?? 0) >= args.minRating) &&
-			(args.maxRating === undefined || (r.rating ?? 0) <= args.maxRating)
-	);
-	const { rows, truncated } = capped(matching, limit);
+	const result = await appReviews(ctx.db, args.appId, {
+		limit: limit + 1,
+		maxRating: args.maxRating,
+		minRating: args.minRating,
+		storefront: args.storefront,
+	});
+	const { rows, truncated } = capped(result.results, limit);
 	return {
 		data: {
 			provenance: {
@@ -786,11 +820,11 @@ export async function getReviews(
 export async function getRatingsHistory(
 	args: {
 		appId: number;
-		storefront?: string;
-		from?: string;
-		to?: string;
-		detail?: "summary" | "daily";
-		limit?: number;
+		storefront?: string | undefined;
+		from?: string | undefined;
+		to?: string | undefined;
+		detail?: "summary" | "daily" | undefined;
+		limit?: number | undefined;
 	},
 	ctx: ToolContext
 ): Promise<ToolOutcome> {
@@ -857,7 +891,11 @@ export async function getRatingsHistory(
 }
 
 export async function getCollectionHealth(
-	args: { appId?: number; from?: string; to?: string },
+	args: {
+		appId?: number | undefined;
+		from?: string | undefined;
+		to?: string | undefined;
+	},
 	ctx: ToolContext
 ): Promise<ToolOutcome> {
 	const health = await dataHealth(ctx.db, ctx.principal.userId);
@@ -896,7 +934,7 @@ export async function getCollectionHealth(
 			`SELECT cp.id, k.text AS keyword, cp.storefront_code
        FROM tracked_keyword tk
        JOIN keyword k ON k.id = tk.keyword_id
-       JOIN crawl_pair cp ON cp.keyword_id = k.id AND cp.ref_count > 0
+       ${TRACKED_PAIRS}
        WHERE tk.app_id = ?1 AND tk.user_id = ?2
        ORDER BY k.text
        LIMIT ?3`
@@ -904,14 +942,18 @@ export async function getCollectionHealth(
 		.bind(args.appId, ctx.principal.userId, CAPS.keywords)
 		.all<{ id: number; keyword: string; storefront_code: string }>();
 
-	const coverage = await Promise.all(
-		pairs.results.map(async (p) => ({
-			keyword: p.keyword,
-			pairId: p.id,
-			storefront: p.storefront_code,
-			...(await pairCoverage(ctx.db, p.id, w.from, w.to)),
-		}))
+	const byPair = await pairsCoverage(
+		ctx.db,
+		pairs.results.map((p) => p.id),
+		w.from,
+		w.to
 	);
+	const coverage = pairs.results.map((p) => ({
+		keyword: p.keyword,
+		pairId: p.id,
+		storefront: p.storefront_code,
+		...(byPair.get(p.id) as Coverage),
+	}));
 	const degraded = coverage.filter((c) => c.degraded);
 
 	return {

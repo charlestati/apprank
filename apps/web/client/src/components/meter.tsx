@@ -8,6 +8,8 @@
 
 import { Meter as BaseMeter } from "@base-ui/react/meter";
 
+import { fmt, useT } from "../i18n";
+
 interface Props {
 	value: number | null;
 	max?: number;
@@ -18,16 +20,18 @@ interface Props {
 }
 
 export function Meter({ value, max = 100, label, title }: Props) {
+	const t = useT();
 	// A keyword Apple publishes no volume for has no measurement to render, and
 	// a meter pinned at zero would claim one.
 	if (value === null) {
 		return (
-			<span
-				aria-label={`${label}: no data`}
-				className="meter meter-empty"
-				title={title}
-			>
-				<span className="meter-value">—</span>
+			<span className="meter meter-empty" title={title}>
+				{/* Text, not an aria-label: a label on a span with no role is one
+				    assistive tech is free to skip, and this is not a picture. */}
+				<span aria-hidden="true" className="meter-value">
+					—
+				</span>
+				<span className="sr-only">{fmt(t.meterNoData, { label })}</span>
 			</span>
 		);
 	}

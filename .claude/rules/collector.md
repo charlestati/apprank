@@ -9,8 +9,15 @@ A single `SchedulerDO` Durable Object owns all collection. Its `alarm()` does
 **one** bounded unit of work per tick, one queued task step or one keyword
 crawl, then reschedules itself at the learned rate. Two crons drive it:
 `*/10 * * * *` re-arms a lost alarm, `0 3 * * *` queues the daily jobs
-(compaction, App Store Connect poll, Monday Apple Ads pull, per-app lookups,
+(compaction, App Store Connect poll, the weekly Apple Ads pull, per-app lookups,
 reviews, charts).
+
+Compaction covers yesterday plus any day up to six back that still has staging
+and no `compact:{date}` marker. Staging expires after seven days, so a night
+whose compaction never ran used to vanish from the rebuild source a week later.
+Six, not seven: a day's staging was written across its whole 24 hours, and
+compacting a half-expired day would overwrite a complete output with a fragment.
+The marker is written only after every output landed.
 
 Two things adapt, and they are separate:
 
@@ -24,6 +31,14 @@ Two things adapt, and they are separate:
   rate back into a one-way ratchet (4 → 2 → 1 in three hits), which is the
   failure the two-brake split exists to prevent. Persisted in `collector_state`,
   so a redeploy does not restart discovery.
+
+  The raise also needs evidence: the closed day must hold at least one
+  public-endpoint fetch the loop itself made and Apple answered (`loopFetches`,
+  counted in the Durable Object's own storage so it costs no D1 write, and spent
+  by `rollPacing`). A zero tally on a day the loop asked nothing is silence, not
+  a clean day: a credentialed-only deployment and the manually driven runner
+  both end every day that way, and the rate climbed from 4 to the ceiling in
+  sixteen days on it.
 
   Recovery is judged on the closed day, **not** on a throttle-free 24h.
   Requiring a clean 24h made the raise unreachable on a shared egress IP that
@@ -54,9 +69,48 @@ rate, a known-broken path quietly degrading the signal that sets crawl cadence.
 Manual triggers stay exempt: `crawlNow` fetches whatever it is asked to, which
 is what makes "is Apple still blocking this IP?" answerable in one request.
 
+**The runner has no work loop.** `write-config.mjs` also sets `WORK_LOOP=off`,
+under which `ensureAlarm()` arms nothing and `alarm()` returns at once. Dropping
+the crons was not enough: a Durable Object arms its own alarm on every
+`enqueue`, so under `wrangler dev` the loop drained the queue and crawled due
+pairs beside `refresh.sh`, past the script's fixed spacing and sometimes on the
+very unit the script was fetching (invariant 4; four alarm-only crawls in the
+2026-11-11 run's log). It is an env var and not a `collector_state` row because
+the runner shares its D1 with the deployment, whose loop must keep running. A
+laptop's `wrangler.localcrawl.jsonc` is not regenerated per cycle: run
+`write-config.mjs` again after pulling this change.
+
 Alarms are **at-least-once with automatic retries**, so every write must be
 idempotent (`ranking` is unique on `(pair_id, observed_date)`; reviews key on
 Apple's own review id). Never call `deleteAlarm()` inside `alarm()`.
+
+**Never write back a queue read before an await that leaves the object.** A
+step's fetch and D1 calls open the input gate, so `enqueue` and `stepNow` run in
+the middle of it; the alarm used to `put` the copy it read before the step and
+erased whatever arrived meanwhile, the 03:00 cron's tasks included. Every task
+carries an `id` (stamped on enqueue, or on first read for anything queued before
+ids existed), stays queued while it runs, and is then removed by id from a fresh
+read, with its follow-ups appended, in one get-and-put that awaits nothing else.
+`stepNow` does the same, which is also why a manual step that throws no longer
+loses its task. Throws count in `threw`, never in `attempt`, which the steps
+spend on throttles: sharing it let two throttles and one throw drop a whole
+batch. Three consecutive throws give up the head unit (recorded as `task_threw`
+with its params) and keep the rest; a `do_restarted` is retried uncounted.
+
+A task that is being run is also skipped by whoever looks next. It stays queued
+while it runs, so a manual step landing mid-alarm used to read the same head
+task and fetch its unit from Apple a second time; settling by id only stopped
+the duplicate follow-ups. The ids in flight are held in memory (`#running`),
+`stepNow` and the alarm both take the first task not in it, and a manual step
+that finds every task taken answers `empty`. A manual `crawlNow` beside an alarm
+crawl can still pick the same due pair: nothing guards that.
+
+**Pacing is changed through `updatePacing`, never saved from a held copy.** The
+loop, the manual triggers and the daily roll all write the one `pacing` row, and
+each awaits Apple or D1 between reading and writing. A manual throttle saved
+from a copy loaded before the fetch put `pauseUntil` back to zero a second after
+the loop had set it. `updatePacing` applies the change to the row as it is now
+and writes only if the row is still the one it read, retrying otherwise.
 
 `ensureAlarm()` pulls in an alarm parked more than a minute out, because a stale
 long park (from an old deploy) otherwise blocks newly due work. The one
@@ -87,6 +141,22 @@ joining a wider one tracks the keyword in storefronts nobody chose. Removal is
 storefront the file dropped even when the keyword stays, and retires a pair only
 once no storefront row of anyone's points at it. Pull before pruning, or the
 prune takes the dashboard's additions with it.
+
+**A storefront is only fully collected when `storefront.active` is 1.** The rank
+crawl ignores the flag; lookups, reviews, charts and both Apple Ads passes obey
+it, and the seed ships several storefronts inactive, one of them retired on
+purpose. So `pnpm track` warns about every listed storefront that is inactive
+and prints the `UPDATE` that fixes it, and `pnpm track --activate --apply`
+writes it. It never activates one unasked: the row alone cannot say which
+storefront was switched off deliberately.
+
+The file is validated before anything is planned from it, and an error writes
+nothing: `appId` must be an integer (a numeric string is read as one, since a
+string never equals the stored id and re-emitted three inserts on every run),
+and no keyword may be empty. Repeated inner spaces and one term listed under two
+languages that resolve to the same search are warnings. A storefront the
+reference data cannot resolve is a warning too, and `--prune` leaves its rows
+and pairs alone: missing reference data is not a removed line.
 
 **Where a keyword is tracked is a row, not an inference.** `tracked_keyword`
 names no storefront and `crawl_pair` is shared, so before
@@ -136,8 +206,13 @@ similar job there.
 
 ## Keyword discovery
 
-Every Monday the daily cron queues discovery beside the genre pull, and
-`job=ads_discover` runs it on demand. It asks Apple's
+Once a week the daily cron queues discovery beside the genre pull, and
+`job=ads_discover` runs it on demand. Both are due from Monday (Sunday is the
+day the published week rolls over) and stay due on every later day that still
+lacks them, so a Monday that never ran or a unit that failed is retried on
+Tuesday instead of losing the week. The genre pull's repeat is free because of
+its per-unit `ads:pulled:` marker; discovery has the one `ads:discover:queued`
+marker, written after the pass reached the queue. It asks Apple's
 `suggestions/keywords/query` one seed at a time, seeded from the keywords
 somebody already tracks, and writes what comes back to `suggestion`. It spends
 no crawl budget: a proposal is a row, and only an operator accepting one creates
@@ -167,7 +242,7 @@ nothing without `--apply`.
   Object: "`wrangler dev --remote` is no longer supported for Durable Objects."
   That is why the collector has one public route, `POST /admin/run?job=…` behind
   `ADMIN_TOKEN` (`src/lib/admin.ts`). Without it, verifying an Apple credential
-  costs a day (the ASC cron) or a week (the Monday Ads gate).
+  costs a day (the ASC cron) or up to a week (the Ads pull is weekly).
 - **The task queue lives in Durable Object storage, and on the Actions runner
   that object dies with the `wrangler dev` process.** A run that hits its
   workflow timeout mid-drain loses every unit it had not reached: on 2026-09-19

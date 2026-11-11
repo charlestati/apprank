@@ -6,10 +6,48 @@
 // against yesterday. A column header cannot carry that, and a `title`
 // attribute is invisible to touch and to the keyboard, so the explanation
 // hangs off a real focusable trigger instead.
+//
+// A popover, not a tooltip. Base UI's tooltip opens on mouse hover and on
+// keyboard focus only: a tap is neither, so on a phone every "?" was a button
+// that did nothing. A popover's trigger toggles on click, which a tap and
+// Enter both produce, and `openOnHover` keeps the pointer behaviour.
 
-import { Tooltip } from "@base-ui/react/tooltip";
+import { Popover } from "@base-ui/react/popover";
+import type { ReactNode } from "react";
 
 import { fmt, useT } from "../i18n";
+
+interface HintProps {
+	/** The trigger's accessible name. */
+	label: string;
+	/** `infotip` is the round "?"; a mark such as an asterisk passes its own. */
+	className: string;
+	/** What the trigger draws. Decorative: the label is what is announced. */
+	mark: ReactNode;
+	children: string;
+}
+
+/** A mark with a sentence behind it, opened by hover, tap or the keyboard. */
+export function Hint({ label, className, mark, children }: HintProps) {
+	return (
+		<Popover.Root>
+			<Popover.Trigger
+				aria-label={label}
+				className={className}
+				delay={150}
+				openOnHover
+				type="button"
+			>
+				<span aria-hidden="true">{mark}</span>
+			</Popover.Trigger>
+			<Popover.Portal>
+				<Popover.Positioner className="ui-layer" sideOffset={6}>
+					<Popover.Popup className="tip-popup">{children}</Popover.Popup>
+				</Popover.Positioner>
+			</Popover.Portal>
+		</Popover.Root>
+	);
+}
 
 interface Props {
 	/** What is being explained, e.g. "Difficulty". Names the trigger. */
@@ -20,19 +58,8 @@ interface Props {
 export function InfoTip({ label, children }: Props) {
 	const t = useT();
 	return (
-		<Tooltip.Root>
-			<Tooltip.Trigger
-				aria-label={fmt(t.explainAbout, { label })}
-				className="infotip"
-				type="button"
-			>
-				<span aria-hidden="true">?</span>
-			</Tooltip.Trigger>
-			<Tooltip.Portal>
-				<Tooltip.Positioner className="ui-layer" sideOffset={6}>
-					<Tooltip.Popup className="tip-popup">{children}</Tooltip.Popup>
-				</Tooltip.Positioner>
-			</Tooltip.Portal>
-		</Tooltip.Root>
+		<Hint className="infotip" label={fmt(t.explainAbout, { label })} mark="?">
+			{children}
+		</Hint>
 	);
 }

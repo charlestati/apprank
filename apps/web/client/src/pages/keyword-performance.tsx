@@ -7,7 +7,7 @@ import type { KeywordRow, Report, StorefrontOption, TrackedApp } from "../api";
 import { AppIcon } from "../components/app-icon";
 import { Delta } from "../components/delta";
 import { Difficulty } from "../components/difficulty";
-import { InfoTip } from "../components/info-tip";
+import { Hint, InfoTip } from "../components/info-tip";
 import { Meter } from "../components/meter";
 import { Opportunities } from "../components/opportunities";
 import { RankSeriesChart } from "../components/rank-series-chart";
@@ -18,7 +18,8 @@ import { Select } from "../components/select";
 import { SeriesGlyph } from "../components/series-glyph";
 import { SummaryTiles } from "../components/summary-tiles";
 import { useFormat } from "../format";
-import { fmt, plural, reasonText, useT } from "../i18n";
+import { changedFields, fmt, plural, reasonText, useT } from "../i18n";
+import type { Dictionary } from "../i18n";
 import {
 	cached,
 	chartKey,
@@ -40,8 +41,8 @@ const POPULARITY_BANDS = [
 
 const RANGES = [{ days: 7 }, { days: 30 }, { days: 90, label: "90 days" }];
 // Four lines is the readable ceiling for a categorical palette; beyond it the
-// hues stop surviving a colour-vision check side by side. The table's toggles
-// still allow more, because then the reader picked them.
+// hues stop surviving a colour-vision check side by side. Enforced on the drawn
+// set, whatever a stored selection says.
 const CHART_SERIES = 4;
 // Enough of the leaderboard to see who owns the keyword, without wrapping the
 // row onto a second line.
@@ -69,6 +70,40 @@ function popularityBand(t: ReturnType<typeof useT>, value: number): string {
 		(b) => value >= b.min && value <= b.max
 	);
 	return band ? t[band.key] : "";
+}
+
+/**
+ * Why a row has no rank to show, when that is not itself an observation.
+ *
+ * `position: null` alone cannot say: it is what the server sends for "observed
+ * outside the top 200" and for "nothing observed in this window". The first is
+ * data and keeps its dash. The second is a hole, and printing the same dash for
+ * it made a throttled week read as a keyword that had stopped ranking.
+ */
+function unobserved(row: KeywordRow): "failed" | "pending" | null {
+	if (row.points.length > 0) {
+		return null;
+	}
+	return row.fetchErrors.length > 0 ? "failed" : "pending";
+}
+
+/** The cell for a row with no observation: a word, never the dash. */
+function NoObservation({
+	state,
+	t,
+}: {
+	state: "failed" | "pending";
+	t: Dictionary;
+}) {
+	const failed = state === "failed";
+	return (
+		<span
+			className={failed ? "rank rank-gap rank-gap-failed" : "rank rank-gap"}
+			title={failed ? t.cellFailedTitle : t.cellNoDataTitle}
+		>
+			{failed ? t.cellFailed : t.cellNoData}
+		</span>
+	);
 }
 
 function rankBand(position: number | null): string {
@@ -180,60 +215,221 @@ function useChartSelection(key: string | null): {
 	};
 }
 
+/** State that reads as `initial` again whenever `key` changes. */
+function useKeyedState<T>(
+	key: string | null,
+	initial: T
+): [T, (update: (current: T) => T) => void] {
+	const [state, setState] = useState<{ key: string | null; value: T }>({
+		key,
+		value: initial,
+	});
+	const update = useCallback(
+		(next: (current: T) => T) =>
+			setState((held) => ({
+				key,
+				value: next(held.key === key ? held.value : initial),
+			})),
+		[key, initial]
+	);
+	return [state.key === key ? state.value : initial, update];
+}
+
+const NONE_HIDDEN: number[] = [];
+
+/**
+ * The storefronts an app is tracked in, and which one is chosen.
+ *
+ * Both are stamped with the app they were fetched for. A storefront code names
+ * a pair set in one app only, so the previous app's choice must stop counting
+ * the moment the app changes, not when an effect gets round to clearing it: in
+ * between, the report would be asked for app B in a storefront only app A is
+ * tracked in.
+ */
+function useStorefront(appId: number | null): {
+	options: StorefrontOption[];
+	storefront: string;
+	setStorefront: (code: string | null) => void;
+	/** Whether the list has answered, and whether that answer was a failure. */
+	status: "loading" | "ready" | "failed";
+} {
+	const [listed, setListed] = useState<{
+		appId: number;
+		failed: boolean;
+		options: StorefrontOption[];
+	} | null>(null);
+	const [chosen, setChosen] = useState<{ appId: number; code: string } | null>(
+		null
+	);
+
+	useEffect(() => {
+		if (appId === null) {
+			return;
+		}
+		let live = true;
+		(async () => {
+			let options: StorefrontOption[] = [];
+			let failed = false;
+			try {
+				options = await api.storefronts(appId);
+			} catch {
+				// Kept apart from an empty list: with no storefront there is no
+				// report to ask for, and the page has to say which of the two it is
+				// rather than wait for a report that will never be requested.
+				failed = true;
+			}
+			if (!live) {
+				return;
+			}
+			setListed({ appId, failed, options });
+			// The previous choice survives only where the new app is tracked too.
+			setChosen((held) => ({
+				appId,
+				code:
+					held && options.some((o) => o.code === held.code)
+						? held.code
+						: (options[0]?.code ?? ""),
+			}));
+		})();
+		return () => {
+			live = false;
+		};
+	}, [appId]);
+
+	const setStorefront = useCallback(
+		(code: string | null) => {
+			// The select reports a cleared value when its options change under it
+			// (the list empties while the next app's loads); that is not a choice.
+			if (appId !== null && code) {
+				setChosen({ appId, code });
+			}
+		},
+		[appId]
+	);
+
+	const answered = listed?.appId === appId ? listed : null;
+	let status: "loading" | "ready" | "failed" = "loading";
+	if (answered) {
+		status = answered.failed ? "failed" : "ready";
+	}
+	return {
+		options: answered?.options ?? [],
+		setStorefront,
+		status,
+		storefront: chosen?.appId === appId ? chosen.code : "",
+	};
+}
+
+/**
+ * The report for one app, storefront and window.
+ *
+ * Stamped with the request it answers, so a report for a previous app,
+ * storefront or window neither renders under the new one nor counts as it
+ * having loaded, and an answer that lands after the reader moved on is
+ * dropped. `loaded` tells "still fetching" from "fetched and failed", so a
+ * failed request shows the empty state rather than a permanent spinner.
+ */
+function useReport(
+	appId: number | null,
+	storefront: string,
+	days: number
+): { report: Report | null; loaded: boolean; reportKey: string | null } {
+	const reportKey =
+		appId !== null && storefront ? `${appId}|${storefront}|${days}` : null;
+	const [fetched, setFetched] = useState<{
+		key: string;
+		report: Report | null;
+	} | null>(null);
+
+	useEffect(() => {
+		if (appId === null || reportKey === null) {
+			return;
+		}
+		let live = true;
+		(async () => {
+			let next: Report | null = null;
+			try {
+				next = await api.report(appId, storefront, days);
+			} catch {
+				// Recorded as fetched with nothing to show.
+			}
+			if (live) {
+				setFetched({ key: reportKey, report: next });
+			}
+		})();
+		return () => {
+			live = false;
+		};
+	}, [appId, storefront, days, reportKey]);
+
+	const answered = fetched?.key === reportKey ? fetched : null;
+	return {
+		loaded: answered !== null,
+		report: answered?.report ?? null,
+		reportKey,
+	};
+}
+
+/**
+ * What stands in for the report while there is none, and why.
+ *
+ * No storefront means no report was ever asked for, so "loaded" can never come
+ * true: an empty or failed storefront list has to be said here, or the page
+ * says "Loading…" for ever.
+ */
+function ReportStatus({
+	storefronts,
+	storefrontCount,
+	loaded,
+	hasReport,
+}: {
+	storefronts: "loading" | "ready" | "failed";
+	storefrontCount: number;
+	loaded: boolean;
+	hasReport: boolean;
+}) {
+	const t = useT();
+	if (hasReport) {
+		return null;
+	}
+	let message = t.loading;
+	if (storefronts === "failed") {
+		message = t.storefrontsFailed;
+	} else if (storefronts === "ready" && storefrontCount === 0) {
+		message = t.storefrontsEmpty;
+	} else if (loaded) {
+		message = t.reportFailed;
+	}
+	return <p className="empty">{message}</p>;
+}
+
 export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 	const f = useFormat();
 	const t = useT();
-	const [storefronts, setStorefronts] = useState<StorefrontOption[]>([]);
-	const [storefront, setStorefront] = useState("");
 	const [days, setDays] = useState(30);
-	const [report, setReport] = useState<Report | null>(null);
 	const [filter, setFilter] = useState("");
 	const [band, setBand] = useState(0);
-	// Legend visibility, kept apart from membership above.
-	const [hidden, setHidden] = useState<number[]>([]);
 	const [resultsFor, setResultsFor] = useState<KeywordRow | null>(null);
 	// The series the reader is pointing at, from either the chart or the table.
 	// Everything else greys out: contrast is what carries the story, not eight
 	// equally loud lines.
 	const [focused, setFocused] = useState<number | null>(null);
-	/** The release the reader is pointing at, by date; the other pins grey out. */
-	const [focusedMarker, setFocusedMarker] = useState<string | null>(null);
-	const [loaded, setLoaded] = useState(false);
+	/** The release the reader is pointing at, by index; the other pins grey out. */
+	const [focusedMarker, setFocusedMarker] = useState<number | null>(null);
 	const navigate = useNavigate();
 
-	useEffect(() => {
-		if (!app) {
-			return;
-		}
-		(async () => {
-			try {
-				const options = await api.storefronts(app.id);
-				setStorefronts(options);
-				setStorefront((current) => current || (options[0]?.code ?? ""));
-			} catch {
-				setStorefronts([]);
-			}
-		})();
-	}, [app]);
-
-	useEffect(() => {
-		if (!(app && storefront)) {
-			return;
-		}
-		(async () => {
-			// `loaded` distinguishes "still fetching" from "fetched and empty", so a
-			// failed request shows the empty state rather than a permanent spinner.
-			try {
-				setReport(await api.report(app.id, storefront, days));
-			} catch {
-				setReport(null);
-			}
-			// A new report is a new set of pairs; carrying the old ids over would
-			// hide a line the reader never touched.
-			setHidden([]);
-			setLoaded(true);
-		})();
-	}, [app, storefront, days]);
+	const appId = app?.id ?? null;
+	const {
+		options: storefrontOptions,
+		storefront,
+		setStorefront,
+		status: storefrontStatus,
+	} = useStorefront(appId);
+	const { report, loaded, reportKey } = useReport(appId, storefront, days);
+	// Legend visibility, kept apart from membership below. A new report is a
+	// new set of pairs; carrying the old ids over would hide a line the reader
+	// never touched.
+	const [hidden, setHidden] = useKeyedState(reportKey, NONE_HIDDEN);
 
 	const key = app && storefront ? chartKey(app.id, storefront) : null;
 	const { effective, choose } = useChartSelection(key);
@@ -244,12 +440,17 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 	// drawn series, so hiding a line took away the only control that could bring
 	// it back.
 	const members = useMemo(() => {
-		const rankedIds = (report?.rows ?? [])
-			.filter((r) => r.position !== null)
-			.slice(0, CHART_SERIES)
-			.map((r) => r.pairId);
-		const ids = new Set(effective ?? rankedIds);
-		return (report?.rows ?? []).filter((r) => ids.has(r.pairId));
+		const all = report?.rows ?? [];
+		// Only ids this report has rows for count, and never more than the
+		// palette holds: a stored choice can name a pair that has since gone, and
+		// one saved before the cap was enforced can name six.
+		const present = new Set(all.map((r) => r.pairId));
+		const chosen =
+			effective === null
+				? all.filter((r) => r.position !== null).map((r) => r.pairId)
+				: effective.filter((id) => present.has(id));
+		const ids = new Set(chosen.slice(0, CHART_SERIES));
+		return all.filter((r) => ids.has(r.pairId));
 	}, [report, effective]);
 
 	// The chart's palette runs out at four, so the table's tick boxes stop
@@ -267,11 +468,10 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 	 * fifth line in a hue the reader cannot separate from the other four.
 	 */
 	const toggleMember = (pairId: number) => {
-		// `effective`, not the session value alone: before the reader has touched
-		// anything this session that is null, and falling back to the drawn
-		// members would compute the new list from the default four and persist
-		// those over whatever they had stored.
-		const base = effective ?? members.map((r) => r.pairId);
+		// The drawn members, which already resolve the stored choice: measuring
+		// against the stored list itself would count ids this report has no row
+		// for, and a chart showing three could refuse a fourth as full.
+		const base = members.map((r) => r.pairId);
 		let next = base;
 		if (base.includes(pairId)) {
 			next = base.filter((id) => id !== pairId);
@@ -322,10 +522,17 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 		});
 	}, [report, filter, band]);
 
+	// Two different empty charts, and neither is the collector's doing: every
+	// line hidden from the legend, or every keyword unticked in the table. The
+	// chart's own empty state would blame both on collection.
+	let emptyChart: string | null = null;
+	if (chartSeries.length === 0 && (report?.rows.length ?? 0) > 0) {
+		emptyChart = members.length > 0 ? t.allSeriesHidden : t.noKeywordSelected;
+	}
+
 	if (!app) {
 		return <p className="empty">{t.noAppTracked}</p>;
 	}
-
 	return (
 		<>
 			<header className="page-header">
@@ -342,7 +549,7 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 					<Select
 						label={t.storefront}
 						onValueChange={setStorefront}
-						options={storefronts.map((s) => ({
+						options={storefrontOptions.map((s) => ({
 							label: `${f.region(s.code, s.name)} (${f.number(s.keywords)})`,
 							value: s.code,
 						}))}
@@ -364,8 +571,12 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 				</div>
 			</div>
 
-			{loaded || report ? null : <p className="empty">{t.loading}</p>}
-			{loaded && !report ? <p className="empty">{t.reportFailed}</p> : null}
+			<ReportStatus
+				hasReport={report !== null}
+				loaded={loaded}
+				storefronts={storefrontStatus}
+				storefrontCount={storefrontOptions.length}
+			/>
 
 			{report ? (
 				<>
@@ -378,8 +589,8 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 							{/* Distinguished from "nothing was collected": the chart's own
                   empty state would tell a reader who just hid four lines
                   that the collector had not run. */}
-							{members.length > 0 && chartSeries.length === 0 ? (
-								<p className="empty">{t.allSeriesHidden}</p>
+							{emptyChart ? (
+								<p className="empty">{emptyChart}</p>
 							) : (
 								<RankSeriesChart
 									describedBy="chart-caption"
@@ -402,9 +613,14 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 							<figcaption className="sr-only" id="chart-caption">
 								{fmt(t.chartCaption, {
 									app: app.current_name ?? "",
-									from: report.window.from,
-									n: chartSeries.length,
-									to: report.window.to,
+									from: f.day(report.window.from),
+									keywords: plural(
+										t,
+										chartSeries.length,
+										"nKeyword",
+										"nKeywords"
+									),
+									to: f.day(report.window.to),
 								})}
 							</figcaption>
 						</figure>
@@ -417,11 +633,9 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
                       drawn. A hidden series that took its own control away
                       with it could only be recovered from the table. */}
 										<button
-											aria-label={
-												shown
-													? fmt(t.hideFromChart, { keyword: row.keyword })
-													: fmt(t.showOnChart, { keyword: row.keyword })
-											}
+											// One name, with the state in aria-pressed. A name that
+											// flipped with it announced "Hide X, pressed".
+											aria-label={fmt(t.showOnChart, { keyword: row.keyword })}
 											aria-pressed={shown}
 											className={
 												(focused !== null && focused !== row.pairId) || !shown
@@ -460,7 +674,7 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 						{report.metadataChanges.length > 0 ? (
 							<ol className="marker-key">
 								{report.metadataChanges.map((change, i) => (
-									<li key={change.date}>
+									<li key={`${change.date}-${i}`}>
 										{/* A button, like the series legend, so pointing at a
                         release greys the other pins and works from the keyboard
                         as well as the mouse. The same glyph and numeral as the
@@ -468,13 +682,13 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
                         releases fall close together. */}
 										<button
 											className={
-												focusedMarker !== null && focusedMarker !== change.date
+												focusedMarker !== null && focusedMarker !== i
 													? "marker-key-item marker-key-muted"
 													: "marker-key-item"
 											}
 											onBlur={() => setFocusedMarker(null)}
-											onFocus={() => setFocusedMarker(change.date)}
-											onMouseEnter={() => setFocusedMarker(change.date)}
+											onFocus={() => setFocusedMarker(i)}
+											onMouseEnter={() => setFocusedMarker(i)}
 											onMouseLeave={() => setFocusedMarker(null)}
 											type="button"
 										>
@@ -484,7 +698,7 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 												{f.day(change.date)}
 												{change.version ? ` · ${change.version}` : ""}
 												{change.changed.length > 0
-													? ` · ${change.changed.join(", ")}`
+													? ` · ${changedFields(t, change.changed)}`
 													: ""}
 											</span>
 										</button>
@@ -500,7 +714,12 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 								aria-label={t.filterKeywords}
 								className="search"
 								onChange={(e) => setFilter(e.target.value)}
-								placeholder={fmt(t.filterNKeywords, { n: report.rows.length })}
+								placeholder={plural(
+									t,
+									report.rows.length,
+									"filterOneKeyword",
+									"filterNKeywords"
+								)}
 								type="search"
 								value={filter}
 							/>
@@ -590,160 +809,188 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 									</tr>
 								</thead>
 								<tbody>
-									{rows.map((row: KeywordRow) => (
-										<tr
-											className={
-												focused === row.pairId ? "row-focused" : undefined
-											}
-											key={row.pairId}
-											onFocus={() => setFocused(row.pairId)}
-											onMouseEnter={() => setFocused(row.pairId)}
-											onMouseLeave={() => setFocused(null)}
-										>
-											<td className="kw">
-												{/* A tick box, not a bare swatch: the row has to say
+									{rows.map((row: KeywordRow) => {
+										const gap = unobserved(row);
+										return (
+											<tr
+												className={
+													focused === row.pairId ? "row-focused" : undefined
+												}
+												key={row.pairId}
+												// Focus events bubble, so this fires as focus leaves any
+												// control in the row. Without it, tabbing out of the
+												// table left the chart dimmed until a mouse moved.
+												onBlur={() => setFocused(null)}
+												onFocus={() => setFocused(row.pairId)}
+												onMouseEnter={() => setFocused(row.pairId)}
+												onMouseLeave={() => setFocused(null)}
+											>
+												<td className="kw">
+													{/* A tick box, not a bare swatch: the row has to say
                             whether the keyword is on the chart before it is
                             clicked, and say so when the chart is full. The
                             title sits on the wrapper because a disabled
                             control explains nothing on hover. */}
-												<span
-													title={
-														atCapacity && !styleIndex.has(row.pairId)
-															? fmt(t.chartFull, { max: CHART_SERIES })
-															: undefined
-													}
-												>
-													<button
-														aria-label={
-															styleIndex.has(row.pairId)
-																? fmt(t.removeFromChart, {
-																		keyword: row.keyword,
-																	})
-																: fmt(t.addToChart, { keyword: row.keyword })
-														}
-														aria-pressed={styleIndex.has(row.pairId)}
-														className="swatch-button"
-														disabled={atCapacity && !styleIndex.has(row.pairId)}
-														onClick={() => toggleMember(row.pairId)}
-														type="button"
-													>
-														<span aria-hidden="true" className="tick" />
-														<SeriesGlyph
-															style={styleIndex.get(row.pairId) ?? null}
-														/>
-													</button>
-												</span>
-												<button
-													className="link"
-													onClick={() =>
-														navigate(`/pairs/${row.pairId}`, {
-															state: {
-																keyword: row.keyword,
-																storefront: report.storefront,
-															},
-														})
-													}
-													type="button"
-												>
-													{row.keyword}
-												</button>
-											</td>
-											<td className="num">
-												<span className="rank-cell">
 													<span
-														className={rankBand(row.position)}
 														title={
-															row.verdict
-																? reasonText(
-																		t,
-																		row.verdict.reasonKey,
-																		row.verdict.reason
-																	)
+															atCapacity && !styleIndex.has(row.pairId)
+																? fmt(t.chartFull, { max: CHART_SERIES })
 																: undefined
 														}
 													>
-														{row.position ?? "—"}
-													</span>
-													{row.verdict?.unproven ? (
-														<sup className="unproven" title={t.unprovenTitle}>
-															~
-														</sup>
-													) : null}
-												</span>
-											</td>
-											<td className="num">
-												<Delta
-													change={row.change}
-													daysAgo={row.changeDaysAgo}
-												/>
-											</td>
-											<td>
-												<Meter
-													label={t.popularity}
-													title={
-														row.popularity === null
-															? t.popularityNone
-															: fmt(t.popularityTitle, {
-																	band: popularityBand(t, row.popularity),
-																	n: row.popularity,
-																})
-													}
-													value={row.popularity}
-												/>
-											</td>
-											<td>
-												<Difficulty value={row.difficulty} />
-											</td>
-											<td className="num subtle">
-												{row.best ?? "—"} / {row.worst ?? "—"}
-											</td>
-											<td>
-												<div className="results">
-													{row.topResults.length === 0 ? (
-														<span className="subtle">—</span>
-													) : (
-														row.topResults
-															.slice(0, TOP_RESULTS_SHOWN)
-															.map((r) => (
-																<span
-																	className="result-app"
-																	key={r.appId}
-																	title={`${r.position}. ${r.name}`}
-																>
-																	<AppIcon iconUrl={r.iconUrl} name={r.name} />
-																</span>
-															))
-													)}
-													{row.resultCount ? (
 														<button
-															className="link results-link"
-															onClick={() => setResultsFor(row)}
+															aria-label={fmt(t.chartMember, {
+																keyword: row.keyword,
+															})}
+															aria-pressed={styleIndex.has(row.pairId)}
+															className="swatch-button"
+															disabled={
+																atCapacity && !styleIndex.has(row.pairId)
+															}
+															onClick={() => toggleMember(row.pairId)}
 															type="button"
 														>
-															{t.view}
+															<span aria-hidden="true" className="tick" />
+															<SeriesGlyph
+																style={styleIndex.get(row.pairId) ?? null}
+															/>
 														</button>
-													) : null}
-												</div>
-											</td>
-											<td className="num subtle">
-												{row.resultCount ?? "—"}
-												{row.resultCountChange && row.resultCountChange > 20 ? (
-													<span
-														className="contested"
-														title={fmt(t.contestedTitle, {
-															n: row.resultCountChange,
-														})}
-													>
-														<ArrowUp aria-hidden="true" size={12} />
 													</span>
-												) : null}
-											</td>
-										</tr>
-									))}
+													<button
+														className="link"
+														onClick={() =>
+															navigate(`/pairs/${row.pairId}`, {
+																state: {
+																	keyword: row.keyword,
+																	storefront: report.storefront,
+																},
+															})
+														}
+														type="button"
+													>
+														{row.keyword}
+													</button>
+												</td>
+												<td className="num">
+													<span className="rank-cell">
+														{gap ? (
+															<NoObservation state={gap} t={t} />
+														) : (
+															<span
+																className={rankBand(row.position)}
+																title={
+																	row.verdict
+																		? reasonText(
+																				t,
+																				row.verdict.reasonKey,
+																				row.verdict.reason
+																			)
+																		: undefined
+																}
+															>
+																{row.position ?? "—"}
+															</span>
+														)}
+														{/* Behind a trigger like every other explanation: a
+													    bare "~" with a title was a footnote neither touch
+													    nor the keyboard could open. */}
+														{row.verdict?.unproven ? (
+															<Hint
+																className="footnote-mark unproven"
+																label={t.unproven}
+																mark="~"
+															>
+																{t.unprovenTitle}
+															</Hint>
+														) : null}
+													</span>
+												</td>
+												<td className="num">
+													<Delta
+														change={row.change}
+														daysAgo={row.changeDaysAgo}
+													/>
+												</td>
+												<td>
+													<Meter
+														label={t.popularity}
+														title={
+															row.popularity === null
+																? t.popularityNone
+																: fmt(t.popularityTitle, {
+																		band: popularityBand(t, row.popularity),
+																		n: row.popularity,
+																	})
+														}
+														value={row.popularity}
+													/>
+												</td>
+												<td>
+													<Difficulty value={row.difficulty} />
+												</td>
+												<td className="num subtle">
+													{gap ? (
+														<NoObservation state={gap} t={t} />
+													) : (
+														`${row.best ?? "—"} / ${row.worst ?? "—"}`
+													)}
+												</td>
+												<td>
+													<div className="results">
+														{row.topResults.length === 0 ? (
+															<span className="subtle">—</span>
+														) : (
+															row.topResults
+																.slice(0, TOP_RESULTS_SHOWN)
+																.map((r) => (
+																	<span
+																		className="result-app"
+																		key={r.appId}
+																		title={`${r.position}. ${r.name}`}
+																	>
+																		<AppIcon
+																			iconUrl={r.iconUrl}
+																			label={`${r.position}. ${r.name}`}
+																			name={r.name}
+																		/>
+																	</span>
+																))
+														)}
+														{row.resultCount ? (
+															<button
+																className="link results-link"
+																onClick={() => setResultsFor(row)}
+																type="button"
+															>
+																{t.view}
+															</button>
+														) : null}
+													</div>
+												</td>
+												<td className="num subtle">
+													{row.resultCount ?? "—"}
+													{row.resultCountChange &&
+													row.resultCountChange > 20 ? (
+														<Hint
+															className="footnote-mark contested"
+															label={t.contested}
+															mark={<ArrowUp size={12} />}
+														>
+															{fmt(t.contestedTitle, {
+																n: row.resultCountChange,
+															})}
+														</Hint>
+													) : null}
+												</td>
+											</tr>
+										);
+									})}
 									{rows.length === 0 ? (
 										<tr>
 											<td className="empty" colSpan={8}>
-												{fmt(t.noKeywordMatch, { filter })}
+												{filter.trim()
+													? fmt(t.noKeywordMatch, { filter })
+													: t.noKeywordInBand}
 											</td>
 										</tr>
 									) : null}

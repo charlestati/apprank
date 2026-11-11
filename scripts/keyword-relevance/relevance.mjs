@@ -62,6 +62,38 @@ export function scoreCandidates(candidates, tracked) {
 }
 
 /**
+ * Score each user's candidates against that user's own tracked set.
+ *
+ * A suggestion belongs to the user who tracks the app it concerns, and
+ * "relevant" means relevant to what they track: scored against everyone's
+ * keywords, another user's unrelated set would rescue a false friend, or the
+ * dismissal would land on a user whose own set it was never measured against.
+ * A user who tracks nothing in the storefront has nothing to measure against,
+ * so their candidates are returned unscored rather than scored at -1 and
+ * dropped.
+ */
+export function scoreByUser(candidates, tracked) {
+	const byUser = Map.groupBy(tracked, (t) => t.userId);
+	const scored = [];
+	const unscored = [];
+	for (const c of candidates) {
+		const own = byUser.get(c.userId);
+		if (own) {
+			scored.push(c);
+		} else {
+			unscored.push(c);
+		}
+	}
+	const users = Map.groupBy(scored, (c) => c.userId);
+	return {
+		scored: [...users]
+			.flatMap(([userId, own]) => scoreCandidates(own, byUser.get(userId)))
+			.toSorted((a, b) => a.score - b.score),
+		unscored: unscored.map(({ vector: _vector, ...rest }) => rest),
+	};
+}
+
+/**
  * Split at a threshold. Deliberately not a hard-coded constant: the right cut
  * depends on the model, the language and how broad the tracked set is, so the
  * caller passes one and the report prints the distribution that justifies it.
@@ -71,4 +103,33 @@ export function split(scored, threshold) {
 		drop: scored.filter((s) => s.score < threshold),
 		keep: scored.filter((s) => s.score >= threshold),
 	};
+}
+
+/**
+ * A cut between 0 and 1, or null when the flag does not hold one.
+ *
+ * Cosine scores live in that range. `--threshold 75`, a percentage typed by
+ * habit, put every suggestion below the cut, and a dismissed proposal is never
+ * offered again; a NaN compared false everywhere and dismissed nothing, which
+ * looked like a clean run.
+ */
+export function parseThreshold(raw) {
+	const value = Number(raw);
+	return typeof raw === "string" &&
+		raw.trim() !== "" &&
+		Number.isFinite(value) &&
+		value >= 0 &&
+		value <= 1
+		? value
+		: null;
+}
+
+/**
+ * The dismissal, limited to rows still pending. Scoring takes minutes of model
+ * time, and a suggestion accepted on the dashboard meanwhile has tracking rows
+ * behind it: flipping it to dismissed would leave those rows with no accepted
+ * suggestion to explain them.
+ */
+export function dismissSql(ids) {
+	return `UPDATE suggestion SET status = 'dismissed' WHERE status = 'pending' AND id IN (${ids.map(Number).join(",")})`;
 }

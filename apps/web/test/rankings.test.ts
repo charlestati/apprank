@@ -21,6 +21,8 @@ import {
 	seedKeywords,
 	seedRanking,
 	seedTrackedApp,
+	trackEveryActivePair,
+	USER_ID,
 } from "./fixtures";
 
 interface AppRow {
@@ -169,6 +171,49 @@ describe("GET /api/apps/:appId/keywords", () => {
 		expect(rows[0]?.observed_date).toBeNull();
 	});
 
+	it("prefers the term's own popularity over a genre's absence in the same week", async () => {
+		// The genre pull writes "outside this genre's top 500" for every tracked
+		// keyword; the by-name pass writes the term's own number storefront-wide.
+		// Taking the newest row alone returned whichever SQLite reached first.
+		await seedCatalog();
+		await seedTrackedApp();
+		await seedKeywords();
+		await env.DB.batch([
+			env.DB.prepare(
+				`INSERT INTO popularity (keyword_id, storefront_code, genre_id, week_start, present, popularity_1_100, fetched_at)
+         VALUES (1, 'fr', 6002, '2026-01-12', 0, NULL, 0)`
+			),
+			env.DB.prepare(
+				`INSERT INTO popularity (keyword_id, storefront_code, genre_id, week_start, present, popularity_1_100, fetched_at)
+         VALUES (1, 'fr', 0, '2026-01-12', 1, 40, 0)`
+			),
+			// A newer genre absence must not hide last week's real measurement.
+			env.DB.prepare(
+				`INSERT INTO popularity (keyword_id, storefront_code, genre_id, week_start, present, popularity_1_100, fetched_at)
+         VALUES (1, 'fr', 6002, '2026-01-19', 0, NULL, 0)`
+			),
+		]);
+		const res = await app.fetch(apiRequest(`/apps/${APP_ID}/keywords`), env);
+		const rows = (await res.json()) as KeywordRow[];
+		expect(rows.find((r) => r.pair_id === 1)?.popularity).toBe(40);
+	});
+
+	it("reads the rank off the stored page when the index has no row for the app", async () => {
+		await seedCatalog();
+		await seedTrackedApp();
+		await seedKeywords();
+		await seedRanking({
+			date: isoDay(),
+			entries: [[1, RIVAL_ID]],
+			id: 1,
+			pairId: 1,
+			resultIds: [RIVAL_ID, 801, 802, APP_ID],
+		});
+		const res = await app.fetch(apiRequest(`/apps/${APP_ID}/keywords`), env);
+		const rows = (await res.json()) as KeywordRow[];
+		expect(rows.find((r) => r.pair_id === 1)?.rank).toBe(4);
+	});
+
 	it("ignores invalidated rankings", async () => {
 		await seedCatalog();
 		await seedTrackedApp();
@@ -186,16 +231,43 @@ describe("GET /api/apps/:appId/keywords", () => {
 	});
 });
 
+interface HistoryBody {
+	points: HistoryRow[];
+	fetchErrors: { date: string; errorClass: string; count: number }[];
+	window: { from: string; to: string };
+}
+
+async function history(path: string): Promise<HistoryBody> {
+	const res = await app.fetch(apiRequest(path), env);
+	expect(res.status).toBe(200);
+	return (await res.json()) as HistoryBody;
+}
+
+async function seedFetchError(
+	params: string,
+	day: string,
+	errorClass: string | null = "throttled"
+): Promise<void> {
+	await env.DB.prepare(
+		`INSERT INTO fetch_error (endpoint, error_class, fetched_at, params, message)
+     VALUES ('itunes/search', ?1, ?2, ?3, 'HTTP 403, empty results')`
+	)
+		.bind(errorClass, Date.parse(`${day}T09:00:00Z`), params)
+		.run();
+}
+
 describe("GET /api/pairs/:pairId/history", () => {
-	it("returns an empty series for a pair with no rankings", async () => {
+	it("returns an empty series with the window it covered", async () => {
 		await seedCatalog();
 		await seedKeywords();
-		const res = await app.fetch(apiRequest("/pairs/1/history"), env);
-		expect(res.status).toBe(200);
-		await expect(res.json()).resolves.toStrictEqual([]);
+		await expect(history("/pairs/1/history")).resolves.toStrictEqual({
+			fetchErrors: [],
+			points: [],
+			window: { from: isoDay(90), to: isoDay() },
+		});
 	});
 
-	it("returns every rank entry when no appId filter is given", async () => {
+	it("defaults to the caller's tracked app, not every app Apple listed", async () => {
 		await seedCatalog();
 		await seedKeywords();
 		await seedRanking({
@@ -208,14 +280,71 @@ describe("GET /api/pairs/:pairId/history", () => {
 			pairId: 1,
 			resultCount: 150,
 		});
-		const res = await app.fetch(apiRequest("/pairs/1/history"), env);
-		const rows = (await res.json()) as HistoryRow[];
-		expect(rows).toHaveLength(2);
-		expect(rows.map((r) => r.app_id).toSorted()).toStrictEqual([
-			APP_ID,
-			RIVAL_ID,
+		const { points } = await history("/pairs/1/history");
+		expect(points).toStrictEqual([
+			{
+				app_id: APP_ID,
+				observed_date: isoDay(1),
+				position: 2,
+				result_count: 150,
+			},
 		]);
-		expect(rows[0]?.result_count).toBe(150);
+	});
+
+	it("refuses to guess when the caller tracks the keyword for several apps", async () => {
+		await seedCatalog();
+		await seedKeywords();
+		await env.DB.prepare(
+			"INSERT INTO tracked_keyword (user_id, app_id, keyword_id, created_at) VALUES (?1, ?2, 1, 0)"
+		)
+			.bind(USER_ID, RIVAL_ID)
+			.run();
+		await trackEveryActivePair(USER_ID);
+		await seedRanking({
+			date: isoDay(1),
+			entries: [
+				[2, APP_ID],
+				[1, RIVAL_ID],
+			],
+			id: 1,
+			pairId: 1,
+		});
+		const res = await app.fetch(apiRequest("/pairs/1/history"), env);
+		expect(res.status).toBe(400);
+		const { error } = (await res.json()) as { error: string };
+		expect(error).toContain("pass appId");
+		const named = await history(`/pairs/1/history?appId=${RIVAL_ID}`);
+		expect(named.points.map((p) => p.position)).toStrictEqual([1]);
+	});
+
+	it("lists this pair's failed days by class within the window", async () => {
+		await seedCatalog();
+		await seedKeywords();
+		const pairKey = `${KEYWORD_A}|fr|fr-FR`;
+		await seedFetchError(pairKey, isoDay(2));
+		await seedFetchError(pairKey, isoDay(2));
+		await seedFetchError(pairKey, isoDay(2), "http_error");
+		await seedFetchError(pairKey, isoDay(1), null);
+		// Same keyword, other storefront: pair 2's failure, not pair 1's.
+		await seedFetchError(`${KEYWORD_A}|us|en-US`, isoDay(1));
+		// Outside a 7-day window.
+		await seedFetchError(pairKey, isoDay(20));
+		const { fetchErrors } = await history("/pairs/1/history?days=7");
+		expect(fetchErrors).toStrictEqual([
+			{ count: 1, date: isoDay(2), errorClass: "http_error" },
+			{ count: 2, date: isoDay(2), errorClass: "throttled" },
+			{ count: 1, date: isoDay(1), errorClass: "unknown" },
+		]);
+	});
+
+	it("hides a pair the caller does not track", async () => {
+		await seedCatalog();
+		await seedKeywords();
+		await env.DB.prepare(
+			"UPDATE tracked_keyword SET user_id = 'someone-else'"
+		).run();
+		const res = await app.fetch(apiRequest("/pairs/1/history"), env);
+		expect(res.status).toBe(404);
 	});
 
 	it("narrows to one app with the appId query param", async () => {
@@ -237,12 +366,8 @@ describe("GET /api/pairs/:pairId/history", () => {
 			id: 2,
 			pairId: 1,
 		});
-		const res = await app.fetch(
-			apiRequest(`/pairs/1/history?appId=${APP_ID}`),
-			env
-		);
-		const rows = (await res.json()) as HistoryRow[];
-		expect(rows).toStrictEqual([
+		const { points } = await history(`/pairs/1/history?appId=${APP_ID}`);
+		expect(points).toStrictEqual([
 			{
 				app_id: APP_ID,
 				observed_date: isoDay(2),
@@ -258,15 +383,59 @@ describe("GET /api/pairs/:pairId/history", () => {
 		]);
 	});
 
+	it("answers 400 for an appId that is not a positive integer", async () => {
+		// NaN and 0 are falsy, so the app filter was dropped and every indexed
+		// app's rows came back as the tracked app's history.
+		await seedCatalog();
+		await seedKeywords();
+		await seedRanking({
+			date: isoDay(1),
+			entries: [
+				[1, RIVAL_ID],
+				[5, APP_ID],
+			],
+			id: 1,
+			pairId: 1,
+		});
+		for (const raw of ["abc", "0", "-3", "1.5", ""]) {
+			const res = await app.fetch(
+				apiRequest(`/pairs/1/history?appId=${raw}`),
+				env
+			);
+			expect([raw, res.status]).toStrictEqual([raw, 400]);
+		}
+	});
+
+	it("reads the position off the stored page for an app the index never held", async () => {
+		await seedCatalog();
+		await seedKeywords();
+		const tail = Array.from({ length: 20 }, (_, i) => 800 + i);
+		await seedRanking({
+			date: isoDay(1),
+			entries: [[1, RIVAL_ID]],
+			id: 1,
+			pairId: 1,
+			resultIds: [RIVAL_ID, ...tail, APP_ID],
+		});
+		const { points } = await history(`/pairs/1/history?appId=${APP_ID}`);
+		expect(points).toStrictEqual([
+			{
+				app_id: APP_ID,
+				observed_date: isoDay(1),
+				position: 22,
+				result_count: 200,
+			},
+		]);
+	});
+
 	it("clips the window with the days query param", async () => {
 		await seedCatalog();
 		await seedKeywords();
 		await seedRanking({ date: isoDay(10), id: 1, pairId: 1 });
 		await seedRanking({ date: isoDay(1), id: 2, pairId: 1 });
-		const res = await app.fetch(apiRequest("/pairs/1/history?days=3"), env);
-		const rows = (await res.json()) as HistoryRow[];
-		expect(rows).toHaveLength(1);
-		expect(rows[0]?.observed_date).toBe(isoDay(1));
+		const body = await history("/pairs/1/history?days=3");
+		expect(body.points.map((p) => p.observed_date)).toStrictEqual([isoDay(1)]);
+		expect(body.window).toStrictEqual({ from: isoDay(3), to: isoDay() });
 	});
 
 	it("falls back to the default window on a junk days value", async () => {
@@ -276,19 +445,37 @@ describe("GET /api/pairs/:pairId/history", () => {
 		await seedCatalog();
 		await seedKeywords();
 		await seedRanking({ date: isoDay(1), id: 1, pairId: 1 });
-		for (const q of ["?days=abc", "?days=", "?days=NaN", "?days=Infinity"]) {
+		for (const q of ["?days=abc", "?days=", "?days=NaN"]) {
 			const res = await app.fetch(apiRequest(`/pairs/1/history${q}`), env);
 			expect(res.status).toBe(200);
+			// The default window, not merely a 200: a junk value must not widen or
+			// empty the answer.
+			const body = (await res.json()) as {
+				points: HistoryRow[];
+				window: { from: string; to: string };
+			};
+			expect([q, body.window]).toStrictEqual([
+				q,
+				{ from: isoDay(90), to: isoDay() },
+			]);
+			expect(body.points.map((p) => p.observed_date)).toStrictEqual([
+				isoDay(1),
+			]);
 		}
+		// Infinity is finite to nobody: it falls back like the rest.
+		const res = await app.fetch(
+			apiRequest("/pairs/1/history?days=Infinity"),
+			env
+		);
+		expect(res.status).toBe(200);
 	});
 
 	it("refuses a negative window instead of dating the future", async () => {
 		await seedCatalog();
 		await seedKeywords();
 		await seedRanking({ date: isoDay(1), id: 1, pairId: 1 });
-		const res = await app.fetch(apiRequest("/pairs/1/history?days=-5"), env);
-		expect(res.status).toBe(200);
-		expect((await res.json()) as unknown[]).toHaveLength(1);
+		const { points } = await history("/pairs/1/history?days=-5");
+		expect(points).toHaveLength(1);
 	});
 
 	it("caps the window at 400 days", async () => {
@@ -296,10 +483,8 @@ describe("GET /api/pairs/:pairId/history", () => {
 		await seedKeywords();
 		await seedRanking({ date: isoDay(399), id: 1, pairId: 1 });
 		await seedRanking({ date: isoDay(500), id: 2, pairId: 1 });
-		const res = await app.fetch(apiRequest("/pairs/1/history?days=9999"), env);
-		const rows = (await res.json()) as HistoryRow[];
-		expect(rows).toHaveLength(1);
-		expect(rows[0]?.observed_date).toBe(isoDay(399));
+		const { points } = await history("/pairs/1/history?days=9999");
+		expect(points.map((p) => p.observed_date)).toStrictEqual([isoDay(399)]);
 	});
 });
 

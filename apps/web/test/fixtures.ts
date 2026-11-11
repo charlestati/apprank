@@ -95,6 +95,24 @@ export async function seedTrackedApp(): Promise<void> {
 }
 
 /**
+ * Records where an operator tracks each keyword, the way `pnpm track --apply`
+ * and an accepted suggestion do: one storefront row per active pair of every
+ * keyword they track. Web reads are scoped to these rows, so a fixture that
+ * adds a pair for an existing track must call this again to make it visible.
+ */
+export async function trackEveryActivePair(userId: string): Promise<void> {
+	await env.DB.prepare(
+		`INSERT OR IGNORE INTO tracked_keyword_storefront (tracked_keyword_id, storefront_code, locale_code, created_at)
+     SELECT tk.id, cp.storefront_code, cp.locale_code, 0
+     FROM tracked_keyword tk
+     JOIN crawl_pair cp ON cp.keyword_id = tk.keyword_id AND cp.ref_count > 0
+     WHERE tk.user_id = ?1`
+	)
+		.bind(userId)
+		.run();
+}
+
+/**
  * Two keywords, three crawl pairs (keyword A in fr + us, keyword B in fr).
  * Pair ids are 1, 2 and 3 in that order.
  */
@@ -125,6 +143,7 @@ export async function seedKeywords(): Promise<void> {
 			"INSERT INTO tracked_keyword (user_id, app_id, keyword_id, created_at) VALUES (?1, ?2, 2, 0)"
 		).bind(USER_ID, APP_ID),
 	]);
+	await trackEveryActivePair(USER_ID);
 }
 
 interface RankingSeed {
@@ -135,19 +154,22 @@ interface RankingSeed {
 	resultCount?: number;
 	/** position -> app id */
 	entries?: [number, number][];
+	/** The whole ordered page Apple returned. Empty unless a test needs it. */
+	resultIds?: number[];
 }
 
 export async function seedRanking(seed: RankingSeed): Promise<void> {
 	await env.DB.prepare(
 		`INSERT INTO ranking (id, pair_id, observed_date, fetched_at, http_status, result_count, result_ids, collector_version, valid)
-     VALUES (?1, ?2, ?3, 0, 200, ?4, '[]', 'test', ?5)`
+     VALUES (?1, ?2, ?3, 0, 200, ?4, ?6, 'test', ?5)`
 	)
 		.bind(
 			seed.id,
 			seed.pairId,
 			seed.date,
 			seed.resultCount ?? 200,
-			seed.valid ?? 1
+			seed.valid ?? 1,
+			JSON.stringify(seed.resultIds ?? [])
 		)
 		.run();
 	for (const [position, appId] of seed.entries ?? []) {

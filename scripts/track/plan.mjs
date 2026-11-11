@@ -51,6 +51,79 @@ export function localeFor(storefront, language, storefrontLocales) {
 	return rows.find((r) => r.is_default === 1)?.locale_code ?? null;
 }
 
+/**
+ * The file's mistakes, found before anything is planned from it.
+ *
+ * Errors stop the run, because each one otherwise becomes rows: a string
+ * `appId` never equals the integer the database holds, so every run re-emitted
+ * the same three inserts and charged for them; an empty keyword became a pair
+ * that searches the empty term every day. Warnings are for what is legal and
+ * probably not meant.
+ *
+ * Inner whitespace is only reported. The collector and the dashboard store
+ * `normalized` as lowercase, NFC, trimmed, and nothing else; collapsing spaces
+ * here alone would mint a second keyword row beside the one already tracked.
+ *
+ * @returns the entries with a numeric-string `appId` coerced, plus `errors`
+ *   and `warnings` as printable lines
+ */
+/** One app entry: its `appId` as a number where it can be one, and its faults. */
+function validateApp(app, where) {
+	const errors = [];
+	const warnings = [];
+	const appId =
+		typeof app?.appId === "string" && /^\d+$/u.test(app.appId)
+			? Number(app.appId)
+			: app?.appId;
+	if (!Number.isSafeInteger(appId) || appId <= 0) {
+		errors.push(`${where}: appId must be a positive integer`);
+	}
+	if (typeof app?.language !== "string" || app.language.trim() === "") {
+		errors.push(`${where}: language is missing`);
+	}
+	const lists = {};
+	for (const field of ["storefronts", "keywords"]) {
+		const list = app?.[field];
+		const valid =
+			Array.isArray(list) && list.every((v) => typeof v === "string");
+		lists[field] = valid ? list : [];
+		if (!valid) {
+			errors.push(`${where}: ${field} must be a list of strings`);
+		}
+	}
+	if (lists.keywords.some((k) => k.trim() === "")) {
+		errors.push(`${where}: a keyword is empty`);
+	}
+	const spaced = lists.keywords.filter((k) => /\s{2,}/u.test(k.trim())).length;
+	if (spaced > 0) {
+		warnings.push(
+			`${where}: ${spaced} keyword(s) hold repeated spaces; they are stored as written and are a different keyword from the single-spaced form`
+		);
+	}
+	return { app: { ...app, appId }, errors, warnings };
+}
+
+export function validateConfig(config) {
+	const errors = [];
+	const warnings = [];
+	const clean = {};
+	for (const [userId, entry] of Object.entries(config ?? {})) {
+		if (userId.startsWith("_")) {
+			clean[userId] = entry;
+			continue;
+		}
+		const single = !Array.isArray(entry?.apps);
+		const checked = (single ? [entry] : entry.apps).map((app, i) =>
+			validateApp(app, `${userId}, app ${i + 1}`)
+		);
+		errors.push(...checked.flatMap((c) => c.errors));
+		warnings.push(...checked.flatMap((c) => c.warnings));
+		const apps = checked.map((c) => c.app);
+		clean[userId] = single ? apps[0] : { ...entry, apps };
+	}
+	return { config: clean, errors, warnings };
+}
+
 function sqlString(value) {
 	return `'${String(value).replaceAll("'", "''")}'`;
 }
@@ -73,12 +146,17 @@ function trackIdExpr(userId, appId, normalized, language) {
  * every observation hanging off it outlive the decision to stop tracking, so
  * putting the keyword back restores its history rather than starting over.
  */
-function retireUnwanted(activePair, wantedPairs, stillReferenced, summary) {
+function retireUnwanted(activePair, kept, summary) {
+	const { stillReferenced, unresolved, wantedPairs } = kept;
 	const out = [];
 	for (const [key, pair] of activePair) {
 		if (
 			!wantedPairs.has(key) &&
 			!stillReferenced.has(key) &&
+			// A storefront the file lists but the reference data cannot resolve is
+			// still wanted. Its locale is unknown here, so every pair of that
+			// keyword in that storefront is left alone.
+			!unresolved.some((prefix) => key.startsWith(prefix)) &&
 			pair.ref_count > 0
 		) {
 			out.push(`UPDATE crawl_pair SET ref_count = 0 WHERE id = ${pair.id};`);
@@ -175,26 +253,131 @@ function holdStorefront(want, held) {
 }
 
 /**
+ * Two keyword rows that send Apple the same search. A pair is keyed by the
+ * keyword row, and a keyword row by its language, so the same text listed
+ * under two languages in a storefront that indexes one of them resolves to one
+ * locale and therefore one URL, fetched twice a day for one answer.
+ */
+function sameSearchWarnings(wantedPairs) {
+	const languages = new Map();
+	for (const key of wantedPairs.keys()) {
+		const [keyword, storefront, locale] = key.split("|");
+		const at = keyword.lastIndexOf(":");
+		const search = `${storefront}|${locale}|${keyword.slice(0, at)}`;
+		const seen = languages.get(search) ?? new Set();
+		seen.add(keyword.slice(at + 1));
+		languages.set(search, seen);
+	}
+	const counts = new Map();
+	for (const [search, seen] of languages) {
+		if (seen.size > 1) {
+			const [storefront, locale] = search.split("|");
+			const where = `${storefront} (${locale})`;
+			counts.set(where, (counts.get(where) ?? 0) + 1);
+		}
+	}
+	// Counted, never named: the terms are the operator's strategy, and this
+	// output lands in terminals and logs.
+	return [...counts].map(
+		([where, n]) =>
+			`${where}: ${n} keyword(s) are listed under more than one language and resolve to the same search there, so each is fetched once per language for one answer`
+	);
+}
+
+/**
+ * Listed storefronts the reference data holds as inactive.
+ *
+ * `active` gates everything except the rank crawl: lookups, reviews, charts
+ * and both Apple Ads passes skip an inactive storefront without a word, and
+ * none of the first three can be collected after the fact (invariant 1). The
+ * seed ships several storefronts inactive, one of them retired on purpose
+ * because it is not a real storefront, and the two cannot be told apart from
+ * the row. So a plain run says so and writes nothing; switching one on is
+ * asked for by name.
+ */
+function settleInactive(state, listed, out) {
+	const { activate, summary, warnings } = out;
+	const statements = [];
+	const inactive = (state.storefronts ?? [])
+		.filter((s) => s.active === 0 && listed.has(s.code))
+		.map((s) => s.code)
+		.toSorted();
+	for (const code of inactive) {
+		const update = `UPDATE storefront SET active = 1 WHERE code = ${sqlString(code)} AND active = 0;`;
+		if (activate) {
+			statements.push(update);
+			summary.storefrontsActivated += 1;
+		} else {
+			warnings.push(
+				`${code}: storefront is inactive. Ranks are crawled there, but ratings, metadata, reviews, charts and Apple Ads popularity are skipped, and that history cannot be backfilled. Re-run with --activate, or run: ${update}`
+			);
+		}
+	}
+	return statements;
+}
+
+/** The app, its owner and its language, each only where the row is missing. */
+function holdApp(state, userId, { appId, language, name }) {
+	const out = [];
+	if (!state.apps.some((a) => a.id === appId)) {
+		out.push(
+			`INSERT OR IGNORE INTO app (id, current_name, first_seen_at, last_seen_at) VALUES (${appId}, ${sqlString(name)}, strftime('%s','now')*1000, strftime('%s','now')*1000);`
+		);
+	}
+	if (
+		!state.trackedApps.some((t) => t.user_id === userId && t.app_id === appId)
+	) {
+		out.push(
+			`INSERT OR IGNORE INTO tracked_app (user_id, app_id, created_at) VALUES (${sqlString(userId)}, ${appId}, strftime('%s','now')*1000);`
+		);
+	}
+	if (
+		!state.appLanguages.some(
+			(l) => l.app_id === appId && l.language === language
+		)
+	) {
+		out.push(
+			`INSERT OR IGNORE INTO app_language (app_id, language) VALUES (${appId}, ${sqlString(language)});`
+		);
+	}
+	return out;
+}
+
+/**
  * @param config  { [userId]: { apps: [{ appId, name, language, storefronts,
  * keywords }] } }, a list, because one person routinely ships more than one
  * app and `tracked_app` has always been keyed (user_id, app_id).
  * @param state   rows already in the database
  * @param options `prune`: also remove what the file does not list, for the
  *   users the file names. Off by default, because the file is not the only
- *   writer.
+ *   writer. `activate`: also switch on a listed storefront the reference data
+ *   holds as inactive.
  * @returns The SQL to run, counts for the human-readable plan, the tracked
  *   storefronts the database holds and the file does not (`unlisted`, kept
- *   unless pruning), and any storefront the reference data does not know about.
+ *   unless pruning), any storefront the reference data does not know about or
+ *   holds inactive (`warnings`), and what is wrong with the file (`errors`,
+ *   which leave `statements` empty).
  */
-export function planChanges(config, state, { prune = false } = {}) {
+export function planChanges(
+	rawConfig,
+	state,
+	{ prune = false, activate = false } = {}
+) {
 	const statements = [];
-	const warnings = [];
+	const { config, errors, warnings } = validateConfig(rawConfig);
+	// Reference problems are per storefront, not per keyword: one line each.
+	const unknownStorefronts = new Set();
+	const listedStorefronts = new Set();
+	// Pair-key prefixes (keyword and storefront) whose locale could not be
+	// resolved, so prune leaves whatever pair is stored for them.
+	const unresolved = [];
 	const unlisted = [];
 	const summary = {
 		apps: 0,
 		keywordsAdded: 0,
 		pairsActivated: 0,
 		pairsRetired: 0,
+		storefrontsActivated: 0,
 		storefrontsAdded: 0,
 		storefrontsMoved: 0,
 		storefrontsRemoved: 0,
@@ -202,6 +385,10 @@ export function planChanges(config, state, { prune = false } = {}) {
 		tracksRemoved: 0,
 		unlisted: 0,
 	};
+	if (errors.length > 0) {
+		// Planning from a file known to be wrong writes the mistake as rows.
+		return { errors, statements, summary, unlisted, warnings };
+	}
 	const listedUsers = new Set(
 		Object.keys(config).filter((userId) => !userId.startsWith("_"))
 	);
@@ -235,32 +422,10 @@ export function planChanges(config, state, { prune = false } = {}) {
 		// A bare object is the single-app shorthand; the canonical form is a list.
 		const apps = Array.isArray(entry.apps) ? entry.apps : [entry];
 		for (const app of apps) {
-			const { appId, name, language, storefronts, keywords } = app;
+			const { appId, language, storefronts, keywords } = app;
 			summary.apps += 1;
 
-			if (!state.apps.some((a) => a.id === appId)) {
-				statements.push(
-					`INSERT OR IGNORE INTO app (id, current_name, first_seen_at, last_seen_at) VALUES (${appId}, ${sqlString(name)}, strftime('%s','now')*1000, strftime('%s','now')*1000);`
-				);
-			}
-			if (
-				!state.trackedApps.some(
-					(t) => t.user_id === userId && t.app_id === appId
-				)
-			) {
-				statements.push(
-					`INSERT OR IGNORE INTO tracked_app (user_id, app_id, created_at) VALUES (${sqlString(userId)}, ${appId}, strftime('%s','now')*1000);`
-				);
-			}
-			if (
-				!state.appLanguages.some(
-					(l) => l.app_id === appId && l.language === language
-				)
-			) {
-				statements.push(
-					`INSERT OR IGNORE INTO app_language (app_id, language) VALUES (${appId}, ${sqlString(language)});`
-				);
-			}
+			statements.push(...holdApp(state, userId, app));
 
 			for (const raw of keywords) {
 				const text = raw.trim();
@@ -292,11 +457,15 @@ export function planChanges(config, state, { prune = false } = {}) {
 						state.storefrontLocales
 					);
 					if (!locale) {
-						warnings.push(
-							`${storefront}: not in the reference data; add the storefront and its locales first`
-						);
+						unknownStorefronts.add(storefront);
+						// Unresolved is not unlisted. Treating it as dropped let prune
+						// delete the tracking row and retire the pair of a storefront
+						// the file still names, on nothing but missing reference data.
+						wanted.storefronts.add(`${track}|${storefront}`);
+						unresolved.push(`${norm}:${language}|${storefront}|`);
 						continue;
 					}
+					listedStorefronts.add(storefront);
 					holdStorefront(
 						{ appId, language, locale, norm, storefront, track, userId },
 						{ heldStorefronts, statements, summary, wanted }
@@ -344,11 +513,25 @@ export function planChanges(config, state, { prune = false } = {}) {
 
 	if (prune) {
 		statements.push(
-			...retireUnwanted(activePair, wantedPairs, stillReferenced, summary)
+			...retireUnwanted(
+				activePair,
+				{ stillReferenced, unresolved, wantedPairs },
+				summary
+			)
 		);
 	}
 
-	return { statements, summary, unlisted, warnings };
+	for (const storefront of unknownStorefronts) {
+		warnings.push(
+			`${storefront}: not in the reference data; add the storefront and its locales first`
+		);
+	}
+	warnings.push(...sameSearchWarnings(wantedPairs));
+	statements.push(
+		...settleInactive(state, listedStorefronts, { activate, summary, warnings })
+	);
+
+	return { errors, statements, summary, unlisted, warnings };
 }
 
 /** A user's app entries without reshaping the file: [] when there are none. */

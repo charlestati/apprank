@@ -57,7 +57,7 @@ export const ADS_CATEGORIES = [
  * category, which silently emptied the whole popularity pull for the six weeks
  * between the reference reseed that added the root row and this constant.
  */
-export const APP_STORE_ROOT_GENRE_ID = 36;
+const APP_STORE_ROOT_GENRE_ID = 36;
 
 export interface GenreRow {
 	id: number;

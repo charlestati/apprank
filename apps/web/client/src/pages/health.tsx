@@ -17,13 +17,49 @@ function queueSummary(tasks?: Record<string, number>): string | null {
 	return parts.length > 0 ? parts.join(", ") : null;
 }
 
+/** The watchdog cron re-arms the loop every ten minutes, plus slack. */
+const LOOP_STALL_MS = 15 * 60_000;
+
 /**
- * The work loop parks with no alarm once everything due is collected, so
- * silence is only alarming against the 10-minute watchdog cron's promise to
- * re-arm it. A heartbeat that is missing entirely is a different, worse thing
- * than one that is merely old.
+ * When work has been waiting for the loop, or null when none is.
+ *
+ * The work loop parks with no alarm once everything due is collected, and on
+ * the credentialed Worker that is most of the day: it only ever runs the few
+ * App Store Connect and Apple Ads tasks the daily job queues. An old heartbeat
+ * is therefore normal, and colouring it red on age alone made the tile red
+ * every afternoon. Silence is a fault only against queued work the watchdog
+ * should have picked up: either the queue the last tick left behind, or a
+ * daily run that queued tasks after that tick and was never followed by one.
  */
-function LoopTile({ loop, now }: { loop: DataHealth["loop"]; now: number }) {
+function loopWaitingSince(
+	loop: NonNullable<DataHealth["loop"]>,
+	run: DataHealth["lastDailyRun"]
+): number | null {
+	if (loop.queued > 0) {
+		return loop.at;
+	}
+	if (run !== null && (run.queued ?? 0) > 0 && run.startedAt > loop.at) {
+		return run.startedAt;
+	}
+	return null;
+}
+
+/**
+ * A heartbeat that is missing entirely is a different, worse thing than one
+ * that is merely old. A backoff pause parks the loop on purpose, with work
+ * queued, so it is not a stall either; the crawl-rate tile already says so.
+ */
+function LoopTile({
+	loop,
+	now,
+	paused,
+	run,
+}: {
+	loop: DataHealth["loop"];
+	now: number;
+	paused: boolean;
+	run: DataHealth["lastDailyRun"];
+}) {
 	const t = useT();
 	if (loop === null) {
 		return (
@@ -35,17 +71,23 @@ function LoopTile({ loop, now }: { loop: DataHealth["loop"]; now: number }) {
 		);
 	}
 	const ageMin = Math.round((now - loop.at) / 60_000);
+	const waitingSince = loopWaitingSince(loop, run);
+	const stalled =
+		!paused && waitingSince !== null && now - waitingSince > LOOP_STALL_MS;
+	let queue = t.loopIdle;
+	if (loop.queued > 0) {
+		queue = queueSummary(loop.tasks) ?? fmt(t.loopQueued, { n: loop.queued });
+	} else if (waitingSince !== null) {
+		queue = fmt(t.loopQueued, { n: run?.queued ?? 0 });
+	}
 	return (
 		<div className="tile">
 			<div className="tile-title">{t.workLoop}</div>
-			<div className={ageMin > 15 ? "stat-value stat-bad" : "stat-value"}>
-				{ageMin}m
+			<div className={stalled ? "stat-value stat-bad" : "stat-value"}>
+				{fmt(t.minutesShort, { n: ageMin })}
 			</div>
 			<div className="tile-note">
-				{t.loopSinceTick} ·{" "}
-				{loop.queued === 0
-					? t.loopQueueEmpty
-					: (queueSummary(loop.tasks) ?? fmt(t.loopQueued, { n: loop.queued }))}
+				{t.loopSinceTick} · {queue}
 			</div>
 		</div>
 	);
@@ -64,7 +106,23 @@ function dailyRunNote(
 	return `${run.ok ? t.dailyCompleted : t.dailyFailed} · ${run.trigger}${queued}`;
 }
 
-function DailyRunTile({ run }: { run: DataHealth["lastDailyRun"] }) {
+/**
+ * The daily job is a 03:00 cron, so the newest run is at most a day old plus
+ * however long the cron slips. Past this it did not fire.
+ */
+const DAILY_STALE_MS = 26 * 3_600_000;
+
+function sameLocalDay(a: number, b: number): boolean {
+	return new Date(a).toDateString() === new Date(b).toDateString();
+}
+
+function DailyRunTile({
+	now,
+	run,
+}: {
+	now: number;
+	run: DataHealth["lastDailyRun"];
+}) {
 	const f = useFormat();
 	const t = useT();
 	if (run === null) {
@@ -76,15 +134,24 @@ function DailyRunTile({ run }: { run: DataHealth["lastDailyRun"] }) {
 			</div>
 		);
 	}
+	// The server sends the newest run of any age. A clock time alone read as
+	// this morning's whether the cron last fired today or three days ago, which
+	// is the one failure this tile exists to show.
+	const stale = now - run.startedAt > DAILY_STALE_MS;
 	// An unfinished row is the crash the observation tables cannot show.
-	const bad = run.finishedAt === null || run.ok === false;
+	const bad = stale || run.finishedAt === null || run.ok === false;
 	return (
 		<div className="tile">
 			<div className="tile-title">{t.lastDailyJob}</div>
 			<div className={bad ? "stat-value stat-bad" : "stat-value"}>
-				{f.time(run.startedAt)}
+				{sameLocalDay(run.startedAt, now)
+					? f.time(run.startedAt)
+					: f.dayTime(run.startedAt)}
 			</div>
-			<div className="tile-note">{dailyRunNote(run, t)}</div>
+			<div className="tile-note">
+				{stale ? `${t.dailyStale} · ` : ""}
+				{dailyRunNote(run, t)}
+			</div>
 		</div>
 	);
 }
@@ -108,7 +175,11 @@ function OverdueTile({ n }: { n: number }) {
  * cleanly. The values are exact and mean nothing to a reader, so each one is
  * shown in words with the raw class kept alongside for grepping the logs.
  */
-function classLabel(t: Dictionary, errorClass: string): string {
+function classLabel(t: Dictionary, errorClass: string | null): string {
+	// Rows older than the closed vocabulary carry no class at all.
+	if (errorClass === null) {
+		return t.errUnclassified;
+	}
 	const known: Record<string, string> = {
 		app_not_in_storefront: t.errAppNotInStorefront,
 		http_error: t.errHttpError,
@@ -118,6 +189,9 @@ function classLabel(t: Dictionary, errorClass: string): string {
 		task_threw: t.errTaskThrew,
 		throttled: t.errThrottled,
 		do_restarted: t.errDoRestarted,
+		duplicate_processing_date: t.errDuplicateProcessingDate,
+		skipped_processing_date: t.errSkippedProcessingDate,
+		stopped_due_to_inactivity: t.errStoppedDueToInactivity,
 		upstream_error: t.errUpstreamError,
 	};
 	return known[errorClass] ?? errorClass;
@@ -148,7 +222,9 @@ function ErrorRow({ entry }: { entry: DataHealth["errorsLast24h"][number] }) {
 				)}
 				{/* The raw value too: it is what the logs and the vocabulary in
             CLAUDE.md use, so an operator moving between the two needs it. */}
-				<span className="error-class-raw">{entry.errorClass}</span>
+				{entry.errorClass === null ? null : (
+					<span className="error-class-raw">{entry.errorClass}</span>
+				)}
 			</td>
 			<td className="col-where">
 				<code>{entry.endpoint}</code>
@@ -159,6 +235,7 @@ function ErrorRow({ entry }: { entry: DataHealth["errorsLast24h"][number] }) {
 					<span className="muted">—</span>
 				) : (
 					<button
+						aria-expanded={open}
 						className={open ? "error-detail open" : "error-detail"}
 						onClick={() => setOpen(!open)}
 						title={open ? t.collapse : t.expand}
@@ -181,7 +258,10 @@ export function Health({
 }) {
 	const f = useFormat();
 	const t = useT();
-	const [h, setH] = useState<DataHealth | null>(null);
+	// "failed" is its own answer. This is the page a reader is sent to when
+	// something is wrong, so a request that failed must not look like one that
+	// is still on its way.
+	const [h, setH] = useState<DataHealth | "failed" | null>(null);
 	const [loadedAt, setLoadedAt] = useState(0);
 	useEffect(() => {
 		(async () => {
@@ -189,18 +269,23 @@ export function Health({
 				setH(await api.health());
 				setLoadedAt(Date.now());
 			} catch {
-				setH(null);
+				setH("failed");
 			}
 		})();
 	}, []);
 
-	if (!h) {
+	if (h === null) {
 		return <p className="empty">{t.loading}</p>;
+	}
+	if (h === "failed") {
+		return <p className="empty">{t.loadFailed}</p>;
 	}
 	const coverage =
 		h.tier1Pairs > 0 ? Math.round((h.collectedToday / h.tier1Pairs) * 100) : 0;
-	const throttled =
-		h.errorsLast24h.find((e) => e.errorClass === "throttled")?.n ?? 0;
+	// Rows are grouped by class and endpoint, so one class can be several rows.
+	const throttled = h.errorsLast24h
+		.filter((e) => e.errorClass === "throttled")
+		.reduce((sum, e) => sum + e.n, 0);
 	const pauseUntil = h.pacing?.pauseUntil ?? 0;
 	const paused = pauseUntil > loadedAt;
 
@@ -261,8 +346,13 @@ export function Health({
 							: t.budgetPending}
 					</div>
 				</div>
-				<LoopTile loop={h.loop} now={loadedAt} />
-				<DailyRunTile run={h.lastDailyRun} />
+				<LoopTile
+					loop={h.loop}
+					now={loadedAt}
+					paused={paused}
+					run={h.lastDailyRun}
+				/>
+				<DailyRunTile now={loadedAt} run={h.lastDailyRun} />
 				<OverdueTile n={h.overduePairs} />
 				<div className="tile">
 					<div className="tile-title">{t.ascAnomalies}</div>
@@ -319,7 +409,7 @@ export function Health({
 							))}
 							{h.errorsLast24h.length === 0 && (
 								<tr>
-									<td colSpan={5} style={{ color: "var(--good-text)" }}>
+									<td colSpan={5} style={{ color: "var(--ds-text-success)" }}>
 										{t.noErrors}
 									</td>
 								</tr>

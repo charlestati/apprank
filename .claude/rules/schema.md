@@ -35,18 +35,22 @@ indexes only the top 10 and any tracked app, because a row per position would be
   `TS2304: Cannot find name 'D1Database'` roughly two hundred times. Generation
   needs no auth and no network, and it reads the committed `wrangler.jsonc`, so
   CI types match the deployed config rather than a local override; run
-  `wrangler types -c wrangler.local.jsonc` when you want the local `APP_URL` in
+  `wrangler types -c wrangler.local.jsonc` when you want the local values in
   your editor. Cloudflare's other pattern, committing the file and gating it
   with `wrangler types --check`, trades a generated artefact in review diffs for
   the same guarantee, and was not taken.
-- **There is one migration, and it is a dump, not a generate.** `0000_init.sql`
-  was produced by `wrangler d1 export apprank --remote --no-data`, which
-  serialises the live database rather than reconstructing it from the schema
-  modules. That is the only way it carries `cr_unique_storefront_wide`, the
-  partial unique index drizzle cannot express: `drizzle-kit export` emits
-  fourteen indexes where production has fifteen. If the baseline ever needs
-  rebuilding, rebuild it the same way and verify by applying it to an empty
-  database and diffing that database's own export against production's.
+- **The baseline migration is a dump, not a generate.** There are three
+  migrations: `0000_init.sql`, the baseline, and two drizzle-generated ones
+  after it (`0001_user_preference.sql`, `0002_tracked_keyword_storefront.sql`,
+  whose backfill was written by hand). Only the baseline is special.
+  `0000_init.sql` was produced by
+  `wrangler d1 export apprank --remote --no-data`, which serialises the live
+  database rather than reconstructing it from the schema modules. That is the
+  only way it carries `cr_unique_storefront_wide`, the partial unique index
+  drizzle cannot express: `drizzle-kit export` emits fourteen indexes where
+  production has fifteen. If the baseline ever needs rebuilding, rebuild it the
+  same way and verify by applying it to an empty database and diffing that
+  database's own export against production's.
 - **There is no user table, and no session tables.** Identity is the `userId` in
   the `BASIC_AUTH_ACCOUNTS` secret, and every `user_id` column is opaque text
   with no foreign key. A session-based auth library costs roughly 1.9 MB of

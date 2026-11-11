@@ -1,12 +1,10 @@
 import path from "node:path";
 
-import {
-	cloudflareTest,
-	readD1Migrations,
-} from "@cloudflare/vitest-pool-workers";
+import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
+import type { ViteUserConfig } from "vitest/config";
 import { defineConfig } from "vitest/config";
 
-export default defineConfig(async () => {
+export default defineConfig(async (): Promise<ViteUserConfig> => {
 	const migrations = await readD1Migrations(
 		path.join(import.meta.dirname, "../../packages/core/migrations")
 	);
@@ -16,6 +14,10 @@ export default defineConfig(async () => {
 				miniflare: {
 					bindings: {
 						TEST_MIGRATIONS: migrations,
+						// Pinned so a developer's .dev.vars (which wrangler loads through
+						// configPath below) cannot hand tests a real token CI never sees.
+						// Tests that need the route configured pass their own.
+						ADMIN_TOKEN: "",
 						// Dummy secrets so steps can be exercised against mocked fetch.
 						ASC_ISSUER_ID: "",
 						ASC_KEY_ID: "",
@@ -30,14 +32,24 @@ export default defineConfig(async () => {
 			}),
 		],
 		test: {
+			// Vitest 5 persists transformed modules under node_modules/.vitest-cache
+			// by default, but the Workers pool resolves those reads inside workerd,
+			// which cannot see that directory: every suite failed to load with an
+			// ENOENT on a cache hash.
+			fsModuleCache: false,
 			coverage: {
 				// v8 coverage is unavailable inside workerd; istanbul instruments the
 				// source at transform time and works in the Workers pool.
 				provider: "istanbul",
+				// packages/core has no suite of its own: the collector's tests are what
+				// exercise the Apple clients and the normaliser, so it is measured
+				// here. Without allowExternal the pattern below matched nothing, since
+				// it points outside this root, and core sat outside the gate.
+				allowExternal: true,
 				include: ["src/**/*.ts", "../../packages/core/src/**/*.ts"],
 				exclude: ["src/env.ts", "**/*.d.ts"],
 				reporter: ["text-summary", "json-summary"],
-				thresholds: { branches: 70, functions: 80, lines: 80, statements: 80 },
+				thresholds: { branches: 80, functions: 80, lines: 80, statements: 80 },
 			},
 			// One file at a time. Storage is shared across the whole run (there is no
 			// isolated storage in this pool), so a file emptying collector_state in

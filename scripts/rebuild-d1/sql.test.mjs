@@ -1,4 +1,6 @@
+/* oxlint-disable vitest/no-import-node-test, vitest/prefer-importing-vitest-globals -- `pnpm test:scripts` runs these under node --test, which vitest cannot reach */
 import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 
 import {
@@ -7,11 +9,17 @@ import {
 	appPlaceholders,
 	buildAdsSql,
 	buildSql,
+	byMonth,
+	findDrift,
+	inRange,
+	isIsoDate,
 	parseGenreKey,
 	parseTermsKey,
+	partFile,
 	rankEntryInserts,
 	rankEntryRows,
 	rankingInsert,
+	rankingKeyDate,
 	sqlEscape,
 } from "./sql.mjs";
 
@@ -173,11 +181,65 @@ test("Apple Ads rebuild: matches keywords on the collector's own normalization",
 	);
 });
 
-test("Apple Ads rebuild: never overwrites a row the collector wrote", () => {
+test("Apple Ads rebuild: never overwrites a popularity row the collector wrote", () => {
 	const rows = adsRows(body, parseGenreKey(genreKey), 1000);
-	for (const sql of buildAdsSql(rows, [])) {
+	const popularity = buildAdsSql(rows, rows).filter(
+		(sql) => tableOf(sql) === "popularity"
+	);
+	assert.equal(popularity.length, 2);
+	for (const sql of popularity) {
 		assert.match(sql, /DO NOTHING/u);
 	}
+});
+
+/** One archived week of the genre list, holding a single term. */
+const week = (w, rank, pop) =>
+	adsRows(
+		{
+			result: {
+				rows: [
+					{
+						rankInGenre: rank,
+						searchPopularity1to100: pop,
+						searchTerm: "radar",
+					},
+				],
+			},
+		},
+		parseGenreKey(`ads/popularity/${w}/fr/6014-GAMES.json`),
+		1000
+	);
+
+test("Apple Ads rebuild: a month's seed_term row ends on its latest week, as the collector leaves it", () => {
+	// seed_term is keyed by month and fed weekly. Listed out of order on
+	// purpose: the rebuild must not depend on the order R2 returns keys in.
+	const rows = [
+		...week("2026-08-16", 40, 70),
+		...week("2026-08-02", 90, 30),
+		...week("2026-08-09", 60, 50),
+	];
+	const db = new DatabaseSync(":memory:");
+	db.exec(
+		"CREATE TABLE seed_term (id INTEGER PRIMARY KEY, month TEXT NOT NULL, storefront_code TEXT NOT NULL, genre_id INTEGER NOT NULL, term TEXT NOT NULL, rank_in_genre INTEGER, popularity_1_100 INTEGER);" +
+			"CREATE UNIQUE INDEX st_unique ON seed_term (month, storefront_code, genre_id, term);"
+	);
+	// A row the collector already wrote from an earlier week of the month.
+	db.exec(
+		"INSERT INTO seed_term (month, storefront_code, genre_id, term, rank_in_genre, popularity_1_100) VALUES ('2026-08', 'fr', 6014, 'radar', 90, 30);"
+	);
+	for (const sql of buildAdsSql(rows, []).filter(
+		(line) => tableOf(line) === "seed_term"
+	)) {
+		db.exec(sql);
+	}
+	assert.deepEqual(
+		{
+			...db
+				.prepare("SELECT month, rank_in_genre, popularity_1_100 FROM seed_term")
+				.get(),
+		},
+		{ month: "2026-08", popularity_1_100: 70, rank_in_genre: 40 }
+	);
 });
 
 test("Apple Ads rebuild: writes no absences, because the archive holds answers and not questions", () => {
@@ -185,4 +247,95 @@ test("Apple Ads rebuild: writes no absences, because the archive holds answers a
 	for (const sql of buildAdsSql(rows, rows)) {
 		assert.doesNotMatch(sql, /, 0, /u);
 	}
+});
+
+test("reads the observed date from a compacted key and nothing else", () => {
+	assert.equal(
+		rankingKeyDate("rankings/v1/2026-09/fr/2026-09-08.ndjson"),
+		"2026-09-08"
+	);
+	assert.equal(rankingKeyDate("staging/rankings/2026-09-08/649.json"), null);
+	assert.equal(rankingKeyDate("rankings/v1/2026-09/fr/latest.ndjson"), null);
+});
+
+test("a range is inclusive on both ends and open where no bound is given", () => {
+	assert.ok(inRange("2026-09-08", "2026-09-08", "2026-09-08"));
+	assert.ok(!inRange("2026-09-07", "2026-09-08", null));
+	assert.ok(!inRange("2026-09-09", null, "2026-09-08"));
+	assert.ok(inRange("2026-09-09", null, null));
+	assert.ok(isIsoDate("2026-09-08"));
+	assert.ok(!isIsoDate("2026-9-8"));
+	assert.ok(!isIsoDate("abc"));
+	assert.ok(!isIsoDate(""));
+});
+
+test("splits the archive into one part per month, each named after it", () => {
+	// One joined string for the whole archive threw at V8's string limit; a
+	// month at a time never holds more than a month.
+	const months = byMonth([
+		"rankings/v1/2026-10/fr/2026-10-01.ndjson",
+		"rankings/v1/2026-09/fr/2026-09-30.ndjson",
+		"rankings/v1/2026-09/ca/2026-09-30.ndjson",
+		"rankings/v1/2026-09/fr/not-a-date.ndjson",
+	]);
+	assert.deepEqual([...months.keys()], ["2026-09", "2026-10"]);
+	assert.equal(months.get("2026-09").length, 2);
+	assert.equal(partFile("rebuild.sql", "2026-09"), "rebuild-2026-09.sql");
+	assert.equal(partFile("out/rebuild.sql", "ads"), "out/rebuild-ads.sql");
+	assert.equal(partFile("./a.b/rebuild", "ads"), "./a.b/rebuild-ads");
+});
+
+test("a month's statements apply on their own, and again, without change", () => {
+	const db = new DatabaseSync(":memory:");
+	db.exec(`
+		CREATE TABLE app (id INTEGER PRIMARY KEY, first_seen_at INTEGER, last_seen_at INTEGER);
+		CREATE TABLE ranking (id INTEGER PRIMARY KEY AUTOINCREMENT, pair_id INTEGER, observed_date TEXT,
+			fetched_at INTEGER, http_status INTEGER, response_ms INTEGER, result_count INTEGER,
+			result_ids TEXT, collector_version TEXT, r2_key TEXT, valid INTEGER,
+			UNIQUE (pair_id, observed_date));
+		CREATE TABLE rank_entry (ranking_id INTEGER, position INTEGER, app_id INTEGER REFERENCES app(id),
+			PRIMARY KEY (ranking_id, position));
+	`);
+	const september = [observation({ date: "2026-09-08" })];
+	const october = [
+		observation({ date: "2026-10-01", fetchedAt: 1_790_000_000_000 }),
+	];
+	for (const part of [september, october, september]) {
+		db.exec(buildSql(part, new Set()).join("\n"));
+	}
+	assert.equal(db.prepare("SELECT COUNT(*) AS n FROM ranking").get().n, 2);
+	assert.equal(db.prepare("SELECT COUNT(*) AS n FROM rank_entry").get().n, 20);
+});
+
+test("verify reports drift in both directions, per date", () => {
+	const archive = new Map([
+		["2026-09-08", new Set([1, 2, 3])],
+		["2026-09-09", new Set([1, 2])],
+	]);
+	const live = new Map([
+		["2026-09-08", new Set([1, 2])],
+		["2026-09-09", new Set([1, 2, 9])],
+	]);
+	assert.deepEqual(findDrift(archive, live, "2026-09-20"), [
+		{ date: "2026-09-08", missingFromArchive: 0, missingFromD1: 1 },
+		{ date: "2026-09-09", missingFromArchive: 1, missingFromD1: 0 },
+	]);
+});
+
+test("verify finds no drift when the two agree", () => {
+	const archive = new Map([["2026-09-08", new Set([1, 2])]]);
+	const live = new Map([["2026-09-08", new Set([2, 1])]]);
+	assert.deepEqual(findDrift(archive, live, "2026-09-20"), []);
+});
+
+test("verify flags a settled date D1 holds and the archive never got", () => {
+	// The newest dates are rightly in D1 alone until compaction runs; an old
+	// one that never reached the archive cannot be rebuilt.
+	const live = new Map([
+		["2026-09-01", new Set([1, 2])],
+		["2026-09-19", new Set([1, 2])],
+	]);
+	assert.deepEqual(findDrift(new Map(), live, "2026-09-19"), [
+		{ date: "2026-09-01", missingFromArchive: 2, missingFromD1: 0 },
+	]);
 });

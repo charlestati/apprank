@@ -10,6 +10,7 @@ import {
 	onThrottle,
 	onAdminThrottle,
 	maybeRaise,
+	updatePacing,
 } from "../src/lib/pacing";
 
 function defaultPacing() {
@@ -144,7 +145,7 @@ describe(onThrottle, () => {
 				p = onThrottle(p, now);
 				now = afterPause(p);
 			}
-			p = maybeRaise(p, `2026-09-0${day + 1}`);
+			p = maybeRaise(p, `2026-09-0${day + 1}`, true);
 		}
 		expect(p.ratePerMin).toBe(1);
 	});
@@ -169,7 +170,7 @@ describe(onAdminThrottle, () => {
 			p = onAdminThrottle(p, 2_000_000 + i);
 		}
 		expect(p.windowErrorCount).toBe(0);
-		expect(maybeRaise(p, "2026-09-02").ratePerMin).toBeCloseTo(4.84, 5);
+		expect(maybeRaise(p, "2026-09-02", true).ratePerMin).toBeCloseTo(4.84, 5);
 	});
 });
 
@@ -177,7 +178,7 @@ describe(maybeRaise, () => {
 	const day = "2026-09-01";
 
 	it("raises by 10% after a day with no throttling", () => {
-		const p = maybeRaise({ ...defaultPacing(), lastErrorAt: 0 }, day);
+		const p = maybeRaise({ ...defaultPacing(), lastErrorAt: 0 }, day, true);
 		expect(p.ratePerMin).toBeCloseTo(4.4, 5);
 		expect(p.lastRollDay).toBe(day);
 	});
@@ -187,7 +188,8 @@ describe(maybeRaise, () => {
 		// meant the rate only ever fell.
 		const p = maybeRaise(
 			{ ...defaultPacing(), lastErrorAt: Date.now(), windowErrorCount: 4 },
-			day
+			day,
+			true
 		);
 		expect(p.ratePerMin).toBeCloseTo(4.4, 5);
 		expect(p.throttlesPrevDay).toBe(4);
@@ -195,15 +197,30 @@ describe(maybeRaise, () => {
 	});
 
 	it("holds the rate after a day that broke the tolerance", () => {
-		const p = maybeRaise({ ...defaultPacing(), windowErrorCount: 5 }, day);
+		const p = maybeRaise(
+			{ ...defaultPacing(), windowErrorCount: 5 },
+			day,
+			true
+		);
 		expect(p.ratePerMin).toBe(4);
 		expect(p.throttlesPrevDay).toBe(5);
 		expect(p.windowErrorCount).toBe(0);
 	});
 
+	it("holds the rate after a day on which the loop fetched nothing", () => {
+		// A zero tally is not a clean day when nothing was asked: a deployment
+		// that never reaches the public endpoints, or a runner driven through the
+		// manual triggers, climbed 4 to 18 in sixteen days on no evidence.
+		const p = maybeRaise(defaultPacing(), day, false);
+		expect(p.ratePerMin).toBe(4);
+		// The day still closes, so the tally does not carry into tomorrow.
+		expect(p.lastRollDay).toBe(day);
+		expect(p.windowErrorCount).toBe(0);
+	});
+
 	it("rolls at most once per day, so a second call cannot re-raise", () => {
-		const first = maybeRaise(defaultPacing(), day);
-		const second = maybeRaise(first, day);
+		const first = maybeRaise(defaultPacing(), day, true);
+		const second = maybeRaise(first, day, true);
 		expect(second.ratePerMin).toBe(first.ratePerMin);
 		expect(second.throttlesPrevDay).toBe(first.throttlesPrevDay);
 	});
@@ -211,7 +228,7 @@ describe(maybeRaise, () => {
 	it("recovers from the floor instead of staying pinned there", () => {
 		let p = { ...defaultPacing(), ratePerMin: 1 };
 		for (let i = 0; i < 40; i += 1) {
-			p = maybeRaise({ ...p, lastRollDay: "" }, day);
+			p = maybeRaise({ ...p, lastRollDay: "" }, day, true);
 		}
 		expect(p.ratePerMin).toBe(18);
 	});
@@ -219,8 +236,55 @@ describe(maybeRaise, () => {
 	it("stops raising below Apple's documented 20 calls a minute", () => {
 		let p = { ...defaultPacing(), ratePerMin: 17.9 };
 		for (let i = 0; i < 5; i += 1) {
-			p = maybeRaise({ ...p, lastRollDay: "" }, day);
+			p = maybeRaise({ ...p, lastRollDay: "" }, day, true);
 		}
 		expect(p.ratePerMin).toBe(18);
+	});
+});
+
+describe(updatePacing, () => {
+	it("writes the first state when nothing is persisted", async () => {
+		const { after } = await updatePacing(env.DB, (p) => onThrottle(p, 5000));
+		expect(after.windowErrorCount).toBe(1);
+		await expect(loadPacing(env.DB)).resolves.toMatchObject({
+			lastErrorAt: 5000,
+			windowErrorCount: 1,
+		});
+	});
+
+	it("applies a change on top of a write that landed after its read", async () => {
+		// The lost update: a manual throttle computed from a copy read before the
+		// loop's pause was saved put pauseUntil back to zero. The competing write
+		// is started from inside the first attempt, so it reaches D1 between that
+		// attempt's read and its write.
+		await savePacing(env.DB, defaultPacing());
+		let competing: Promise<void> | undefined;
+		const { after } = await updatePacing(env.DB, (p) => {
+			competing ??= savePacing(env.DB, {
+				...defaultPacing(),
+				pauseUntil: 9_999_999,
+				windowErrorCount: 1,
+			});
+			return onAdminThrottle(p, 7000);
+		});
+		await competing;
+		expect(after.pauseUntil).toBe(9_999_999);
+		await expect(loadPacing(env.DB)).resolves.toMatchObject({
+			lastErrorAt: 7000,
+			pauseUntil: 9_999_999,
+			windowErrorCount: 1,
+		});
+	});
+
+	it("spends no write on a change that changes nothing", async () => {
+		await savePacing(env.DB, { ...defaultPacing(), lastRollDay: "2026-09-01" });
+		const before = await env.DB.prepare(
+			"SELECT updated_at FROM collector_state WHERE key = 'pacing'"
+		).first<{ updated_at: number }>();
+		await updatePacing(env.DB, (p) => maybeRaise(p, "2026-09-01", true));
+		const after = await env.DB.prepare(
+			"SELECT updated_at FROM collector_state WHERE key = 'pacing'"
+		).first<{ updated_at: number }>();
+		expect(after?.updated_at).toBe(before?.updated_at);
 	});
 });

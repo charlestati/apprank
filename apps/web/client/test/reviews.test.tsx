@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { Reviews } from "../src/pages/reviews";
-import { review, stubFetch, trackedApp } from "./harness";
+import { deferred, review, settle, stubFetch, trackedApp } from "./harness";
 
 describe("Reviews page", () => {
 	afterEach(() => {
@@ -30,12 +30,13 @@ describe("Reviews page", () => {
 		).resolves.toBeDefined();
 	});
 
-	it("treats a failed request as an empty list", async () => {
+	it("says a failed request failed, not that nothing was collected", async () => {
 		stubFetch({ reviews: new Response("", { status: 500 }) });
 		render(<Reviews app={trackedApp} />);
 		await expect(
-			screen.findByText(/Nothing collected yet/u)
+			screen.findByText(/could not be loaded/u)
 		).resolves.toBeDefined();
+		expect(screen.queryByText(/Nothing collected yet/u)).toBeNull();
 	});
 
 	it("renders the star rating, tags and body", async () => {
@@ -71,9 +72,15 @@ describe("Reviews page", () => {
 			reviews: [review({ id: "review-2", rating: null, title: "No rating" })],
 		});
 		render(<Reviews app={trackedApp} />);
-		const unrated = await screen.findByLabelText("? stars");
+		const unrated = await screen.findByLabelText("Not rated");
 		expect(unrated.querySelectorAll("svg")).toHaveLength(5);
 		expect(unrated.querySelectorAll(".star-on")).toHaveLength(0);
+	});
+
+	it("counts one star in the singular", async () => {
+		stubFetch({ reviews: [review({ rating: 1 })] });
+		render(<Reviews app={trackedApp} />);
+		await expect(screen.findByLabelText("1 star")).resolves.toBeDefined();
 	});
 
 	it("splits author, storefront and version into their own tags", async () => {
@@ -87,5 +94,44 @@ describe("Reviews page", () => {
 		expect(screen.getByText("Reviewer One")).toBeDefined();
 		expect(screen.getByText("Version 1.0.0")).toBeDefined();
 		expect(screen.getByText("10 Jan 2026")).toBeDefined();
+	});
+});
+
+describe("Reviews page across an app switch", () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it("keeps the current app's reviews when the previous app's land late", async () => {
+		const other = { ...trackedApp, id: 999 };
+		const stale = deferred<unknown>();
+		stubFetch({
+			"/apps/999/reviews": [review({ id: "current", title: "Current app" })],
+			reviews: stale.promise,
+		});
+		const view = render(<Reviews app={trackedApp} />);
+		view.rerender(<Reviews app={other} />);
+		await expect(screen.findByText("Current app")).resolves.toBeDefined();
+
+		stale.resolve([review({ id: "stale", title: "Previous app" })]);
+		await settle();
+		expect(screen.queryByText("Previous app")).toBeNull();
+		expect(screen.getByText("Current app")).toBeDefined();
+	});
+
+	it("shows the loading state, not the previous app's reviews, while loading", async () => {
+		const pending = deferred<unknown>();
+		stubFetch({
+			"/apps/999/reviews": pending.promise,
+			reviews: [review({ title: "Previous app" })],
+		});
+		const view = render(<Reviews app={trackedApp} />);
+		await screen.findByText("Previous app");
+
+		view.rerender(<Reviews app={{ ...trackedApp, id: 999 }} />);
+		expect(screen.queryByText("Previous app")).toBeNull();
+		expect(screen.getByText("Loading…")).toBeDefined();
+		pending.resolve([]);
+		await screen.findByText(/Nothing collected yet/u);
 	});
 });

@@ -6,13 +6,13 @@
 // "hard" is the reading, and the column header carries the scale itself.
 
 import { Meter as BaseMeter } from "@base-ui/react/meter";
-import { Tooltip } from "@base-ui/react/tooltip";
 
 import type { Difficulty as DifficultyValue } from "../api";
 import type { Dictionary } from "../i18n";
 import { fmt, useT } from "../i18n";
+import { Hint } from "./info-tip";
 
-export function difficultyBand(t: Dictionary, score: number): string {
+function difficultyBand(t: Dictionary, score: number): string {
 	if (score >= 80) {
 		return t.diffVeryHard;
 	}
@@ -65,40 +65,36 @@ export function Difficulty({ value }: { value: DifficultyValue | null }) {
 		value.formulaVersion,
 	].join(" · ");
 
+	// The footnote trigger sits beside the meter, not inside it: the children of
+	// `role="meter"` are presentational, so a button in there has a name
+	// assistive tech is free to drop.
 	return (
-		<BaseMeter.Root
-			aria-label={t.difficulty}
-			className="meter"
-			getAriaValueText={(_formatted, current) => String(current)}
-			title={explanation}
-			value={value.score}
-		>
-			<BaseMeter.Track className="meter-track">
-				<BaseMeter.Indicator className={bandClass(value.score)} />
-			</BaseMeter.Track>
-			<span className="meter-value">
-				<BaseMeter.Value>{(_formatted, score) => score}</BaseMeter.Value>
-				{/* The asterisk used to carry its meaning in a `title` alone, which
-				    is to say nowhere a touch or keyboard reader could find it. */}
-				{value.sampleSize < 5 ? (
-					<Tooltip.Root>
-						<Tooltip.Trigger
-							aria-label={t.difficultyFewIncumbents}
-							className="footnote-mark"
-							type="button"
-						>
-							<span aria-hidden="true">*</span>
-						</Tooltip.Trigger>
-						<Tooltip.Portal>
-							<Tooltip.Positioner className="ui-layer" sideOffset={6}>
-								<Tooltip.Popup className="tip-popup">
-									{t.difficultyFewIncumbents}
-								</Tooltip.Popup>
-							</Tooltip.Positioner>
-						</Tooltip.Portal>
-					</Tooltip.Root>
-				) : null}
-			</span>
-		</BaseMeter.Root>
+		<span className="meter-cell">
+			<BaseMeter.Root
+				aria-label={t.difficulty}
+				className="meter"
+				getAriaValueText={(_formatted, current) => String(current)}
+				title={explanation}
+				value={value.score}
+			>
+				<BaseMeter.Track className="meter-track">
+					<BaseMeter.Indicator className={bandClass(value.score)} />
+				</BaseMeter.Track>
+				<BaseMeter.Value className="meter-value">
+					{(_formatted, score) => score}
+				</BaseMeter.Value>
+			</BaseMeter.Root>
+			{/* The asterisk used to carry its meaning in a `title` alone, which is
+			    to say nowhere a touch or keyboard reader could find it. */}
+			{value.sampleSize < 5 ? (
+				<Hint
+					className="footnote-mark"
+					label={t.difficultyFewIncumbents}
+					mark="*"
+				>
+					{t.difficultyFewIncumbents}
+				</Hint>
+			) : null}
+		</span>
 	);
 }

@@ -15,7 +15,7 @@ import { createMcpHandler } from "agents/mcp/server";
 import * as z from "zod";
 
 import type { Env } from "../env";
-import { authenticateMcp, parseToken } from "./auth";
+import { authenticateMcp } from "./auth";
 import type { AuthFailure, Principal } from "./auth";
 import { audited } from "./logging";
 import type { ToolContext } from "./logging";
@@ -173,7 +173,7 @@ function buildServer(
 					.int()
 					.optional()
 					.describe(
-						"Narrow to one app's position. Omit for the tracked app's own rank."
+						"Narrow to one app's position. Omit for the tracked app's own rank; required when you track this keyword for more than one app."
 					),
 				detail: detailSchema,
 				from: isoDate
@@ -474,7 +474,7 @@ const FAILURE_MESSAGE: Record<AuthFailure, string> = {
 	expired: "credential expired",
 	malformed: "malformed credential",
 	missing: "missing credential",
-	rate_limited: "daily call budget exhausted for this credential",
+	rate_limited: "call budget exhausted, retry later",
 	revoked: "credential revoked",
 	unknown: "unknown credential",
 };
@@ -510,22 +510,40 @@ export async function handleMcp(
 	executionCtx: { waitUntil: (promise: Promise<unknown>) => void }
 ): Promise<Response> {
 	const header = request.headers.get("Authorization");
+	const limiter = env.MCP_RATE_LIMIT;
 
-	// Burst brake first, keyed on the credential id alone. It is the public half
-	// of the token, so this costs nothing and reveals nothing. Refusing
-	// here means a hot retry loop never reaches D1, and cannot spend the write
-	// allowance on being told no.
-	const identified = parseToken(header);
-	if (identified && env.MCP_RATE_LIMIT) {
-		const { success } = await env.MCP_RATE_LIMIT.limit({
-			key: identified.id,
-		});
+	// Two brakes on one binding, told apart by their key.
+	//
+	// Before the gate, by client address: nothing a caller sends can be trusted
+	// yet, so the address is the only key they do not choose. It is what keeps a
+	// hot loop of wrong or rotating tokens from costing a D1 read each. Callers
+	// behind one address share this bucket, which is the price of keying on
+	// something that cannot be forged.
+	//
+	// After the secret matches, by credential: see `authenticateMcp`. That one
+	// used to run first, keyed on the id half of the token, and so could be spent
+	// by anyone who knew the id.
+	const address = request.headers.get("CF-Connecting-IP");
+	if (limiter && address) {
+		const { success } = await limiter.limit({ key: `ip:${address}` });
 		if (!success) {
 			return unauthorized("rate_limited");
 		}
 	}
 
-	const outcome = await authenticateMcp(env.DB, header);
+	const outcome = await authenticateMcp(
+		env.DB,
+		header,
+		Date.now(),
+		limiter
+			? async (credentialId) => {
+					const { success } = await limiter.limit({
+						key: `credential:${credentialId}`,
+					});
+					return success;
+				}
+			: undefined
+	);
 	if (!outcome.ok) {
 		return unauthorized(outcome.reason);
 	}

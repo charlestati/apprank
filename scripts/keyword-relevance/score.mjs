@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// Score the pending keyword suggestions against the tracked set, on this
+// Score the pending keyword suggestions against their owner's tracked set, on this
 // machine, with a local embedding model.
 //
 // The collector cannot do this. It runs on Workers, its filter is whole-word
@@ -22,7 +22,12 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 
-import { scoreCandidates, split } from "./relevance.mjs";
+import {
+	dismissSql,
+	parseThreshold,
+	scoreByUser,
+	split,
+} from "./relevance.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
 const COLLECTOR = path.join(ROOT, "apps/collector");
@@ -54,7 +59,11 @@ if (!/^[a-z]{2}$/u.test(storefront)) {
 	console.error(`--storefront must be a two-letter code, got ${storefront}`);
 	process.exit(2);
 }
-const threshold = Number(flag("threshold", DEFAULT_THRESHOLD));
+const threshold = parseThreshold(flag("threshold", DEFAULT_THRESHOLD));
+if (threshold === null) {
+	console.error("--threshold must be a number between 0 and 1");
+	process.exit(2);
+}
 // Pinned rather than defaulted: the same text through a different model is a
 // different number, and a threshold calibrated against one says nothing about
 // the other.
@@ -103,14 +112,19 @@ async function embed(texts) {
 	return body.embeddings;
 }
 
+// Per user, because a suggestion is judged against its owner's tracked set
+// (see scoreByUser). The storefront is the user's own choice of where they
+// track the keyword, not the shared crawl_pair, which is everyone's union.
 const tracked = d1(
-	`SELECT DISTINCT k.normalized AS term FROM crawl_pair cp
-     JOIN keyword k ON k.id = cp.keyword_id
-    WHERE cp.storefront_code = '${storefront}' AND cp.ref_count > 0`
-).map((r) => r.term);
+	`SELECT DISTINCT tk.user_id AS userId, k.normalized AS term
+     FROM tracked_keyword tk
+     JOIN tracked_keyword_storefront tks ON tks.tracked_keyword_id = tk.id
+     JOIN keyword k ON k.id = tk.keyword_id
+    WHERE tks.storefront_code = '${storefront}'`
+);
 
 const pending = d1(
-	`SELECT id, json_extract(payload, '$.term') AS term,
+	`SELECT id, user_id AS userId, json_extract(payload, '$.term') AS term,
           json_extract(payload, '$.seed') AS seed
      FROM suggestion
     WHERE status = 'pending' AND type = 'promote_keyword'
@@ -125,18 +139,23 @@ if (tracked.length === 0 || pending.length === 0) {
 }
 
 console.log(
-	`${storefront}: scoring ${pending.length} pending against ${tracked.length} tracked keywords with ${model}`
+	`${storefront}: scoring ${pending.length} pending against ${tracked.length} tracked (user, keyword) pairs with ${model}`
 );
 
-const [trackedVectors, candidateVectors] = await Promise.all([
-	embed(tracked),
-	embed(pending.map((p) => p.term)),
-]);
+// Each distinct text embedded once, however many users share it.
+const texts = [...new Set([...tracked, ...pending].map((r) => r.term))];
+const embedded = await embed(texts);
+const vectors = new Map(embedded.map((vector, i) => [texts[i], vector]));
 
-const scored = scoreCandidates(
-	pending.map((p, i) => ({ ...p, vector: candidateVectors[i] })),
-	tracked.map((term, i) => ({ term, vector: trackedVectors[i] }))
+const { scored, unscored } = scoreByUser(
+	pending.map((p) => ({ ...p, vector: vectors.get(p.term) })),
+	tracked.map((t) => ({ ...t, vector: vectors.get(t.term) }))
 );
+if (unscored.length > 0) {
+	console.log(
+		`${unscored.length} pending left alone: their owner tracks nothing in ${storefront} to compare against`
+	);
+}
 const { drop, keep } = split(scored, threshold);
 
 for (const s of scored) {
@@ -154,7 +173,5 @@ if (!apply) {
 if (drop.length === 0) {
 	process.exit(0);
 }
-d1(
-	`UPDATE suggestion SET status = 'dismissed' WHERE id IN (${drop.map((d) => d.id).join(",")})`
-);
-console.log(`dismissed ${drop.length}`);
+d1(dismissSql(drop.map((d) => d.id)));
+console.log(`dismissed up to ${drop.length} (only those still pending)`);

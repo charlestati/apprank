@@ -14,8 +14,9 @@
 # Durable Object is local to this process; only the data is shared.
 #
 # A runner's egress is not Cloudflare's, but it is still shared, and Apple
-# rate-limits whoever it is. Run this by hand once on a new deployment and
-# check `throttled=` in the summary before trusting the cron.
+# rate-limits whoever it is. Run this by hand once on a new deployment before
+# trusting the cron: a cycle that ends throttled, or leaves work due, fails the
+# job (refresh.sh exits 3), because a day with nothing collected is not a pass.
 name: Collect
 
 on:
@@ -26,6 +27,11 @@ on:
     - cron: "10 3 * * *"
   workflow_dispatch:
 
+# The job only reads the repository. Stated, so the token does not fall back to
+# whatever the repository default happens to be.
+permissions:
+  contents: read
+
 # One collector at a time. Two concurrent runs would fetch the same pairs twice
 # and spend the same IP's budget against itself.
 concurrency:
@@ -35,32 +41,35 @@ concurrency:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    # Sized from the ceilings in refresh.sh, not the other way round: at the
-    # measured 2.56 units a minute, 255 pairs plus the queue steps is ~110
-    # minutes. Billing is on real duration, so a generous cap costs nothing
+    # Sized from the ceilings in refresh.sh, not the other way round: 500
+    # crawls at about 10 s and 80 queue steps at about 13 s come to roughly 100
+    # minutes when nothing stalls, and every stall adds a 60 s pause. The
+    # slowest of the forty daily runs to 2026-11-11 took 136 minutes. Billing is on real duration, so a generous cap costs nothing
     # until a run needs it, and on a public repo the minutes are unlimited. The
     # hard ceiling is GitHub's 6 hours for one job. Raise this before adding
     # keywords, never after: a run that times out loses the day for whatever it
     # had not reached yet.
     timeout-minutes: 210
+    # Secrets are scoped to the step that reads them, never the job: at job
+    # scope they sit in the environment of `pnpm install`, which runs
+    # dependency build scripts, and of every third-party action.
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
       APPRANK_LOG_DIR: ${{ github.workspace }}/collect-logs
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24
+          node-version-file: .node-version
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
 
       - name: Build the crawl config
+        env:
+          D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
         run: node scripts/local-refresh/write-config.mjs
 
       - name: Provide the admin token to the dev session
@@ -75,6 +84,11 @@ jobs:
         run: printf 'ADMIN_TOKEN=%s\n' "$ADMIN_TOKEN" > apps/collector/.dev.vars
 
       - name: Collect
+        # wrangler needs these for the remote D1 and R2 bindings, and so does
+        # the verify pass refresh.sh ends with.
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: ./scripts/local-refresh/refresh.sh
 
       - name: Diagnostics
@@ -87,7 +101,7 @@ jobs:
 
       - name: Logs
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           # Not `.collect-logs`: upload-artifact excludes hidden files by
           # default, so a dot-prefixed directory uploads nothing and reports

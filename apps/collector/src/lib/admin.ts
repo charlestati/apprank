@@ -50,7 +50,7 @@ export function bearer(header: string | null): string | null {
  */
 export async function authorize(
 	header: string | null,
-	expected: string | undefined
+	expected?: string
 ): Promise<{ ok: boolean; configured: boolean }> {
 	if (!expected) {
 		return { configured: false, ok: false };

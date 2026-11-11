@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { Review, TrackedApp } from "../api";
 import { useFormat } from "../format";
-import { useT, fmt } from "../i18n";
+import { fmt, plural, useT } from "../i18n";
 
 /**
  * Sentiment band for the rail down the left edge of a card. Apple's own split
@@ -25,25 +25,46 @@ function tone(rating: number | null): string {
 export function Reviews({ app }: { app: TrackedApp | null }) {
 	const f = useFormat();
 	const t = useT();
-	const [reviews, setReviews] = useState<Review[] | null>(null);
+	// Stamped with the app they belong to, so switching apps shows the loading
+	// state rather than the previous app's reviews, and a slow answer for the
+	// previous app cannot land over the current one.
+	const [fetched, setFetched] = useState<{
+		appId: number;
+		/** Null when the request failed, which is not "no reviews". */
+		reviews: Review[] | null;
+	} | null>(null);
+	const appId = app?.id ?? null;
 	useEffect(() => {
-		if (!app) {
+		if (appId === null) {
 			return;
 		}
+		let live = true;
 		(async () => {
+			let next: Review[] | null = null;
 			try {
-				setReviews(await api.reviews(app.id));
+				next = await api.reviews(appId);
 			} catch {
-				setReviews([]);
+				// Shown as a failure: "nothing collected yet" would be a statement
+				// about the data that a failed request cannot make.
+			}
+			if (live) {
+				setFetched({ appId, reviews: next });
 			}
 		})();
-	}, [app]);
+		return () => {
+			live = false;
+		};
+	}, [appId]);
+	const answered = fetched?.appId === appId ? fetched : null;
+	const reviews = answered?.reviews ?? null;
 
 	if (!app) {
 		return <p className="empty">{t.noAppTracked}</p>;
 	}
 	if (reviews === null) {
-		return <p className="empty">{t.loading}</p>;
+		return (
+			<p className="empty">{answered === null ? t.loading : t.loadFailed}</p>
+		);
 	}
 
 	return (
@@ -66,7 +87,11 @@ export function Reviews({ app }: { app: TrackedApp | null }) {
 							<div className="review-head">
 								<span
 									className="stars"
-									aria-label={fmt(t.starsLabel, { n: r.rating ?? "?" })}
+									aria-label={
+										r.rating === null
+											? t.starsUnrated
+											: plural(t, r.rating, "starLabel", "starsLabel")
+									}
 								>
 									{/* Filled and hollow stars from the same icon, so the two
                       halves of the rating share a shape and differ only in

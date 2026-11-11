@@ -21,7 +21,7 @@ import { useCallback, useId, useMemo, useState } from "react";
 
 import type { KeywordRow, MetadataMarker } from "../api";
 import { useFormat } from "../format";
-import { fmt, useT } from "../i18n";
+import { changedFields, fmt, plural, useT } from "../i18n";
 import type { Dictionary } from "../i18n";
 
 // The viewBox is measured in CSS pixels, not in an arbitrary design unit, so
@@ -38,6 +38,9 @@ const PAD = { bottom: 26, left: 46, right: 132, top: 32 };
 // keyword sitting at rank 1 was drawn straight through its own line.
 const MARKER_ROW = 13;
 const MARKER_SIZE = 14;
+/** Room for one tag and its numeral, when two releases share a day. */
+const MARKER_STEP = 26;
+const UNRANKED_SIZE = 7;
 // Rails below the plot floor, in pixels: one for observations that landed
 // outside the top 200, one for days the fetch failed.
 const RAIL_UNRANKED = 20;
@@ -75,8 +78,12 @@ interface Props {
 	/** Series the rest of the page is pointing at; everything else greys out. */
 	focusedPairId?: number | null;
 	onFocus?: (pairId: number | null) => void;
-	/** Release the reader is pointing at, by date; the other pins grey out. */
-	focusedMarker?: string | null;
+	/**
+	 * Release the reader is pointing at, by its place in `markers`; the other
+	 * pins grey out. An index, not a date: two versions captured on one day share
+	 * the date, and pointing at one lit both.
+	 */
+	focusedMarker?: number | null;
 }
 
 interface Segment {
@@ -182,7 +189,9 @@ function markerTitle(
 	day: (iso: string) => string
 ): string {
 	const what =
-		marker.changed.length > 0 ? marker.changed.join(", ") : t.noFieldDiff;
+		marker.changed.length > 0
+			? changedFields(t, marker.changed)
+			: t.noFieldDiff;
 	const version = marker.version
 		? fmt(t.chartVersion, { version: marker.version })
 		: "";
@@ -231,7 +240,12 @@ export function RankSeriesChart({
 	const [hover, setHover] = useState<number | null>(null);
 	const [hoverSeries, setHoverSeries] = useState<number | null>(null);
 	const hatchId = useId();
-	const active = focusedPairId ?? hoverSeries;
+	// Only a series this chart draws can take the focus. The table reports
+	// whatever row is under the pointer, and a keyword that is not on the chart
+	// greyed every line there is without lighting one.
+	const pointedAt = focusedPairId ?? hoverSeries;
+	const active = series.some((s) => s.pairId === pointedAt) ? pointedAt : null;
+	const [tipWidth, setTipWidth] = useState(0);
 	const [w, setW] = useState(FALLBACK_W);
 
 	// The chart is as wide as the card gives it, and its own coordinate space is
@@ -307,8 +321,11 @@ export function RankSeriesChart({
 			const segments: Segment[] = [];
 			// Observed, but nowhere in the top 200. Data, not a hole, so it gets a
 			// slot of its own instead of being drawn as an absence.
-			const unranked: number[] = [];
-			const failures: { i: number; errorClass: string }[] = [];
+			const unranked: { i: number; depth: number }[] = [];
+			// One mark per failed day, whatever number of classes it failed with:
+			// the server groups by day and class, and two rects on one slot were
+			// two elements with one key and one visible hatch.
+			const failed = new Map<number, string[]>();
 			let current: Segment["points"] = [];
 			for (const [date, i] of byDate) {
 				const pos = positions.get(date);
@@ -318,7 +335,7 @@ export function RankSeriesChart({
 					}
 					current = [];
 					if (pos === null) {
-						unranked.push(i);
+						unranked.push({ depth: 0, i });
 					}
 				} else {
 					current.push({ depth: 0, x: xOf(i), y: yOf(pos) });
@@ -330,9 +347,13 @@ export function RankSeriesChart({
 			for (const e of s.fetchErrors) {
 				const i = byDate.get(e.date);
 				if (i !== undefined && !positions.has(e.date)) {
-					failures.push({ errorClass: e.errorClass, i });
+					failed.set(i, [...(failed.get(i) ?? []), e.errorClass]);
 				}
 			}
+			const failures = [...failed].map(([i, classes]) => ({
+				errorClass: classes.join(", "),
+				i,
+			}));
 			return { failures, row: s, segments, unranked };
 		});
 
@@ -350,6 +371,19 @@ export function RankSeriesChart({
 					p.depth = depth;
 					stacked.set(key, depth + 1);
 				}
+			}
+		}
+
+		// The rail has one row, so two keywords outside the top 200 on the same
+		// day land on the same pixel too. Same answer as the dots: the later ones
+		// are hollow squares around the first, never nudged to a day they were
+		// not observed on.
+		const railed = new Map<number, number>();
+		for (const line of built) {
+			for (const mark of line.unranked) {
+				const depth = railed.get(mark.i) ?? 0;
+				mark.depth = depth;
+				railed.set(mark.i, depth + 1);
 			}
 		}
 
@@ -404,8 +438,13 @@ export function RankSeriesChart({
 		}
 		if (step !== 0) {
 			e.preventDefault();
+			// With no crosshair yet, either arrow puts it on the newest day, the
+			// one a reader is most likely after. Stepping from that default as
+			// well made the first ArrowLeft skip it.
 			setHover((current) =>
-				Math.max(0, Math.min(last, (current ?? last) + step))
+				current === null
+					? last
+					: Math.max(0, Math.min(last, Math.min(current, last) + step))
 			);
 			return;
 		}
@@ -419,7 +458,11 @@ export function RankSeriesChart({
 		}
 	}
 
-	const hoveredDate = hover === null ? null : dates[hover];
+	// Clamped on read: the dates can shrink under a held index (a shorter window,
+	// a hidden series), and an index past the end would draw the crosshair off
+	// the plot and read out nothing.
+	const at = hover === null ? null : Math.min(hover, dates.length - 1);
+	const hoveredDate = at === null ? null : dates[at];
 	// Every state the hovered day can be in, named. A day with no row at all is
 	// omitted: nothing was scheduled, and inventing "0" for it is the lie the
 	// whole component exists to avoid.
@@ -429,7 +472,7 @@ export function RankSeriesChart({
 			: series
 					.map((s) => {
 						const point = s.points.find((p) => p.date === hoveredDate);
-						const failed = s.fetchErrors.find((e) => e.date === hoveredDate);
+						const failed = s.fetchErrors.filter((e) => e.date === hoveredDate);
 						if (point) {
 							return {
 								position: point.position,
@@ -437,9 +480,9 @@ export function RankSeriesChart({
 								state: point.position === null ? "unranked" : "ranked",
 							} as const;
 						}
-						return failed
+						return failed.length > 0
 							? ({
-									errorClass: failed.errorClass,
+									errorClass: failed.map((e) => e.errorClass).join(", "),
 									position: null,
 									row: s,
 									state: "failed",
@@ -486,9 +529,13 @@ export function RankSeriesChart({
 	return (
 		<div className="chart" ref={measure}>
 			<svg
-				aria-label={`Rank history for ${series.length} ${
-					series.length === 1 ? "keyword" : "keywords"
-				} over ${dates.length} days, ${dates[0]} to ${dates.at(-1)}. Rank 1 is at the top; gaps are days with no observation.`}
+				aria-label={fmt(t.chartAria, {
+					days: plural(t, dates.length, "nDay", "nDays"),
+					from: f.day(dates[0] ?? ""),
+					keywords: plural(t, series.length, "nKeyword", "nKeywords"),
+					to: f.day(dates.at(-1) ?? ""),
+				})}
+				onBlur={() => setHover(null)}
 				onMouseLeave={() => {
 					setHover(null);
 					focus(null);
@@ -547,7 +594,7 @@ export function RankSeriesChart({
 					x={PAD.left - 8}
 					y={unrankedRailY + 4}
 				>
-					&gt;200
+					{t.railUnranked}
 				</text>
 				<text
 					className="axis-label"
@@ -555,7 +602,7 @@ export function RankSeriesChart({
 					x={PAD.left - 8}
 					y={errorRailY + 4}
 				>
-					error
+					{t.railError}
 				</text>
 				{tickIndexes.map((i) => (
 					<text
@@ -565,7 +612,7 @@ export function RankSeriesChart({
 						x={x(i)}
 						y={H - 6}
 					>
-						{dates[i]?.slice(5)}
+						{f.dayShort(dates[i] ?? "")}
 					</text>
 				))}
 				{markers.map((marker, n) => {
@@ -578,10 +625,16 @@ export function RankSeriesChart({
 					// alike.
 					let state: "on" | "off" | "idle" = "idle";
 					if (focusedMarker !== null) {
-						state = focusedMarker === marker.date ? "on" : "off";
+						state = focusedMarker === n ? "on" : "off";
 					}
+					// Two versions captured on one day share a slot. The rule stays on
+					// the day, which is the fact; the tag and numeral step aside so
+					// both can be read and pointed at.
+					const shift =
+						markers.slice(0, n).filter((m) => m.date === marker.date).length *
+						MARKER_STEP;
 					return i === -1 ? null : (
-						<g key={marker.date}>
+						<g key={`${marker.date}-${n}`}>
 							<line
 								className={pinClass("marker-line", state)}
 								x1={x(i)}
@@ -593,7 +646,7 @@ export function RankSeriesChart({
 								className={pinClass("marker-pin", state)}
 								height={MARKER_SIZE}
 								width={MARKER_SIZE}
-								x={x(i) - MARKER_SIZE}
+								x={x(i) - MARKER_SIZE + shift}
 								y={MARKER_ROW - MARKER_SIZE / 2}
 							>
 								<title>{markerTitle(marker, t, f.day)}</title>
@@ -601,7 +654,7 @@ export function RankSeriesChart({
 							<text
 								className={pinClass("marker-index", state)}
 								textAnchor="start"
-								x={x(i) + 2}
+								x={x(i) + 2 + shift}
 								y={MARKER_ROW + 4}
 							>
 								{n + 1}
@@ -609,11 +662,11 @@ export function RankSeriesChart({
 						</g>
 					);
 				})}
-				{hover !== null && (
+				{at !== null && (
 					<line
 						className="crosshair"
-						x1={x(hover)}
-						x2={x(hover)}
+						x1={x(at)}
+						x2={x(at)}
 						y1={PAD.top}
 						y2={PLOT_BOTTOM}
 					/>
@@ -643,7 +696,10 @@ export function RankSeriesChart({
 											strokeDasharray={style.dash || undefined}
 										/>
 									) : null}
-									{muted
+									{/* A muted line recedes; a muted lone observation has no line
+									    to recede into, so dropping its dot removed the whole
+									    series, which is every pair on a stretched cadence. */}
+									{muted && seg.points.length > 1
 										? null
 										: seg.points.map((p) => (
 												<circle
@@ -660,19 +716,30 @@ export function RankSeriesChart({
 											))}
 								</g>
 							))}
-							{unranked.map((i) => (
-								<rect
-									className="unranked-mark"
-									fill={stroke}
-									height="7"
-									key={`u-${i}`}
-									width="7"
-									x={x(i) - 3.5}
-									y={unrankedRailY - 3.5}
-								>
-									<title>{`${dates[i]}: ${row.keyword} observed, outside the top 200`}</title>
-								</rect>
-							))}
+							{unranked.map(({ i, depth }) => {
+								const side = UNRANKED_SIZE + depth * 6;
+								return (
+									<rect
+										className={
+											depth > 0 ? "unranked-mark-ring" : "unranked-mark"
+										}
+										fill={depth > 0 ? "none" : stroke}
+										height={side}
+										key={`u-${i}`}
+										stroke={depth > 0 ? stroke : undefined}
+										width={side}
+										x={x(i) - side / 2}
+										y={unrankedRailY - side / 2}
+									>
+										<title>
+											{fmt(t.railUnrankedTitle, {
+												date: f.day(dates[i] ?? ""),
+												keyword: row.keyword,
+											})}
+										</title>
+									</rect>
+								);
+							})}
 							{failures.map(({ i, errorClass }) => (
 								// Clamped to the plot. A slot is the full width of a day, so
 								// on a four-day axis it is some 270px, and the first one
@@ -690,7 +757,13 @@ export function RankSeriesChart({
 									x={Math.max(PAD.left, x(i) - slot / 2)}
 									y={errorRailY - 4.5}
 								>
-									<title>{`${dates[i]}: ${row.keyword} fetch failed (${errorClass}), not a rank change`}</title>
+									<title>
+										{fmt(t.railErrorTitle, {
+											date: f.day(dates[i] ?? ""),
+											errorClass,
+											keyword: row.keyword,
+										})}
+									</title>
 								</rect>
 							))}
 						</g>
@@ -722,7 +795,7 @@ export function RankSeriesChart({
           interrupt whatever is already being announced. */}
 			<div aria-live="polite" className="sr-only">
 				{hoveredDate && readout.length > 0
-					? `${hoveredDate}: ${readout
+					? `${f.day(hoveredDate)}: ${readout
 							.slice(0, READOUT_LIMIT)
 							.map((r) => `${r.row.keyword} ${readoutValue(r, t)}`)
 							.join("; ")}`
@@ -731,9 +804,22 @@ export function RankSeriesChart({
 			{hoveredDate && readout.length > 0 && (
 				<div
 					className="chart-tip"
-					style={{ left: `${(x(hover ?? 0) / w) * 100}%` }}
+					// Measured, so the box can be kept inside the chart: centred on
+					// the crosshair with no clamp, half of it hung off the left edge
+					// on the first days, which in a single-column layout is off-screen.
+					ref={(el) => {
+						if (el) {
+							setTipWidth(el.offsetWidth);
+						}
+					}}
+					style={{
+						left: `${Math.max(
+							tipWidth / 2,
+							Math.min(w - tipWidth / 2, x(at ?? 0))
+						)}px`,
+					}}
 				>
-					<div className="chart-tip-date">{hoveredDate}</div>
+					<div className="chart-tip-date">{f.day(hoveredDate)}</div>
 					{readout.slice(0, READOUT_LIMIT).map((r) => (
 						<div className="chart-tip-row" key={r.row.pairId}>
 							<span

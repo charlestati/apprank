@@ -22,10 +22,11 @@
 The unit is the **crawl pair**: one keyword in one storefront. 20 keywords
 across 5 storefronts is 100 pairs.
 
-One daily Actions run fits about 100 pair crawls. Past that the collector checks
-the least informative pairs less often rather than dropping any, because a
-dropped pair loses its history for good. Cloudflare's limits are nowhere near
-binding at that size. [The numbers](docs/limits.md).
+One daily Actions run crawls up to 500 pairs as shipped, in under two hours.
+Past what fits, the collector checks the least informative pairs less often
+rather than dropping any, because a dropped pair loses its history for good.
+Cloudflare's limits are nowhere near binding at that size.
+[The numbers](docs/limits.md).
 
 ## Docs
 
@@ -41,18 +42,21 @@ binding at that size. [The numbers](docs/limits.md).
 ## Development
 
 ```sh
+pnpm run ci        # every gate CI runs
 pnpm lint          # ultracite (oxlint + oxfmt)
+pnpm knip          # unused files, dependencies and exports
 pnpm typecheck
 pnpm test          # vitest in the Workers runtime, then the script tests
-pnpm coverage      # 80% statements / lines / functions, 70% branches
+pnpm coverage      # 80% statements, lines, functions and branches
 pnpm generate      # drizzle-kit, after a schema change
 pnpm rebuild:d1    # rebuild D1 from the R2 archive
 ```
 
 `pnpm install` points `core.hooksPath` at `.githooks/`, which lints on commit
-and runs the tests on push.
+and runs the tests on push. pnpm skips that step when an install has nothing to
+do, so a clone that was already installed needs `pnpm run prepare` once.
 
-Node 24+, pnpm 11+. `CLAUDE.md` is the working context for coding agents.
+Node 24+, pnpm 12+. `AGENTS.md` is the working context for coding agents.
 
 ## License
 

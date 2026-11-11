@@ -18,16 +18,22 @@
 		"seed:remote": "pnpm --filter collector seed:remote",
 		"deploy": "pnpm --filter collector deploy && pnpm --filter web deploy",
 		"track": "node scripts/track/track.mjs",
-		"rebuild:d1": "pnpm --filter rebuild-d1 rebuild",
+		"rebuild:d1": "pnpm --filter rebuild-d1 start",
 		"rank-churn": "node scripts/rank-churn/measure.mjs",
 		"test:scripts": "node --test \"scripts/**/*.test.mjs\"",
-		"relevance": "pnpm --filter keyword-relevance score"
+		"relevance": "pnpm --filter keyword-relevance score",
+		"knip": "knip",
+		"ci": "pnpm lint && pnpm knip && pnpm typecheck && pnpm coverage && pnpm test:scripts"
 	},
 	"devDependencies": {
-		"oxfmt": "0.65.0",
-		"oxlint": "1.80.0",
-		"typescript": "7.0.2",
-		"ultracite": "7.10.6"
+		"knip": "6.41.0",
+		"oxfmt": "0.73.0",
+		"oxlint": "1.88.0",
+		"typescript": "catalog:",
+		"ultracite": "8.0.0"
 	},
-	"packageManager": "pnpm@11.25.0"
+	"engines": {
+		"node": ">=24.0.0 <25"
+	},
+	"packageManager": "pnpm@12.13.0"
 }

@@ -101,14 +101,23 @@ describe(fetchClassified, () => {
 	it("classifies other non-OK statuses as errors", async () => {
 		stubFetch(() => new Response("nope", { status: 500 }));
 		const out = await fetchClassified("https://itunes.apple.com/search?term=x");
-		expect(out.kind).toBe("error");
-		expect(out.status).toBe(500);
+		expect(out).toMatchObject({
+			bodyText: "nope",
+			errorClass: "http_error",
+			kind: "error",
+			status: 500,
+		});
 	});
 
-	it("classifies unparseable 200 bodies as errors", async () => {
+	it("classifies an unparseable 200 as an invalid body, not an HTTP error", async () => {
 		stubFetch(() => new Response("<html>not json</html>", { status: 200 }));
 		const out = await fetchClassified("https://itunes.apple.com/search?term=x");
-		expect(out.kind).toBe("error");
+		expect(out).toMatchObject({
+			bodyText: "<html>not json</html>",
+			errorClass: "invalid_body",
+			kind: "error",
+			status: 200,
+		});
 	});
 
 	it("identifies itself with a polite User-Agent", async () => {

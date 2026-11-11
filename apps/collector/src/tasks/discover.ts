@@ -24,7 +24,13 @@ import type { KeywordSuggestionRow } from "@apprank/core/apple/ads";
 import type { Env } from "../env";
 import { putArchived } from "../lib/archive";
 import { recordFetchError } from "../lib/state";
-import { adsCreds, adAccountId, normalize, rateLimited } from "./ads";
+import {
+	adsCreds,
+	adAccountId,
+	adsRefused,
+	normalize,
+	rateLimited,
+} from "./ads";
 import type { Task } from "./types";
 
 /**
@@ -167,6 +173,10 @@ export async function adsDiscoverStep(
 				]
 			: [];
 
+	if (await adsRefused(env)) {
+		return [task];
+	}
+
 	try {
 		const client = new AdsClient(adsCreds(env), await adAccountId(env));
 		const { rows, raw } = await client.keywordSuggestions({
@@ -217,6 +227,7 @@ export async function adsDiscoverStep(
 			return rateLimited(
 				env,
 				task,
+				error,
 				"ads:discover",
 				`${task.storefront}/${task.appAdamId}`,
 				requeue

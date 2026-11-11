@@ -106,7 +106,20 @@ export type FetchOutcome =
 			bodyText: string;
 	  }
 	| { kind: "throttled"; status: number; responseMs: number; bodyText: string }
-	| { kind: "error"; status: number; responseMs: number; bodyText: string };
+	| {
+			kind: "error";
+			status: number;
+			responseMs: number;
+			bodyText: string;
+			/**
+			 * Which half of the closed `fetch_error.error_class` vocabulary this is.
+			 * A 2xx whose body does not parse (an HTML error page, a truncated
+			 * download) is not an HTTP error: filed as one, it showed up on the
+			 * health page as `http_error` beside a status of 200, which reads as a
+			 * bug in the page rather than as what Apple sent.
+			 */
+			errorClass: "http_error" | "invalid_body";
+	  };
 
 /**
  * Fetch + classify. 403 and 429 are throttling regardless of body content;
@@ -140,7 +153,13 @@ export async function fetchClassified(url: string): Promise<FetchOutcome> {
 		return { bodyText, kind: "throttled", responseMs, status: res.status };
 	}
 	if (!res.ok) {
-		return { kind: "error", status: res.status, responseMs, bodyText };
+		return {
+			bodyText,
+			errorClass: "http_error",
+			kind: "error",
+			responseMs,
+			status: res.status,
+		};
 	}
 	try {
 		return {
@@ -151,6 +170,12 @@ export async function fetchClassified(url: string): Promise<FetchOutcome> {
 			status: res.status,
 		};
 	} catch {
-		return { bodyText, kind: "error", responseMs, status: res.status };
+		return {
+			bodyText,
+			errorClass: "invalid_body",
+			kind: "error",
+			responseMs,
+			status: res.status,
+		};
 	}
 }

@@ -13,13 +13,21 @@
 // gaps by design. Counting those as missing days would report the whole tail
 // of the tracked set as degraded and make the signal useless.
 
+import { isLoss } from "./fetch-error-classes";
+
 const DAY_MS = 86_400_000;
 
-export interface ErrorWindow {
+interface ErrorWindow {
 	from: string;
 	to: string;
 	errorClass: string;
 	count: number;
+	/**
+	 * Whether these fetches cost an observation. A throttle is requeued and the
+	 * pair runs late, and a finding about Apple's own data failed nothing, so
+	 * neither is a reason to distrust the window.
+	 */
+	loss: boolean;
 }
 
 export interface Gap {
@@ -48,7 +56,7 @@ export interface Coverage {
 /** Below this, the window is not a fair basis for a movement claim. */
 const DEGRADED_BELOW = 0.9;
 
-export function daysBetween(from: string, to: string): number {
+function daysBetween(from: string, to: string): number {
 	return Math.max(
 		1,
 		Math.round((Date.parse(to) - Date.parse(from)) / DAY_MS) + 1
@@ -59,31 +67,46 @@ export function isoDay(offsetDays: number, base = Date.now()): string {
 	return new Date(base - offsetDays * DAY_MS).toISOString().slice(0, 10);
 }
 
-/** Observed dates for one pair, plus the errors recorded against it. */
-async function pairObservations(
+interface PairObservations {
+	dates: string[];
+	errors: ErrorWindow[];
+	intervalHours: number | null;
+}
+
+/**
+ * Observed dates for a set of pairs, plus the errors recorded against each.
+ *
+ * Three queries whatever the number of pairs, with the ids passed as one JSON
+ * parameter. Asking pair by pair cost three queries each, and Workers Free
+ * allows 50 per invocation, so an app with a dozen keywords broke the health
+ * tool outright; an IN list would hit D1's 100-parameter ceiling instead.
+ */
+async function pairsObservations(
 	db: D1Database,
-	pairId: number,
+	pairIds: number[],
 	from: string,
 	to: string
-) {
-	const [dates, pair] = await Promise.all([
+): Promise<Map<number, PairObservations>> {
+	const ids = JSON.stringify(pairIds);
+	const [dates, pairs] = await Promise.all([
 		db
 			.prepare(
-				`SELECT observed_date FROM ranking
-         WHERE pair_id = ?1 AND valid = 1
+				`SELECT pair_id, observed_date FROM ranking
+         WHERE pair_id IN (SELECT value FROM json_each(?1)) AND valid = 1
            AND observed_date >= ?2 AND observed_date <= ?3
-         ORDER BY observed_date`
+         ORDER BY pair_id, observed_date`
 			)
-			.bind(pairId, from, to)
-			.all<{ observed_date: string }>(),
+			.bind(ids, from, to)
+			.all<{ pair_id: number; observed_date: string }>(),
 		db
 			.prepare(
-				`SELECT cp.interval_hours, k.text AS keyword, cp.storefront_code, cp.locale_code
+				`SELECT cp.id, cp.interval_hours, k.text AS keyword, cp.storefront_code, cp.locale_code
          FROM crawl_pair cp JOIN keyword k ON k.id = cp.keyword_id
-         WHERE cp.id = ?1`
+         WHERE cp.id IN (SELECT value FROM json_each(?1))`
 			)
-			.bind(pairId)
-			.first<{
+			.bind(ids)
+			.all<{
+				id: number;
 				interval_hours: number;
 				keyword: string;
 				storefront_code: string;
@@ -91,53 +114,68 @@ async function pairObservations(
 			}>(),
 	]);
 
-	if (!pair) {
-		return {
-			dates: dates.results.map((d) => d.observed_date),
-			errors: [],
-			pair,
-		};
+	const out = new Map<number, PairObservations>(
+		pairIds.map((id) => [id, { dates: [], errors: [], intervalHours: null }])
+	);
+	for (const d of dates.results) {
+		out.get(d.pair_id)?.dates.push(d.observed_date);
 	}
 
 	// The crawl task records the pair as "keyword|storefront|locale" in `params`;
 	// that string is the only link between a failed fetch and the pair it was
-	// for, since a failure deliberately writes no observation row.
-	const key = `${pair.keyword}|${pair.storefront_code}|${pair.locale_code}`;
+	// for, since a failure deliberately writes no observation row. Two keywords
+	// in different languages can share the text, hence a list per key.
+	const byKey = new Map<string, number[]>();
+	for (const p of pairs.results) {
+		const found = out.get(p.id);
+		if (found) {
+			found.intervalHours = p.interval_hours;
+		}
+		const key = `${p.keyword}|${p.storefront_code}|${p.locale_code}`;
+		byKey.set(key, [...(byKey.get(key) ?? []), p.id]);
+	}
+	if (byKey.size === 0) {
+		return out;
+	}
+
 	const rows = await db
 		.prepare(
-			`SELECT error_class,
+			`SELECT params, error_class,
               MIN(DATE(fetched_at / 1000, 'unixepoch')) AS first_date,
               MAX(DATE(fetched_at / 1000, 'unixepoch')) AS last_date,
               COUNT(*) AS n
        FROM fetch_error
-       WHERE params = ?1
+       WHERE params IN (SELECT value FROM json_each(?1))
          AND DATE(fetched_at / 1000, 'unixepoch') >= ?2
          AND DATE(fetched_at / 1000, 'unixepoch') <= ?3
-       GROUP BY error_class
-       ORDER BY n DESC`
+       GROUP BY params, error_class
+       ORDER BY n DESC, error_class`
 		)
-		.bind(key, from, to)
+		.bind(JSON.stringify([...byKey.keys()]), from, to)
 		.all<{
-			error_class: string;
+			params: string;
+			error_class: string | null;
 			first_date: string;
 			last_date: string;
 			n: number;
 		}>();
-
-	return {
-		dates: dates.results.map((d) => d.observed_date),
-		errors: rows.results.map((e) => ({
-			count: e.n,
-			errorClass: e.error_class,
-			from: e.first_date,
-			to: e.last_date,
-		})),
-		pair,
-	};
+	for (const e of rows.results) {
+		for (const id of byKey.get(e.params) ?? []) {
+			out.get(id)?.errors.push({
+				count: e.n,
+				// A null class predates the closed vocabulary; it is still a loss.
+				errorClass: e.error_class ?? "unknown",
+				from: e.first_date,
+				loss: isLoss(e.error_class),
+				to: e.last_date,
+			});
+		}
+	}
+	return out;
 }
 
-/** Runs of consecutive calendar days with no observation. */
-export function findGaps(dates: string[], from: string, to: string): Gap[] {
+/** Every run of consecutive calendar days with no observation. */
+function calendarGaps(dates: string[], from: string, to: string): Gap[] {
 	const seen = new Set(dates);
 	const gaps: Gap[] = [];
 	const start = Date.parse(from);
@@ -171,53 +209,97 @@ export function findGaps(dates: string[], from: string, to: string): Gap[] {
 	return gaps;
 }
 
-function describe(
-	coverage: number,
-	gaps: Gap[],
-	errors: ErrorWindow[],
-	windowDays: number
-): string | null {
-	if (coverage >= DEGRADED_BELOW && errors.length === 0) {
-		return null;
-	}
-	const parts: string[] = [];
-	const missing = gaps.reduce((n, g) => n + g.days, 0);
-	if (missing > 0) {
-		parts.push(`${missing} of ${windowDays} days have no observation`);
-	}
-	for (const e of errors) {
-		parts.push(
-			`${e.count} ${e.errorClass} ${e.count === 1 ? "fetch" : "fetches"} between ${e.from} and ${e.to}`
-		);
-	}
-	if (parts.length === 0) {
-		return null;
-	}
-	return `${parts.join("; ")}. Rank movement across this window is not evidence of a rank change.`;
+/**
+ * Runs of consecutive calendar days with no observation, longer than the
+ * pair's cadence explains.
+ *
+ * A pair checked every `intervalDays` has that many days less one between two
+ * observations by design. Reporting those made every pair on a stretched rung
+ * a list of gaps, the same mistake as counting them against coverage.
+ */
+export function findGaps(
+	dates: string[],
+	from: string,
+	to: string,
+	intervalDays = 1
+): Gap[] {
+	return calendarGaps(dates, from, to).filter((g) => g.days >= intervalDays);
 }
 
-export async function pairCoverage(
-	db: D1Database,
-	pairId: number,
+function fetches(e: ErrorWindow): string {
+	return `${e.count} ${e.errorClass} ${e.count === 1 ? "fetch" : "fetches"} between ${e.from} and ${e.to}`;
+}
+
+/**
+ * The window's holes in prose, in two voices.
+ *
+ * What cost observations comes with the warning not to read movement into the
+ * window. What was absorbed is still named, because the provenance is the
+ * point, but without that warning: a throttle that was retried the same day on
+ * a fully observed pair says nothing against the ranks, and attaching the
+ * warning to it put the warning on every pair in ordinary weather.
+ */
+function describe(
+	degraded: boolean,
+	observed: number,
+	expected: number,
+	intervalHours: number,
+	errors: ErrorWindow[]
+): string | null {
+	const sentences: string[] = [];
+	if (degraded) {
+		const parts: string[] = [];
+		if (observed < expected) {
+			// Counted against the cadence, never the calendar: a pair checked weekly
+			// is not missing six days out of seven.
+			parts.push(
+				`${expected - observed} of ${expected} expected observations are missing (one expected every ${intervalHours} hours)`
+			);
+		}
+		parts.push(...errors.filter((e) => e.loss).map(fetches));
+		sentences.push(
+			`${parts.join("; ")}. Rank movement across this window is not evidence of a rank change.`
+		);
+	}
+	const absorbed = errors.filter((e) => !e.loss);
+	if (absorbed.length > 0) {
+		sentences.push(
+			`Also recorded: ${absorbed.map(fetches).join("; ")}. These are retried or are findings about Apple's own data, and are not themselves a lost observation.`
+		);
+	}
+	return sentences.length > 0 ? sentences.join(" ") : null;
+}
+
+function summariseCoverage(
+	observations: PairObservations,
 	from: string,
 	to: string
-): Promise<Coverage> {
-	const { dates, errors, pair } = await pairObservations(db, pairId, from, to);
+): Coverage {
+	const { dates, errors } = observations;
 	const windowDays = daysBetween(from, to);
-	const intervalHours = pair?.interval_hours ?? 24;
+	const intervalHours = observations.intervalHours ?? 24;
 	// A pair on a stretched rung is *supposed* to have gaps; expectation follows
 	// its cadence so that flexed frequency does not read as lost coverage.
 	const expected = Math.max(1, Math.round(windowDays / (intervalHours / 24)));
 	const coverage = Math.min(1, dates.length / expected);
-	const gaps = findGaps(dates, from, to);
+	const gaps = findGaps(
+		dates,
+		from,
+		to,
+		Math.max(1, Math.round(intervalHours / 24))
+	);
+	// Only a class that cost an observation degrades the window. Counting every
+	// recorded class flagged a fully observed pair for one requeued throttle,
+	// and a signal that is always on is the one nobody reads.
+	const degraded = coverage < DEGRADED_BELOW || errors.some((e) => e.loss);
 
 	return {
 		coverage: Number(coverage.toFixed(3)),
-		degraded: coverage < DEGRADED_BELOW || errors.length > 0,
+		degraded,
 		errors,
 		gaps,
 		intervalHours,
-		note: describe(coverage, gaps, errors, windowDays),
+		note: describe(degraded, dates.length, expected, intervalHours, errors),
 		observed: {
 			expectedObservations: expected,
 			firstDate: dates[0] ?? null,
@@ -226,4 +308,27 @@ export async function pairCoverage(
 		},
 		requested: { days: windowDays, from, to },
 	};
+}
+
+/** Coverage of every pair in the set, in a fixed number of queries. */
+export async function pairsCoverage(
+	db: D1Database,
+	pairIds: number[],
+	from: string,
+	to: string
+): Promise<Map<number, Coverage>> {
+	const observations = await pairsObservations(db, pairIds, from, to);
+	return new Map(
+		[...observations].map(([id, o]) => [id, summariseCoverage(o, from, to)])
+	);
+}
+
+export async function pairCoverage(
+	db: D1Database,
+	pairId: number,
+	from: string,
+	to: string
+): Promise<Coverage> {
+	const all = await pairsCoverage(db, [pairId], from, to);
+	return all.get(pairId) as Coverage;
 }

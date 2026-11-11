@@ -9,7 +9,7 @@
 import { Select as BaseSelect } from "@base-ui/react/select";
 import { Check, ChevronDown } from "lucide-react";
 
-export interface SelectOption<T extends string | number> {
+interface SelectOption<T extends string | number> {
 	value: T;
 	label: string;
 }

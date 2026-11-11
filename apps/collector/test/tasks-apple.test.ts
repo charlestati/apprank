@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { putArchived } from "../src/lib/archive";
 import {
 	adsPullStep,
+	adsRefused,
 	adsTermsStep,
 	buildTermsTasks,
 	latestCompleteWeekStart,
@@ -69,16 +70,125 @@ function ascEnv() {
 	};
 }
 
-describe(latestCompleteWeekStart, () => {
-	it("returns a Sunday at least a fortnight back, covering Apple's posting delay", () => {
-		const d = new Date(
-			latestCompleteWeekStart(new Date("2026-09-01T12:00:00Z"))
-		);
-		expect(d.getUTCDay()).toBe(0);
-		const daysBack =
-			(Date.parse("2026-09-01T12:00:00Z") - d.getTime()) / 86_400_000;
-		expect(daysBack).toBeGreaterThanOrEqual(7);
+/**
+ * The given bindings with an archive that refuses every write, as R2 did on
+ * 2026-09-11. A copy rather than a spy on the shared binding, so there is
+ * nothing to restore when an assertion fails.
+ */
+function refusingArchive<E extends typeof env>(base: E): E {
+	return {
+		...base,
+		ARCHIVE: new Proxy(base.ARCHIVE, {
+			get(target, prop) {
+				if (prop === "put") {
+					return () =>
+						Promise.reject(
+							new Error(
+								"We encountered an internal error. Please try again. (10001)"
+							)
+						);
+				}
+				const value = Reflect.get(target, prop);
+				return typeof value === "function" ? value.bind(target) : value;
+			},
+		}),
+	};
+}
+
+/** Apple Ads answering every data request with a 429. */
+function refusingFetch(retryAfter?: string) {
+	return stubFetch((url) => {
+		if (url.includes("appleid.apple.com")) {
+			return Response.json({ access_token: "tok", expires_in: 3600 });
+		}
+		if (url.includes("/v1/acls")) {
+			return Response.json({ data: { acls: [{ adAccount: { id: 777 } }] } });
+		}
+		return new Response("", {
+			...(retryAfter ? { headers: { "Retry-After": retryAfter } } : {}),
+			status: 429,
+		});
 	});
+}
+
+/** The wait Apple asked for is over: what the clock does, done to the row. */
+async function refusalElapsed(): Promise<void> {
+	await env.DB.prepare(
+		"UPDATE collector_state SET value = ?1 WHERE key = 'ads:refused_until'"
+	)
+		.bind(String(Date.now() - 1))
+		.run();
+}
+
+async function refusedUntil(): Promise<number> {
+	const row = await env.DB.prepare(
+		"SELECT value FROM collector_state WHERE key = 'ads:refused_until'"
+	).first<{ value: string }>();
+	return Number(row?.value);
+}
+
+/** Apple answering the genre pull with one ranked term. */
+function genreFetch() {
+	return stubFetch((url) => {
+		if (url.includes("appleid.apple.com")) {
+			return Response.json({ access_token: "tok", expires_in: 3600 });
+		}
+		if (url.includes("/v1/acls")) {
+			return Response.json({ data: { acls: [{ adAccount: { id: 777 } }] } });
+		}
+		return Response.json({
+			result: {
+				rows: [
+					{ rankInGenre: 1, searchPopularity1to100: 90, searchTerm: "un" },
+				],
+			},
+		});
+	});
+}
+
+/** What `instancesStep` leaves behind after a poll: the dates Apple listed. */
+async function seedListed(
+	appId: number,
+	reportType: string,
+	dates: string[]
+): Promise<void> {
+	await env.DB.prepare(
+		"INSERT INTO collector_state (key, value, updated_at) VALUES (?, ?, 0)"
+	)
+		.bind(
+			`asc:listed:${appId}:${reportType}`,
+			JSON.stringify({ appId: String(appId), dates, reportType })
+		)
+		.run();
+}
+
+async function skippedParams(): Promise<string[]> {
+	const rows = await env.DB.prepare(
+		"SELECT params FROM fetch_error WHERE error_class = 'skipped_processing_date' ORDER BY params"
+	).all<{ params: string }>();
+	return rows.results.map((r) => r.params);
+}
+
+describe(latestCompleteWeekStart, () => {
+	// The week that closed most recently is skipped: Apple posts about a week
+	// late, so the newest week it can answer for is the one before. From a
+	// Tuesday that is the Sunday sixteen days back; from a Sunday, fourteen, and
+	// from a Saturday, twenty.
+	it.each([
+		["a Tuesday", "2026-09-01T12:00:00Z", "2026-08-16"],
+		["a Sunday", "2026-09-06T00:00:00Z", "2026-08-23"],
+		["a Saturday", "2026-09-05T23:59:59Z", "2026-08-16"],
+	])(
+		"names the Sunday opening the last week Apple has posted, from %s",
+		(_day, now, week) => {
+			const start = latestCompleteWeekStart(new Date(now));
+			expect(start).toBe(week);
+			expect(new Date(`${start}T00:00:00Z`).getUTCDay()).toBe(0);
+			const daysBack = (Date.parse(now) - Date.parse(start)) / 86_400_000;
+			expect(daysBack).toBeGreaterThanOrEqual(14);
+			expect(daysBack).toBeLessThan(21);
+		}
+	);
 });
 
 describe(recentWeekStarts, () => {
@@ -288,6 +398,163 @@ describe(adsPullStep, () => {
 		expect(err?.http_status).toBe(429);
 	});
 
+	// Retry-After used to be parsed and never read: the refused unit went
+	// straight back on the queue, the next tick asked again inside the window,
+	// and five refusals a few seconds apart abandoned it.
+	it("asks nothing and spends no attempt until Apple's Retry-After has passed", async () => {
+		const calls = refusingFetch("3600");
+		const task = {
+			queue: [{ category: "GAMES", genreId: 6014, storefront: "fr" }],
+			type: "ads_pull" as const,
+			weekStart: "2026-08-16",
+		};
+		const before = Date.now();
+		const [refused] = await adsPullStep(adsEnv(), task);
+		expect(refused).toMatchObject({ attempt: 1 });
+		const wait = (await refusedUntil()) - before;
+		// An hour from the refusal, give or take the time the step itself took.
+		expect(Math.round(wait / 60_000)).toBe(60);
+
+		const asked = calls.length;
+		for (let tick = 0; tick < 6; tick += 1) {
+			await expect(
+				adsPullStep(adsEnv(), refused as typeof task)
+			).resolves.toStrictEqual([refused]);
+		}
+		const errors = await env.DB.prepare(
+			"SELECT COUNT(*) AS n FROM fetch_error"
+		).first<{ n: number }>();
+		expect({ errors: errors?.n, requests: calls.length }).toStrictEqual({
+			errors: 1,
+			requests: asked,
+		});
+
+		// The wait over, it asks again, and only now is a second attempt spent.
+		await refusalElapsed();
+		const [again] = await adsPullStep(adsEnv(), refused as typeof task);
+		expect(again).toMatchObject({ attempt: 2 });
+	});
+
+	// The quota is the account's, so the wait cannot live on the refused task:
+	// the by-name pass queued behind it would ask inside the same window.
+	it("holds every other Ads task back while one refusal is being served", async () => {
+		const calls = refusingFetch("600");
+		await adsPullStep(adsEnv(), {
+			queue: [{ category: "GAMES", genreId: 6014, storefront: "fr" }],
+			type: "ads_pull",
+			weekStart: "2026-08-16",
+		});
+		const asked = calls.length;
+		const terms = {
+			storefront: "be",
+			terms: ["radar"],
+			type: "ads_terms" as const,
+			weekStart: "2026-08-16",
+		};
+		await expect(adsTermsStep(adsEnv(), terms)).resolves.toStrictEqual([terms]);
+		expect(calls).toHaveLength(asked);
+	});
+
+	it("falls back to a minute when the 429 names no wait, and never waits past a day", async () => {
+		refusingFetch();
+		const task = {
+			queue: [{ category: "GAMES", genreId: 6014, storefront: "fr" }],
+			type: "ads_pull" as const,
+			weekStart: "2026-08-16",
+		};
+		await adsPullStep(adsEnv(), task);
+		const minute = (await refusedUntil()) - Date.now();
+		expect(minute).toBeGreaterThan(50_000);
+		expect(minute).toBeLessThanOrEqual(60_000);
+
+		await refusalElapsed();
+		vi.unstubAllGlobals();
+		refusingFetch("999999999");
+		await adsPullStep(adsEnv(), task);
+		const capped = (await refusedUntil()) - Date.now();
+		expect(capped).toBeLessThanOrEqual(24 * 3_600_000);
+		expect(capped).toBeGreaterThan(23 * 3_600_000);
+	});
+
+	it("reads the wait as over once the recorded time has passed", async () => {
+		await expect(adsRefused(env)).resolves.toBeFalsy();
+		await env.DB.prepare(
+			"INSERT INTO collector_state (key, value, updated_at) VALUES ('ads:refused_until', '5000', 0)"
+		).run();
+		await expect(adsRefused(env, 4999)).resolves.toBeTruthy();
+		await expect(adsRefused(env, 5000)).resolves.toBeFalsy();
+	});
+
+	// The credential check, `job=ads` without `write=1`. It is tested here and
+	// not through the route because the route runs it inside the Durable
+	// Object, which cannot be handed a test key: there the step dies on the key
+	// import before it fetches, and "no rows written" holds whatever the
+	// verify flag does.
+	it("fetches and archives but writes no row when only verifying the credential", async () => {
+		const calls = genreFetch();
+		const key = "ads/popularity/2026-02-01/fr/6014-GAMES.json";
+		await env.ARCHIVE.delete(key);
+		const followUps = await adsPullStep(adsEnv(), {
+			queue: [
+				{ category: "GAMES", genreId: 6014, storefront: "fr" },
+				{ category: "GAMES", genreId: 6014, storefront: "be" },
+			],
+			type: "ads_pull",
+			verifyOnly: true,
+			weekStart: "2026-02-01",
+		});
+		expect(
+			calls.some((c) => c.url.includes("search-term-popularity"))
+		).toBeTruthy();
+		const archived = await env.ARCHIVE.get(key);
+		await expect(archived?.json()).resolves.toMatchObject({
+			result: { rows: [{ searchTerm: "un" }] },
+		});
+		// No rows, and not marked collected either: a verify pass must not gate
+		// the real pull.
+		const written = await env.DB.prepare(
+			`SELECT (SELECT COUNT(*) FROM seed_term) AS seeds,
+              (SELECT COUNT(*) FROM popularity) AS popularity,
+              (SELECT COUNT(*) FROM collector_state WHERE key LIKE 'ads:pulled:%') AS gates`
+		).first();
+		expect(written).toStrictEqual({ gates: 0, popularity: 0, seeds: 0 });
+		// The flag travels with the rest of the queue.
+		expect(followUps).toStrictEqual([
+			{
+				queue: [{ category: "GAMES", genreId: 6014, storefront: "be" }],
+				type: "ads_pull",
+				verifyOnly: true,
+				weekStart: "2026-02-01",
+			},
+		]);
+	});
+
+	it("derives nothing from a genre pull whose archive did not land", async () => {
+		genreFetch();
+		await adsPullStep(refusingArchive(adsEnv()), {
+			queue: [{ category: "GAMES", genreId: 6014, storefront: "fr" }],
+			type: "ads_pull",
+			weekStart: "2026-08-16",
+		});
+		const seeds = await env.DB.prepare(
+			"SELECT COUNT(*) AS n FROM seed_term"
+		).first<{ n: number }>();
+		expect(seeds?.n).toBe(0);
+		const pop = await env.DB.prepare(
+			"SELECT COUNT(*) AS n FROM popularity"
+		).first<{ n: number }>();
+		expect(pop?.n).toBe(0);
+		const gate = await env.DB.prepare(
+			"SELECT COUNT(*) AS n FROM collector_state WHERE key LIKE 'ads:pulled:%'"
+		).first<{ n: number }>();
+		expect(gate?.n).toBe(0);
+		const err = await env.DB.prepare(
+			"SELECT error_class, message FROM fetch_error ORDER BY id DESC LIMIT 1"
+		).first<{ error_class: string; message: string }>();
+		expect(err?.error_class).toBe("upstream_error");
+		expect(err?.message).toContain("archive did not persist");
+	});
+
 	it("skips a failing unit and keeps the rest of the queue moving", async () => {
 		stubFetch(() => new Response("no account", { status: 401 }));
 		const followUps = await adsPullStep(adsEnv(), {
@@ -383,21 +650,51 @@ describe(adsTermsStep, () => {
 
 	it("archives but writes nothing when only verifying the credential", async () => {
 		termsFetch([{ searchPopularity1to100: 42, searchTerm: "radar" }]);
+		// A week and a term no other test asks for. R2 is not emptied between
+		// tests, and under the shared week the object an earlier test archived
+		// satisfied this assertion whether or not a verify pass archives at all.
+		const prefix = "ads/popularity-terms/2026-03-01/fr/";
+		const stale = await env.ARCHIVE.list({ prefix });
+		await env.ARCHIVE.delete(stale.objects.map((o) => o.key));
 		await adsTermsStep(adsEnv(), {
 			storefront: "fr",
-			terms: ["radar"],
+			terms: ["verify only"],
 			type: "ads_terms",
 			verifyOnly: true,
-			weekStart: "2026-08-16",
+			weekStart: "2026-03-01",
 		});
-		const archived = await env.ARCHIVE.list({
-			prefix: "ads/popularity-terms/2026-08-16/fr/0001-",
+		const archived = await env.ARCHIVE.list({ prefix });
+		expect(archived.objects).toHaveLength(1);
+		expect(archived.objects[0]?.key).toMatch(
+			/^ads\/popularity-terms\/2026-03-01\/fr\/0001-[0-9a-f]{8}\.json$/u
+		);
+		const body = await env.ARCHIVE.get(archived.objects[0]?.key ?? "");
+		await expect(body?.json()).resolves.toStrictEqual({
+			result: { rows: [{ searchPopularity1to100: 42, searchTerm: "radar" }] },
 		});
-		expect(archived.objects.length).toBeGreaterThan(0);
 		const n = await env.DB.prepare(
 			"SELECT COUNT(*) AS n FROM popularity"
 		).first<{ n: number }>();
 		expect(n?.n).toBe(0);
+	});
+
+	it("records no answer for a chunk whose archive did not land", async () => {
+		termsFetch([{ searchPopularity1to100: 42, searchTerm: "radar" }]);
+		await adsTermsStep(refusingArchive(adsEnv()), {
+			storefront: "fr",
+			terms: ["radar"],
+			type: "ads_terms",
+			weekStart: "2026-08-16",
+		});
+		// No row at all, which reads as never asked, so the next pass asks again.
+		const n = await env.DB.prepare(
+			"SELECT COUNT(*) AS n FROM popularity"
+		).first<{ n: number }>();
+		expect(n?.n).toBe(0);
+		const err = await env.DB.prepare(
+			"SELECT error_class FROM fetch_error ORDER BY id DESC LIMIT 1"
+		).first<{ error_class: string }>();
+		expect(err?.error_class).toBe("upstream_error");
 	});
 
 	it("keeps two same-sized chunks for one week apart in the archive", async () => {
@@ -445,6 +742,7 @@ describe(adsTermsStep, () => {
 		await expect(
 			adsTermsStep(adsEnv(), { ...task, attempt: 3 })
 		).resolves.toStrictEqual([{ ...task, attempt: 4 }]);
+		await refusalElapsed();
 		await expect(
 			adsTermsStep(adsEnv(), { ...task, attempt: 4 })
 		).resolves.toStrictEqual([]);
@@ -619,6 +917,40 @@ describe(ascPollStep, () => {
 		expect(err?.error_class).toBe("stopped_due_to_inactivity");
 	});
 
+	it("records a stopped request once, however many days Apple keeps listing it", async () => {
+		// Apple lists the dead request on every poll after the replacement
+		// exists; one stop is one incident, not one per day.
+		stubFetch((url, init) =>
+			init?.method === "POST"
+				? Response.json({
+						data: { attributes: { accessType: "ONGOING" }, id: "req-2" },
+					})
+				: Response.json({
+						data: [
+							{
+								attributes: {
+									accessType: "ONGOING",
+									stoppedDueToInactivity: true,
+								},
+								id: "dead",
+							},
+							{ attributes: { accessType: "ONGOING" }, id: "req-2" },
+						],
+					})
+		);
+		for (let day = 0; day < 3; day += 1) {
+			await ascPollStep(ascEnv(), {
+				appId: String(APP_ID),
+				stage: "init",
+				type: "asc_poll",
+			});
+		}
+		const rows = await env.DB.prepare(
+			"SELECT params FROM fetch_error WHERE error_class = 'stopped_due_to_inactivity'"
+		).all<{ params: string }>();
+		expect(rows.results.map((r) => r.params)).toStrictEqual([`${APP_ID} dead`]);
+	});
+
 	it("dumps the report list once and queues only the wanted categories", async () => {
 		stubFetch(() =>
 			Response.json({
@@ -650,6 +982,33 @@ describe(ascPollStep, () => {
 		await expect(
 			env.ARCHIVE.get(`asc/${APP_ID}/report-list-req-1.json`)
 		).resolves.not.toBeNull();
+	});
+
+	it("does not mark the report list dumped when its archive did not land", async () => {
+		stubFetch(() =>
+			Response.json({
+				data: [
+					{
+						attributes: { category: "APP_STORE_ENGAGEMENT", name: "Discovery" },
+						id: "rep-1",
+					},
+				],
+			})
+		);
+		await expect(
+			ascPollStep(refusingArchive(ascEnv()), {
+				appId: String(APP_ID),
+				requestId: "req-lost",
+				stage: "reports",
+				type: "asc_poll",
+			})
+		).rejects.toThrow(/archive did not persist/u);
+		const row = await env.DB.prepare(
+			"SELECT value FROM collector_state WHERE key = ?"
+		)
+			.bind(`asc:${APP_ID}:report_list_dumped`)
+			.first();
+		expect(row).toBeNull();
 	});
 
 	it("restarts at init when no ongoing request id is known", async () => {
@@ -692,6 +1051,52 @@ describe(ascPollStep, () => {
 			stage: "instances",
 			type: "asc_poll",
 		});
+	});
+
+	it("keeps the dates Apple lists for the gap check, sorted and without repeats", async () => {
+		stubFetch(() =>
+			Response.json({
+				data: [
+					{
+						attributes: { granularity: "DAILY", processingDate: "2026-08-30" },
+						id: "inst-3",
+					},
+					{
+						attributes: { granularity: "DAILY", processingDate: "2026-08-28" },
+						id: "inst-1",
+					},
+					// Apple's duplicate-date defect: one date, two instances.
+					{
+						attributes: { granularity: "DAILY", processingDate: "2026-08-28" },
+						id: "inst-1b",
+					},
+				],
+			})
+		);
+		await ascPollStep(ascEnv(), {
+			appId: String(APP_ID),
+			reportQueue: [
+				{ category: "APP_STORE_ENGAGEMENT", name: "A", reportId: "rep-1" },
+			],
+			requestId: "req-1",
+			stage: "instances",
+			type: "asc_poll",
+		});
+		const row = await env.DB.prepare(
+			"SELECT value FROM collector_state WHERE key = ?"
+		)
+			.bind(`asc:listed:${APP_ID}:A`)
+			.first<{ value: string }>();
+		expect(JSON.parse(row?.value ?? "null")).toStrictEqual({
+			appId: String(APP_ID),
+			dates: ["2026-08-28", "2026-08-30"],
+			reportType: "A",
+		});
+		// End to end: the listing alone is what the gap check reads.
+		await ascDetectSkippedDates(env);
+		await expect(skippedParams()).resolves.toStrictEqual([
+			`${APP_ID} A 2026-08-29`,
+		]);
 	});
 
 	it("returns nothing when the report queue is exhausted", async () => {
@@ -747,6 +1152,41 @@ describe(ascFetchInstanceStep, () => {
 			`asc/${APP_ID}/App_Store_Discovery_and_Engagement/DAILY/`
 		);
 		await expect(env.ARCHIVE.get(row?.r2_key ?? "")).resolves.not.toBeNull();
+	});
+
+	it("records no instance when a segment's archive did not land", async () => {
+		stubFetch((url) =>
+			url.includes("presigned")
+				? new Response("gz-bytes")
+				: Response.json({
+						data: [
+							{
+								attributes: {
+									checksum: "abc",
+									sizeInBytes: 10,
+									url: "https://presigned.example/1.gz",
+								},
+								id: "seg-1",
+							},
+						],
+					})
+		);
+		// It throws, so the scheduler retries it and the next poll finds the
+		// instance still unseen: a row here would mark it fetched for good.
+		await expect(
+			ascFetchInstanceStep(refusingArchive(ascEnv()), {
+				appId: String(APP_ID),
+				granularity: "DAILY",
+				instanceId: "inst-lost",
+				processingDate: "2026-08-30",
+				report,
+				type: "asc_fetch_instance",
+			})
+		).rejects.toThrow(/archive did not persist/u);
+		const n = await env.DB.prepare(
+			"SELECT COUNT(*) AS n FROM asc_report_instance"
+		).first<{ n: number }>();
+		expect(n?.n).toBe(0);
 	});
 
 	it("flags Apple's duplicate-processingDate defect", async () => {
@@ -829,58 +1269,94 @@ describe(ascFetchInstanceStep, () => {
 });
 
 describe(ascDetectSkippedDates, () => {
-	it("reports a date Apple never published between two ingested days", async () => {
-		await env.DB.batch([
-			env.DB.prepare(
-				`INSERT INTO asc_report_instance (app_id, report_type, granularity, processing_date, instance_id, fetched_at) VALUES (${APP_ID}, 'R', 'DAILY', '2026-08-28', 'i1', 0)`
-			),
-			env.DB.prepare(
-				`INSERT INTO asc_report_instance (app_id, report_type, granularity, processing_date, instance_id, fetched_at) VALUES (${APP_ID}, 'R', 'DAILY', '2026-08-30', 'i2', 0)`
-			),
-		]);
+	it("reports a date missing from the middle of what Apple lists", async () => {
+		await seedListed(APP_ID, "R", ["2026-08-28", "2026-08-30"]);
 		await ascDetectSkippedDates(env);
-		const err = await env.DB.prepare(
-			"SELECT error_class, params FROM fetch_error ORDER BY id DESC LIMIT 1"
-		).first<{ error_class: string; params: string }>();
-		expect(err?.error_class).toBe("skipped_processing_date");
-		expect(err?.params).toContain("2026-08-29");
-	});
-
-	// The app dimension is what makes both of these answerable. With it
-	// collapsed, one app's published day satisfied every other app's gap check
-	// and no skipped date was ever reported for a second tracked app.
-	it("keeps one app's published day out of another app's gap check", async () => {
-		await env.DB.batch([
-			env.DB.prepare(
-				`INSERT INTO asc_report_instance (app_id, report_type, granularity, processing_date, instance_id, fetched_at) VALUES (${APP_ID}, 'R', 'DAILY', '2026-08-28', 'a1', 0)`
-			),
-			env.DB.prepare(
-				`INSERT INTO asc_report_instance (app_id, report_type, granularity, processing_date, instance_id, fetched_at) VALUES (${APP_ID}, 'R', 'DAILY', '2026-08-30', 'a2', 0)`
-			),
-			// A second app that did publish the 29th. It must not cover the first
-			// app's missing day.
-			env.DB.prepare(
-				`INSERT INTO asc_report_instance (app_id, report_type, granularity, processing_date, instance_id, fetched_at) VALUES (${OTHER_APP_ID}, 'R', 'DAILY', '2026-08-29', 'b1', 0)`
-			),
-		]);
-		await ascDetectSkippedDates(env);
-		const err = await env.DB.prepare(
-			"SELECT params FROM fetch_error WHERE error_class = 'skipped_processing_date'"
-		).all<{ params: string }>();
-		expect(err.results.map((e) => e.params)).toStrictEqual([
+		await expect(skippedParams()).resolves.toStrictEqual([
 			`${APP_ID} R 2026-08-29`,
 		]);
 	});
 
-	it("stays quiet on a contiguous run of days", async () => {
+	// The failure this check used to produce: our own download of the 29th threw
+	// three times, so no row was stored for it while the 28th and 30th landed.
+	// Apple listed all three days. Read from our table, that hole was booked as
+	// Apple's skipped date, permanently, a day before the instance was fetched.
+	it("does not call a date Apple lists skipped because our download of it failed", async () => {
 		await env.DB.batch([
 			env.DB.prepare(
 				`INSERT INTO asc_report_instance (app_id, report_type, granularity, processing_date, instance_id, fetched_at) VALUES (${APP_ID}, 'R', 'DAILY', '2026-08-28', 'i1', 0)`
 			),
 			env.DB.prepare(
-				`INSERT INTO asc_report_instance (app_id, report_type, granularity, processing_date, instance_id, fetched_at) VALUES (${APP_ID}, 'R', 'DAILY', '2026-08-29', 'i2', 0)`
+				`INSERT INTO asc_report_instance (app_id, report_type, granularity, processing_date, instance_id, fetched_at) VALUES (${APP_ID}, 'R', 'DAILY', '2026-08-30', 'i3', 0)`
 			),
 		]);
+		await seedListed(APP_ID, "R", ["2026-08-28", "2026-08-29", "2026-08-30"]);
+		await ascDetectSkippedDates(env);
+		await expect(skippedParams()).resolves.toStrictEqual([]);
+	});
+
+	it("finds nothing before any poll has recorded what Apple lists", async () => {
+		await env.DB.batch([
+			env.DB.prepare(
+				`INSERT INTO asc_report_instance (app_id, report_type, granularity, processing_date, instance_id, fetched_at) VALUES (${APP_ID}, 'R', 'DAILY', '2026-08-28', 'i1', 0)`
+			),
+			env.DB.prepare(
+				`INSERT INTO asc_report_instance (app_id, report_type, granularity, processing_date, instance_id, fetched_at) VALUES (${APP_ID}, 'R', 'DAILY', '2026-08-30', 'i3', 0)`
+			),
+		]);
+		await ascDetectSkippedDates(env);
+		await expect(skippedParams()).resolves.toStrictEqual([]);
+	});
+
+	// The app dimension is what makes this answerable. With it collapsed, one
+	// app's published day satisfied every other app's gap check and no skipped
+	// date was ever reported for a second tracked app.
+	it("keeps one app's published day out of another app's gap check", async () => {
+		await seedListed(APP_ID, "R", ["2026-08-28", "2026-08-30"]);
+		// A second app that did publish the 29th. It must not cover the first
+		// app's missing day.
+		await seedListed(OTHER_APP_ID, "R", [
+			"2026-08-28",
+			"2026-08-29",
+			"2026-08-30",
+		]);
+		await ascDetectSkippedDates(env);
+		await expect(skippedParams()).resolves.toStrictEqual([
+			`${APP_ID} R 2026-08-29`,
+		]);
+	});
+
+	it("records every gap exactly once across daily runs, past the tenth", async () => {
+		// Twelve permanent gaps: every other day of a 25-day run. A capped,
+		// unordered query re-found the same ten each day and never the rest.
+		const days = Array.from({ length: 13 }, (_, i) => {
+			const d = new Date(Date.UTC(2026, 7, 1 + i * 2));
+			return d.toISOString().slice(0, 10);
+		});
+		await seedListed(APP_ID, "R", days);
+		await ascDetectSkippedDates(env);
+		await ascDetectSkippedDates(env);
+		const expected = days.slice(0, -1).map((d) => {
+			const next = new Date(`${d}T00:00:00Z`);
+			next.setUTCDate(next.getUTCDate() + 1);
+			return `${APP_ID} R ${next.toISOString().slice(0, 10)}`;
+		});
+		await expect(skippedParams()).resolves.toStrictEqual(expected);
+	});
+
+	it("reports each day of a gap longer than one", async () => {
+		await seedListed(APP_ID, "R", ["2026-08-28", "2026-08-31"]);
+		await ascDetectSkippedDates(env);
+		await expect(skippedParams()).resolves.toStrictEqual([
+			`${APP_ID} R 2026-08-29`,
+			`${APP_ID} R 2026-08-30`,
+		]);
+	});
+
+	it("stays quiet on a contiguous run of days, and on an unreadable date", async () => {
+		await seedListed(APP_ID, "R", ["2026-08-28", "2026-08-29"]);
+		await seedListed(APP_ID, "Broken", ["2026-08-28", "not-a-date"]);
+		await seedListed(APP_ID, "Empty", []);
 		await ascDetectSkippedDates(env);
 		const n = await env.DB.prepare(
 			"SELECT COUNT(*) AS n FROM fetch_error"

@@ -1,5 +1,6 @@
 import { Activity, ChartLine, Lightbulb, MessageSquare } from "lucide-react";
 import { useEffect, useState } from "react";
+import type { ReactElement } from "react";
 import {
 	BrowserRouter,
 	NavLink,
@@ -12,7 +13,14 @@ import {
 import { api } from "./api";
 import type { DataHealth, TrackedApp } from "./api";
 import { Select } from "./components/select";
-import { fmt, I18nProvider, LanguagePicker, useI18n, useT } from "./i18n";
+import {
+	fmt,
+	I18nProvider,
+	LanguagePicker,
+	plural,
+	useI18n,
+	useT,
+} from "./i18n";
 import { Health } from "./pages/health";
 import { KeywordPerformance } from "./pages/keyword-performance";
 import { PairDetail } from "./pages/pair-detail";
@@ -138,16 +146,21 @@ function newestLoss(health: DataHealth | null): number {
 
 function Shell() {
 	const t = useT();
-	const { setLang } = useI18n();
-	const [apps, setApps] = useState<TrackedApp[]>([]);
+	const { adoptLang } = useI18n();
+	// Null until the list answers, and "failed" when it does not. An empty array
+	// means the operator tracks nothing, which is a different sentence: starting
+	// from [] printed "No app is being tracked yet." on every load until the
+	// answer landed, and for good when it never did.
+	const [apps, setApps] = useState<TrackedApp[] | "failed" | null>(null);
 	const [health, setHealth] = useState<DataHealth | null>(null);
 	const [userId, setUserId] = useState<string | null>(null);
 	const [appId, setAppId] = useState<number | null>(storedAppId);
 	const [healthAck, setHealthAck] = useState(Number(cached(PREF_HEALTH_ACK)));
 
+	const tracked = Array.isArray(apps) ? apps : [];
 	// A stored id that is no longer tracked, an app removed since the last
 	// visit, falls back rather than rendering an empty report.
-	const app = apps.find((a) => a.id === appId) ?? apps[0] ?? null;
+	const app = tracked.find((a) => a.id === appId) ?? tracked[0] ?? null;
 
 	const selectApp = (id: number) => {
 		setAppId(id);
@@ -165,6 +178,9 @@ function Shell() {
 
 	// The browser holds the credentials: by the time this renders, the request
 	// for the page itself was already authenticated.
+	//
+	// Four independent requests, started together. Awaited one after another
+	// they made the first report wait on three round trips it does not need.
 	useEffect(() => {
 		(async () => {
 			try {
@@ -173,42 +189,66 @@ function Shell() {
 			} catch {
 				setUserId(null);
 			}
+		})();
+		(async () => {
 			try {
 				setApps(await api.apps());
 			} catch {
-				setApps([]);
+				setApps("failed");
 			}
+		})();
+		(async () => {
 			try {
 				setHealth(await api.health());
 			} catch {
 				setHealth(null);
 			}
-			// The server's copy last, and it wins: the cache only knows what this
-			// browser did, while this row knows what the reader chose anywhere.
+		})();
+		(async () => {
+			// The server's copy wins over the cache: the cache only knows what
+			// this browser did, while this row knows what the reader chose
+			// anywhere. `loadPreferences` lays this session's own writes over it,
+			// so an answer that left before a click cannot undo the click.
 			// Applied to state and written back to the cache so the next first
 			// paint already agrees.
 			const prefs = await loadPreferences();
 			const stored = Number(prefs[PREF_APP]);
-			if (Number.isFinite(stored)) {
+			if (prefs[PREF_APP] !== undefined && Number.isFinite(stored)) {
 				setAppId(stored);
 				setCached(PREF_APP, String(stored));
 			}
 			const lang = prefs[PREF_LANG];
 			if (lang === "en" || lang === "fr") {
-				setLang(lang);
+				adoptLang(lang);
+			}
+			// The acknowledgement too: it was written here and read nowhere, so
+			// a badge dismissed on one machine came back on every other.
+			const ack = Number(prefs[PREF_HEALTH_ACK]);
+			if (prefs[PREF_HEALTH_ACK] !== undefined && Number.isFinite(ack)) {
+				setHealthAck(ack);
+				setCached(PREF_HEALTH_ACK, String(ack));
 			}
 		})();
-	}, [setLang]);
+	}, [adoptLang]);
+
+	// The pages that show one app's data wait for the list rather than guess at
+	// it, and say so when it could not be read.
+	const forApp = (page: ReactElement): ReactElement => {
+		if (apps === null) {
+			return <p className="empty">{t.loading}</p>;
+		}
+		return apps === "failed" ? <p className="empty">{t.appsFailed}</p> : page;
+	};
 
 	return (
 		<BrowserRouter>
 			<div className="shell">
 				<header className="topbar">
 					<Wordmark />
-					{apps.length > 1 ? (
+					{tracked.length > 1 ? (
 						<AppPicker
 							appId={app?.id ?? null}
-							apps={apps}
+							apps={tracked}
 							onSelect={selectApp}
 						/>
 					) : (
@@ -245,7 +285,7 @@ function Shell() {
 						{t.dataHealth}
 						{unread > 0 && (
 							<span
-								aria-label={fmt(t.lostAria, { n: unread })}
+								aria-label={plural(t, unread, "lostAriaOne", "lostAria")}
 								className="nav-badge"
 							>
 								{unread}
@@ -256,9 +296,15 @@ function Shell() {
 
 				<main>
 					<Routes>
-						<Route element={<KeywordPerformance app={app} />} path="/" />
-						<Route element={<PairDetail app={app} />} path="/pairs/:pairId" />
-						<Route element={<Reviews app={app} />} path="/reviews" />
+						<Route
+							element={forApp(<KeywordPerformance app={app} />)}
+							path="/"
+						/>
+						<Route
+							element={forApp(<PairDetail app={app} />)}
+							path="/pairs/:pairId"
+						/>
+						<Route element={forApp(<Reviews app={app} />)} path="/reviews" />
 						<Route element={<Suggestions />} path="/suggestions" />
 						<Route
 							element={

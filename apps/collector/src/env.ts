@@ -12,6 +12,12 @@ export interface Env {
 	 * CI runner runs "all". See lib/mode.ts.
 	 */
 	COLLECTION_MODE?: string;
+	/**
+	 * "off" stops the Durable Object's alarm loop, leaving the manual triggers
+	 * as the only thing that fetches. Set by the runner's generated config and
+	 * nowhere else. See lib/mode.ts.
+	 */
+	WORK_LOOP?: string;
 
 	// Secrets (wrangler secret put …)
 	ASC_ISSUER_ID: string;

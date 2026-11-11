@@ -5,6 +5,10 @@ gets a 401 and a browser credential prompt. Not the page, not the API. With no
 accounts configured it serves nothing at all (503), so a fresh deployment is
 never accidentally public.
 
+One route is public on purpose: `GET /api/health`, so an uptime check works
+without credentials. It names no app and no keyword. `/mcp`, when enabled, skips
+Basic for its own bearer-token gate, described in [MCP](mcp.md).
+
 Accounts live in one secret, as JSON:
 
 ```sh
@@ -23,8 +27,10 @@ username.
 Ownership is a second, separate check: a request for an app or keyword you do
 not track answers **404, not 403**, because a 403 would confirm that the id
 exists. Crawled observations are deliberately shared, since two operators
-tracking one keyword produce one fetch, so ownership gates access to a pair's
-data rather than the data itself. First-party App Store Connect analytics is the
+tracking one keyword in one storefront produce one fetch, so ownership gates
+access to a pair's data rather than the data itself. It is checked per
+storefront: tracking a keyword in France does not open another operator's pair
+for the same keyword in Germany. First-party App Store Connect analytics is the
 exception: it is scoped per app and answers only for apps you track.
 
 Two known limits of Basic auth, both deliberate trades: there is no sign-out

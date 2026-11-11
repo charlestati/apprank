@@ -11,11 +11,18 @@
 // the API returns. Classification is the server's job and stays there; how it
 // reads is the client's.
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import {
+	createContext,
+	useCallback,
+	useContext,
+	useEffect,
+	useMemo,
+	useState,
+} from "react";
 import type { ReactNode } from "react";
 
 import { Select } from "./components/select";
-import { cached, PREF_LANG, savePreference } from "./preferences";
+import { cached, PREF_LANG, savePreference, setCached } from "./preferences";
 
 export type Lang = "en" | "fr";
 
@@ -34,9 +41,10 @@ const en = {
 	// storefronts is 387 searches. A bare "387/387" left the reader guessing
 	// which of the two it meant.
 	searchesToday: "{done} of {total} searches today",
-	collectionError: "collection error",
-	collectionErrors: "collection errors",
 	lostAria: "{n} observations lost in the last 24 hours",
+	lostAriaOne: "{n} observation lost in the last 24 hours",
+	appsFailed: "The app list could not be loaded. Reload the page to try again.",
+	loadFailed: "This could not be loaded. Reload the page to try again.",
 	lostCount: "{n} lost",
 	markSeen: "Mark as seen",
 	application: "Application",
@@ -77,6 +85,8 @@ const en = {
 		"Too far down to earn taps, with no evidence the climb is short.",
 	reasonDormantUnranked:
 		"Not ranking at all: either the metadata does not cover it or the term is out of reach.",
+	reasonNoObservation:
+		"No observation in this period yet, so there is no verdict: this is missing data, not a rank.",
 	reasonUnknownReachable:
 		"Close enough to push, but Apple publishes no volume for this term, so the payoff is unmeasured.",
 	reasonUnknownTapZone:
@@ -97,9 +107,25 @@ const en = {
 	dayObserved: "{n} day observed",
 	filterByPopularity: "Filter by popularity",
 	chartCaption:
-		"Rank of {app} for {n} keywords, {from} to {to}. Rank 1 is at the top. A gap is a day with no observation, never a flat rank; days outside the top 200 and days the fetch failed sit on their own rails below the plot. Every keyword and its latest rank are listed in the table below.",
+		"Rank of {app} for {keywords}, {from} to {to}. Rank 1 is at the top. A gap is a day with no observation, never a flat rank; days outside the top 200 and days the fetch failed sit on their own rails below the plot. Every keyword and its latest rank are listed in the table below.",
 	filterKeywords: "Filter keywords",
 	filterNKeywords: "Filter {n} keywords",
+	filterOneKeyword: "Filter {n} keyword",
+	nKeywords: "{n} keywords",
+	nKeyword: "{n} keyword",
+	nDays: "{n} days",
+	nDay: "{n} day",
+	storefrontsEmpty: "No keyword is tracked for this app in any storefront yet.",
+	storefrontsFailed:
+		"The storefront list could not be loaded. Reload the page to try again.",
+	// The two ways a row can have no rank to show without that being a rank.
+	// Kept apart from the dash, which says "observed, outside the top 200".
+	cellNoData: "no data",
+	cellNoDataTitle:
+		"Not observed yet in this period. This is missing data, not a rank.",
+	cellFailed: "failed",
+	cellFailedTitle:
+		"Every collection attempt in this period failed. This is missing data, not a rank.",
 	keywordInsights: "Keyword insights",
 	noAppTracked: "No app is being tracked yet.",
 	nOfMShown: "{n} of {total} shown",
@@ -113,7 +139,7 @@ const en = {
 	topResults: "Top results",
 	total: "Total apps",
 	unprovenTitle:
-		"moved in the last 48h; Apple reshuffles, so this has not settled",
+		"This rank moved in the last 48 hours. Apple reshuffles, so it has not settled.",
 
 	// Tiles, drawer, secondary pages
 	app: "App",
@@ -141,8 +167,9 @@ const en = {
 
 	// Table & filters
 	view: "View",
+	contested: "More contested",
 	contestedTitle:
-		"{n} more results than at the start of the window, so the term is getting more contested",
+		"{n} more results than at the start of the window, so the term is getting more contested.",
 	pairDetailSub:
 		"Rank of {app} in the top 200, daily. Gaps are missing observations, not flat ranks.",
 	theTrackedApp: "the tracked app",
@@ -179,6 +206,7 @@ const en = {
 	dailyCompleted: "completed",
 	dailyFailed: "failed",
 	dailyNoRun: "no run recorded yet",
+	dailyStale: "no run in the last 26 hours",
 	dailyQueuedSuffix: " · queued {n}",
 	dailyUnfinished: "started and never finished",
 	errorsLast24h: "Errors, last 24h",
@@ -194,14 +222,18 @@ const en = {
 	errUpstreamError: "Apple reported a failure",
 	errTaskThrew: "The task failed",
 	errAppNotInStorefront: "Not sold in this storefront",
+	errSkippedProcessingDate: "Apple skipped a report day",
+	errDuplicateProcessingDate: "Apple delivered a report day twice",
+	errStoppedDueToInactivity: "Apple stopped an unpolled report",
 	errPullAbandoned: "A feed gave up today",
+	errUnclassified: "Unclassified error",
 	expand: "Expand",
 	healthIntro:
 		"Visible gaps beat silent garbage. Anything red here means today's numbers need a second look.",
 	lastDailyJob: "Last daily job",
 	loopNeverTicked: "never ticked, the collector has not run",
 	loopQueued: "{n} queued",
-	loopQueueEmpty: "queue empty",
+	loopIdle: "idle, nothing queued",
 	loopSinceTick: "since last tick",
 	overdueNote: "past due by more than one interval",
 	overduePairs: "Overdue pairs",
@@ -214,7 +246,9 @@ const en = {
 	close: "Close",
 	drawerFailed: "Could not load the result page.",
 	drawerObserved: "observed {date}",
+	drawerNoObservation: "no observation yet",
 	drawerResultCount: "{n} results",
+	drawerResultCountOne: "{n} result",
 	drawerSearchResults: "Search results for {keyword}",
 
 	// Reviews
@@ -223,8 +257,11 @@ const en = {
 	reviewsIntro:
 		"Most recent reviews across storefronts. Apple's feed caps at the latest 500 per storefront.",
 	starsLabel: "{n} stars",
+	starLabel: "{n} star",
+	starsUnrated: "Not rated",
 	noCompetitorData: "No competitor data yet.",
 	noKeywordMatch: "No keywords match “{filter}”.",
+	noKeywordInBand: "No keywords in this popularity band.",
 	noRankedObservations:
 		"No ranked observations in this window yet. The collector fills this in daily.",
 	suggestionsEmpty:
@@ -233,7 +270,11 @@ const en = {
 		"Keywords Apple associates with the ones you already track. Nothing enters the crawl budget without approval here.",
 
 	// Chart, table and tiles
-	addToChart: "Add {keyword} to the chart",
+	chartAria:
+		"Rank history for {keywords} over {days}, {from} to {to}. Rank 1 is at the top; gaps are days with no observation.",
+	// One constant name per toggle, with the state in aria-pressed. A name that
+	// flips with the state ("Hide X", pressed) reads as a double negative.
+	chartMember: "{keyword} on the chart",
 	chartNoData: "no data · {errorClass}",
 	chartRank: "rank {n}",
 	chartVersion: " · version {version}",
@@ -242,18 +283,37 @@ const en = {
 	difficultyStability: "board stability {pct}",
 	difficultyTop10: "top-10 rating mass {pct}",
 	difficultyTop3: "top-3 rating mass {pct}",
-	hideFromChart: "Hide {keyword} from the chart",
 	showOnChart: "Show {keyword} on the chart",
 	allSeriesHidden: "Every line is hidden. Use the keys below to show one.",
+	noKeywordSelected:
+		"No keyword is on the chart. Tick one in the table below to draw it.",
+	railUnranked: ">200",
+	railError: "error",
+	railUnrankedTitle: "{date}: {keyword} observed, outside the top 200",
+	railErrorTitle:
+		"{date}: {keyword} fetch failed ({errorClass}), not a rank change",
+	deltaUp: "up",
+	deltaDown: "down",
+	deltaAge: "{n}d",
+	meterNoData: "{label}: no data",
+	minutesShort: "{n}m",
+	// The fields a release can change, as the report names them.
+	fieldTitle: "title",
+	fieldSubtitle: "subtitle",
+	fieldVersion: "version",
+	fieldPrice: "price",
+	fieldHasIap: "in-app purchases",
+	fieldDescription: "description",
+	fieldReleaseNotes: "release notes",
+	fieldScreenshots: "screenshots",
+	fieldIcon: "icon",
+	fieldFirstSeen: "first seen",
 	navSections: "Sections",
 	noChangeWindow: "no change in this window",
 	noFieldDiff: "no field diff",
 	notInTop200: "not in top 200",
-	notRanked: "not ranked",
-	notRankedTitled: "{title}: not ranked (top 200)",
 	opportunityPop: " · pop {n}",
 	pairFallback: "Pair {id}",
-	removeFromChart: "Remove {keyword} from the chart",
 
 	// Explanations. Every number here is derived from something the reader
 	// cannot see, so each one owns a sentence saying what it is and what it is
@@ -261,7 +321,7 @@ const en = {
 	// touch and the keyboard never reach.
 	explainAbout: "About {label}",
 	helpPosition:
-		"Where this app ranks in App Store search for the keyword, on the most recent day collected. A dash means it was not in the top 200 that day.",
+		"Where this app ranks in App Store search for the keyword, on the most recent day collected. A dash means it was observed outside the top 200 that day. “No data” means it was not observed in this period, and “failed” that every collection attempt failed: neither is a rank.",
 	helpChange:
 		"How far the rank moved against its previous different rank in this period, and how long ago that was. Up means closer to rank 1.",
 	helpPopularity:
@@ -295,6 +355,7 @@ const en = {
 	diffOpen: "open",
 	averageRankNote: "Across the keywords that ranked in the last {n} days.",
 	distributionBucket: "{count} keywords at rank {label}",
+	distributionBucketOne: "{count} keyword at rank {label}",
 	distributionNote: "Each keyword's most recent rank in this period.",
 } as const;
 
@@ -311,9 +372,11 @@ const fr: Dictionary = {
 	reviews: "Avis",
 	suggestions: "Suggestions",
 	searchesToday: "{done} sur {total} recherches aujourd'hui",
-	collectionError: "erreur de collecte",
-	collectionErrors: "erreurs de collecte",
 	lostAria: "{n} observations perdues ces dernières 24 h",
+	lostAriaOne: "{n} observation perdue ces dernières 24 h",
+	appsFailed:
+		"La liste des applications n'a pas pu être chargée. Rechargez la page pour réessayer.",
+	loadFailed: "Le chargement a échoué. Rechargez la page pour réessayer.",
 	lostCount: "{n} perdues",
 	markSeen: "Marquer comme vu",
 	application: "Application",
@@ -352,6 +415,8 @@ const fr: Dictionary = {
 		"Trop bas pour générer des taps, sans indice que la remontée soit courte.",
 	reasonDormantUnranked:
 		"Pas classé du tout : soit les métadonnées ne couvrent pas le terme, soit il est hors d'atteinte.",
+	reasonNoObservation:
+		"Aucune observation sur cette période, donc aucun verdict : c'est une donnée manquante, pas un rang.",
 	reasonUnknownReachable:
 		"Assez proche pour pousser, mais Apple ne publie aucun volume pour ce terme : le gain reste non mesuré.",
 	reasonUnknownTapZone:
@@ -372,8 +437,23 @@ const fr: Dictionary = {
 	filterByPopularity: "Filtrer par popularité",
 	filterKeywords: "Filtrer les mots-clés",
 	filterNKeywords: "Filtrer {n} mots-clés",
+	filterOneKeyword: "Filtrer {n} mot-clé",
+	nKeywords: "{n} mots-clés",
+	nKeyword: "{n} mot-clé",
+	nDays: "{n} jours",
+	nDay: "{n} jour",
+	storefrontsEmpty:
+		"Aucun mot-clé n'est encore suivi pour cette application, dans aucune boutique.",
+	storefrontsFailed:
+		"La liste des boutiques n'a pas pu être chargée. Rechargez la page pour réessayer.",
+	cellNoData: "sans donnée",
+	cellNoDataTitle:
+		"Pas encore observé sur cette période. C'est une donnée manquante, pas un rang.",
+	cellFailed: "échec",
+	cellFailedTitle:
+		"Toutes les tentatives de collecte de cette période ont échoué. C'est une donnée manquante, pas un rang.",
 	chartCaption:
-		"Classement de {app} pour {n} mots-clés, du {from} au {to}. Le rang 1 est en haut. Un trou est un jour sans observation, jamais un rang stable ; les jours hors du top 200 et les jours d'échec de collecte sont sur leurs propres rails sous le graphique. Le tableau ci-dessous liste chaque mot-clé et son dernier rang.",
+		"Classement de {app} pour {keywords}, du {from} au {to}. Le rang 1 est en haut. Un trou est un jour sans observation, jamais un rang stable ; les jours hors du top 200 et les jours d'échec de collecte sont sur leurs propres rails sous le graphique. Le tableau ci-dessous liste chaque mot-clé et son dernier rang.",
 	keywordInsights: "Analyse du mot-clé",
 	noAppTracked: "Aucune application n'est encore suivie.",
 	nOfMShown: "{n} sur {total} affichés",
@@ -388,11 +468,12 @@ const fr: Dictionary = {
 	topResults: "Meilleurs résultats",
 	total: "Total d’apps",
 	unprovenTitle:
-		"a bougé dans les dernières 48 h ; Apple rebrasse, ce rang n'est pas stabilisé",
+		"Ce rang a bougé dans les dernières 48 h. Apple rebrasse, il n'est pas stabilisé.",
 
 	view: "Voir",
+	contested: "Plus disputé",
 	contestedTitle:
-		"{n} résultats de plus qu'au début de la période : le terme se dispute davantage",
+		"{n} résultats de plus qu'au début de la période : le terme se dispute davantage.",
 	pairDetailSub:
 		"Rang de {app} dans le top 200, chaque jour. Un trou est une observation manquante, pas un rang stable.",
 	theTrackedApp: "l'application suivie",
@@ -455,6 +536,7 @@ const fr: Dictionary = {
 	dailyCompleted: "terminée",
 	dailyFailed: "échouée",
 	dailyNoRun: "aucune exécution enregistrée",
+	dailyStale: "aucune exécution depuis 26 heures",
 	dailyQueuedSuffix: " · {n} en file",
 	dailyUnfinished: "démarrée sans jamais se terminer",
 	errorsLast24h: "Erreurs, dernières 24 h",
@@ -468,14 +550,18 @@ const fr: Dictionary = {
 	errUpstreamError: "Apple a signalé un échec",
 	errTaskThrew: "La tâche a échoué",
 	errAppNotInStorefront: "Non vendue dans cette boutique",
+	errSkippedProcessingDate: "Apple a sauté un jour de rapport",
+	errDuplicateProcessingDate: "Apple a livré un jour de rapport en double",
+	errStoppedDueToInactivity: "Apple a arrêté un rapport non consulté",
 	errPullAbandoned: "Un flux a abandonné",
+	errUnclassified: "Erreur non classée",
 	expand: "Développer",
 	healthIntro:
 		"Mieux vaut un trou visible qu'une donnée fausse. Tout ce qui est en rouge demande de vérifier les chiffres du jour.",
 	lastDailyJob: "Dernière tâche quotidienne",
 	loopNeverTicked: "jamais démarrée, le collecteur n'a pas tourné",
 	loopQueued: "{n} en file",
-	loopQueueEmpty: "file vide",
+	loopIdle: "au repos, rien en file",
 	loopSinceTick: "depuis le dernier passage",
 	overdueNote: "en retard de plus d'un intervalle",
 	overduePairs: "Paires en retard",
@@ -488,7 +574,9 @@ const fr: Dictionary = {
 	close: "Fermer",
 	drawerFailed: "Impossible de charger la page de résultats.",
 	drawerObserved: "observé le {date}",
+	drawerNoObservation: "pas encore d'observation",
 	drawerResultCount: "{n} résultats",
+	drawerResultCountOne: "{n} résultat",
 	drawerSearchResults: "Résultats de recherche pour {keyword}",
 
 	// Reviews
@@ -498,8 +586,11 @@ const fr: Dictionary = {
 	reviewsIntro:
 		"Avis les plus récents, toutes boutiques confondues. Le flux d'Apple s'arrête aux 500 derniers par boutique.",
 	starsLabel: "{n} étoiles",
+	starLabel: "{n} étoile",
+	starsUnrated: "Sans note",
 	noCompetitorData: "Aucune donnée sur les concurrents pour l'instant.",
 	noKeywordMatch: "Aucun mot-clé ne correspond à « {filter} ».",
+	noKeywordInBand: "Aucun mot-clé dans cette tranche de popularité.",
 	noRankedObservations:
 		"Aucune observation classée sur cette période. Le collecteur la remplit chaque jour.",
 	suggestionsEmpty:
@@ -508,7 +599,9 @@ const fr: Dictionary = {
 		"Mots-clés qu'Apple associe à ceux que vous suivez déjà. Rien n'entre dans le budget de collecte sans validation ici.",
 
 	// Chart, table and tiles
-	addToChart: "Ajouter {keyword} au graphique",
+	chartAria:
+		"Historique du rang pour {keywords} sur {days}, du {from} au {to}. Le rang 1 est en haut ; un trou est un jour sans observation.",
+	chartMember: "{keyword} sur le graphique",
 	chartNoData: "aucune donnée · {errorClass}",
 	chartRank: "rang {n}",
 	chartVersion: " · version {version}",
@@ -517,23 +610,41 @@ const fr: Dictionary = {
 	difficultyStability: "stabilité du classement {pct}",
 	difficultyTop10: "poids des notes du top 10 {pct}",
 	difficultyTop3: "poids des notes du top 3 {pct}",
-	hideFromChart: "Masquer {keyword} du graphique",
 	showOnChart: "Afficher {keyword} sur le graphique",
 	allSeriesHidden:
 		"Toutes les courbes sont masquées. Utilisez la légende pour en afficher une.",
+	noKeywordSelected:
+		"Aucun mot-clé n'est sur le graphique. Cochez-en un dans le tableau ci-dessous pour le tracer.",
+	railUnranked: ">200",
+	railError: "échec",
+	railUnrankedTitle: "{date} : {keyword} observé, hors du top 200",
+	railErrorTitle:
+		"{date} : échec de collecte pour {keyword} ({errorClass}), pas un changement de rang",
+	deltaUp: "en hausse",
+	deltaDown: "en baisse",
+	deltaAge: "{n} j",
+	meterNoData: "{label} : aucune donnée",
+	minutesShort: "{n} min",
+	fieldTitle: "titre",
+	fieldSubtitle: "sous-titre",
+	fieldVersion: "version",
+	fieldPrice: "prix",
+	fieldHasIap: "achats intégrés",
+	fieldDescription: "description",
+	fieldReleaseNotes: "notes de version",
+	fieldScreenshots: "captures d'écran",
+	fieldIcon: "icône",
+	fieldFirstSeen: "première observation",
 	navSections: "Sections",
 	noChangeWindow: "aucun changement sur la période",
 	noFieldDiff: "aucun champ modifié",
 	notInTop200: "hors du top 200",
-	notRanked: "non classé",
-	notRankedTitled: "{title} : non classé (top 200)",
 	opportunityPop: " · pop {n}",
 	pairFallback: "Paire {id}",
-	removeFromChart: "Retirer {keyword} du graphique",
 
 	explainAbout: "À propos de {label}",
 	helpPosition:
-		"Le rang de cette app dans la recherche App Store pour ce mot-clé, au dernier jour collecté. Un tiret signifie qu'elle n'était pas dans le top 200 ce jour-là.",
+		"Le rang de cette app dans la recherche App Store pour ce mot-clé, au dernier jour collecté. Un tiret signifie qu'elle a été observée hors du top 200 ce jour-là. « Sans donnée » signifie qu'elle n'a pas été observée sur la période, et « échec » que toutes les tentatives de collecte ont échoué : ni l'un ni l'autre n'est un rang.",
 	helpChange:
 		"L'écart entre ce rang et le rang différent précédent de la période, et son ancienneté. Une hausse rapproche du rang 1.",
 	helpPopularity:
@@ -555,7 +666,7 @@ const fr: Dictionary = {
 	rankedOf: "{n} sur {total}",
 	movementPeriod:
 		"Par rapport au rang précédent de chaque mot-clé, sur {n} jours.",
-	chartCapacity: "{n} mots-clés sur {max} affichés",
+	chartCapacity: "{n} sur {max} mots-clés affichés",
 	chartFull:
 		"Le graphique affiche {max} mots-clés à la fois. Décochez-en un pour en ajouter un autre.",
 	popularityTitle: "Popularité de recherche {n} sur 100 — {band}.",
@@ -569,12 +680,13 @@ const fr: Dictionary = {
 	diffOpen: "ouverte",
 	averageRankNote: "Sur les mots-clés classés ces {n} derniers jours.",
 	distributionBucket: "{count} mots-clés au rang {label}",
+	distributionBucketOne: "{count} mot-clé au rang {label}",
 	distributionNote: "Le dernier rang connu de chaque mot-clé sur la période.",
 };
 
 const DICTIONARIES: Record<Lang, Dictionary> = { en, fr };
 
-export const LANGUAGES: { code: Lang; label: string }[] = [
+const LANGUAGES: { code: Lang; label: string }[] = [
 	{ code: "en", label: "English" },
 	{ code: "fr", label: "Français" },
 ];
@@ -596,15 +708,21 @@ export function initialLang(): Lang {
 
 interface I18n {
 	lang: Lang;
-	setLang: (lang: Lang) => void;
+	/** The reader picked a language: applied, cached and stored server-side. */
+	chooseLang: (lang: Lang) => void;
+	/** The stored preference arrived: applied and cached, never written back. */
+	adoptLang: (lang: Lang) => void;
 	t: Dictionary;
 }
 
+const noop = () => {
+	// Replaced by the provider; the default keeps `useT` safe outside one.
+};
+
 const I18nContext = createContext<I18n>({
+	adoptLang: noop,
+	chooseLang: noop,
 	lang: "en",
-	setLang: () => {
-		// Replaced by the provider; the default keeps `useT` safe outside one.
-	},
 	t: en,
 });
 
@@ -613,13 +731,24 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
 	useEffect(() => {
 		document.documentElement.lang = lang;
-		// Cache and database both; see `preferences.ts` for why there are two.
-		savePreference(PREF_LANG, lang);
 	}, [lang]);
 
+	// Only a choice the reader made is written to the server. Persisting the
+	// first frame's language, which is merely the browser's guess, would race
+	// the shell's read of the stored preference and overwrite the reader's real
+	// choice from another machine with it.
+	const chooseLang = useCallback((next: Lang) => {
+		setLang(next);
+		savePreference(PREF_LANG, next);
+	}, []);
+	const adoptLang = useCallback((next: Lang) => {
+		setLang(next);
+		setCached(PREF_LANG, next);
+	}, []);
+
 	const value = useMemo(
-		() => ({ lang, setLang, t: DICTIONARIES[lang] }),
-		[lang]
+		() => ({ adoptLang, chooseLang, lang, t: DICTIONARIES[lang] }),
+		[adoptLang, chooseLang, lang]
 	);
 	return <I18nContext value={value}>{children}</I18nContext>;
 }
@@ -639,9 +768,10 @@ export function fmt(
 }
 
 /**
- * Pick the singular or plural key. English and French agree on the only rule
- * this product needs (0 and 2+ take the plural, 1 does not), so a full
- * plural-rules engine would be machinery for a branch.
+ * Pick the singular or plural key. The two languages differ only at zero:
+ * English says "0 days", French (CLDR's "one" category covers 0 and 1) says
+ * "0 jour". Counts here are whole numbers, so that one difference is the whole
+ * rule and a plural-rules engine would be machinery for a branch.
  */
 export function plural(
 	t: Dictionary,
@@ -649,7 +779,8 @@ export function plural(
 	one: keyof Dictionary,
 	many: keyof Dictionary
 ): string {
-	return fmt(n === 1 ? t[one] : t[many], { n });
+	const singular = n === 1 || (n === 0 && t === DICTIONARIES.fr);
+	return fmt(singular ? t[one] : t[many], { n });
 }
 
 /** Shorthand for the common case of needing only the strings. */
@@ -662,6 +793,7 @@ const REASON_KEYS = {
 	close: "reasonClose",
 	dormantDeep: "reasonDormantDeep",
 	dormantUnranked: "reasonDormantUnranked",
+	noObservation: "reasonNoObservation",
 	unknownReachable: "reasonUnknownReachable",
 	unknownTapZone: "reasonUnknownTapZone",
 	vanity: "reasonVanity",
@@ -682,15 +814,42 @@ export function reasonText(
 }
 
 export function LanguagePicker() {
-	const { lang, setLang, t } = useI18n();
+	const { chooseLang, lang, t } = useI18n();
 	return (
 		<Select
 			hiddenLabel
 			label={t.language}
-			onValueChange={(next) => setLang(next as Lang)}
+			onValueChange={(next) => chooseLang(next as Lang)}
 			options={LANGUAGES.map((l) => ({ label: l.label, value: l.code }))}
 			tone="quiet"
 			value={lang}
 		/>
 	);
+}
+
+const FIELD_KEYS = {
+	description: "fieldDescription",
+	firstSeen: "fieldFirstSeen",
+	hasIap: "fieldHasIap",
+	icon: "fieldIcon",
+	price: "fieldPrice",
+	releaseNotes: "fieldReleaseNotes",
+	screenshots: "fieldScreenshots",
+	subtitle: "fieldSubtitle",
+	title: "fieldTitle",
+	version: "fieldVersion",
+} as const satisfies Record<string, keyof Dictionary>;
+
+/**
+ * The fields a release changed, in words. The server sends its own identifiers
+ * ("releaseNotes", "hasIap"); one this build does not know is shown as sent,
+ * for the same reason an unknown verdict is: odd beats missing.
+ */
+export function changedFields(t: Dictionary, changed: string[]): string {
+	return changed
+		.map((field) => {
+			const key = FIELD_KEYS[field as keyof typeof FIELD_KEYS];
+			return key ? t[key] : field;
+		})
+		.join(", ");
 }

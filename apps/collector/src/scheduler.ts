@@ -1,20 +1,26 @@
 import { DurableObject } from "cloudflare:workers";
 
 import type { Env } from "./env";
-import { collectsPublicEndpoints, dropsTask } from "./lib/mode";
+import { collectsPublicEndpoints, dropsTask, runsWorkLoop } from "./lib/mode";
 import {
 	loadPacing,
-	savePacing,
+	maybeRaise,
 	onThrottle,
 	onAdminThrottle,
 	tickMs,
+	updatePacing,
 } from "./lib/pacing";
-import type { PacingState } from "./lib/pacing";
 import { recordHeartbeat } from "./lib/runs";
 import { recordFetchError, getStateJson } from "./lib/state";
-import { adsPullStep, adsTermsStep } from "./tasks/ads";
+import {
+	adsPullStep,
+	adsRefusedUntil,
+	adsTermsStep,
+	TERM_CHUNK,
+} from "./tasks/ads";
 import { ascPollStep, ascFetchInstanceStep } from "./tasks/asc";
 import { pickDuePair, crawlPair } from "./tasks/crawl";
+import type { DuePair } from "./tasks/crawl";
 import { adsDiscoverStep } from "./tasks/discover";
 import {
 	lookupPullStep,
@@ -41,7 +47,7 @@ import type { Task } from "./tasks/types";
  * step is idempotent, and we deliberately never call deleteAlarm().
  */
 /** How soon a crawl that failed for a transient reason is due again. */
-export const CRAWL_RETRY_MS = 30 * 60_000;
+const CRAWL_RETRY_MS = 30 * 60_000;
 
 /**
  * Whether a step died because this Durable Object went away underneath it.
@@ -62,15 +68,191 @@ export function isRestart(message: string): boolean {
 	);
 }
 
+/** Consecutive throws a task may take before its failing unit is given up. */
+const THROW_CAP = 3;
+
+type Queued = Task & { id: string };
+
+function stamp(task: Task): Queued {
+	return { ...task, id: crypto.randomUUID() };
+}
+
+/**
+ * What a step that returned normally queues next. Steps build follow-ups by
+ * spreading the task, so a throw count would ride along; `threw` counts
+ * consecutive throws, and this step did not throw. `attempt` is left alone
+ * because the steps themselves spend it on throttles.
+ */
+function cleared(followUps: Task[]): Task[] {
+	return followUps.map((t) => (t.threw ? { ...t, threw: 0 } : t));
+}
+
+/**
+ * The batch minus its head unit, for when that unit keeps throwing. Dropping
+ * the whole task instead cost every unit behind it the day: eighty lookups
+ * lost to one app whose response broke the normaliser. Single-unit tasks have
+ * no remainder.
+ */
+function remainder(task: Task): Task[] {
+	switch (task.type) {
+		case "lookup_pull": {
+			return task.queue.length > 1
+				? [{ attempt: 0, queue: task.queue.slice(1), type: task.type }]
+				: [];
+		}
+		case "review_pull": {
+			return task.queue.length > 1
+				? [{ attempt: 0, queue: task.queue.slice(1), type: task.type }]
+				: [];
+		}
+		case "chart_pull": {
+			return task.queue.length > 1
+				? [{ attempt: 0, queue: task.queue.slice(1), type: task.type }]
+				: [];
+		}
+		case "ads_pull": {
+			return task.queue.length > 1
+				? [{ ...task, attempt: 0, queue: task.queue.slice(1) }]
+				: [];
+		}
+		case "ads_terms": {
+			const rest = task.terms.slice(TERM_CHUNK);
+			return rest.length > 0 ? [{ ...task, attempt: 0, terms: rest }] : [];
+		}
+		case "ads_discover": {
+			const [seed, ...rest] = task.rest;
+			return seed === undefined ? [] : [{ ...task, attempt: 0, rest, seed }];
+		}
+		default: {
+			return [];
+		}
+	}
+}
+
+/** Which unit a throw belongs to, so the loss names what was lost. */
+export function unitParams(task: Task): { params?: string } {
+	switch (task.type) {
+		case "lookup_pull":
+		case "review_pull":
+		case "chart_pull":
+		case "ads_pull": {
+			return { params: JSON.stringify(task.queue[0] ?? null) };
+		}
+		case "ads_terms": {
+			return {
+				params: `${task.storefront}/${Math.min(task.terms.length, TERM_CHUNK)} terms`,
+			};
+		}
+		case "ads_discover": {
+			return {
+				params: JSON.stringify({
+					seed: task.seed,
+					storefront: task.storefront,
+				}),
+			};
+		}
+		case "compact": {
+			return { params: task.date };
+		}
+		default: {
+			return {};
+		}
+	}
+}
+
+/**
+ * What goes back on the queue after a step threw.
+ *
+ * A restart is the platform's doing, not the task's, so it is retried without
+ * being counted: counting it let a deploy or two drop a batch while the row
+ * said `do_restarted`, which the health page treats as absorbed.
+ */
+export function retryAfterThrow(task: Task, message: string): Task[] {
+	if (isRestart(message)) {
+		return [task];
+	}
+	const threw = (task.threw ?? 0) + 1;
+	if (threw < THROW_CAP) {
+		return [{ ...task, threw }];
+	}
+	return cleared(remainder(task));
+}
+
 export class SchedulerDO extends DurableObject<Env> {
+	/**
+	 * Tasks a step is running right now, by id. A task stays queued while it
+	 * runs, and a step's fetch opens the input gate, so a manual step arriving
+	 * mid-alarm (or the reverse) read the same head task and fetched its unit
+	 * from Apple a second time; settling by id only stopped the duplicate
+	 * follow-ups. In memory is enough: both callers live in this one object, and
+	 * a restart drops the in-flight step along with the set.
+	 */
+	readonly #running = new Set<string>();
+
 	async enqueue(tasks: Task[]): Promise<void> {
 		if (tasks.length === 0) {
 			return;
 		}
-		const queue = (await this.ctx.storage.get<Task[]>("queue")) ?? [];
-		queue.push(...tasks);
+		const queue = await this.#loadQueue();
+		queue.push(...tasks.map(stamp));
 		await this.ctx.storage.put("queue", queue);
 		await this.ensureAlarm();
+	}
+
+	/**
+	 * The queue, every task carrying an id. Anything queued before ids existed
+	 * is stamped and written back here, so the step that runs it can find it.
+	 * Storage calls keep the input gate shut, so nothing interleaves between a
+	 * read here and the caller's put, as long as the caller awaits nothing else
+	 * in between.
+	 */
+	async #loadQueue(): Promise<Queued[]> {
+		const stored = (await this.ctx.storage.get<Task[]>("queue")) ?? [];
+		if (stored.every((t): t is Queued => t.id !== undefined)) {
+			return stored;
+		}
+		const queue = stored.map((t) =>
+			t.id === undefined ? { ...t, id: crypto.randomUUID() } : (t as Queued)
+		);
+		await this.ctx.storage.put("queue", queue);
+		return queue;
+	}
+
+	/**
+	 * Swap a finished task for its follow-ups, against the queue as it is now.
+	 *
+	 * The step awaited Apple and D1, which opens the input gate, so the queue
+	 * read before it may be stale: putting that copy back erased whatever
+	 * `enqueue` had added meanwhile, the nightly cron's tasks included. Hence
+	 * re-read, remove by id, append. A task already gone was finished by
+	 * someone else (a manual step beside the alarm), who queued its follow-ups;
+	 * adding ours too would run the remainder twice.
+	 */
+	async #settle(id: string, followUps: Task[]): Promise<Queued[]> {
+		const queue = await this.#loadQueue();
+		const at = queue.findIndex((t) => t.id === id);
+		if (at === -1) {
+			return queue;
+		}
+		queue.splice(at, 1);
+		queue.push(...followUps.map(stamp));
+		await this.ctx.storage.put("queue", queue);
+		return queue;
+	}
+
+	async #recordThrow(
+		task: Task,
+		endpoint: string,
+		message: string
+	): Promise<void> {
+		await recordFetchError(this.env.DB, {
+			endpoint,
+			// Where a deploy lands: the task is requeued, so a restart costs
+			// nothing and must not read as loss.
+			errorClass: isRestart(message) ? "do_restarted" : "task_threw",
+			message: message.slice(0, 1200),
+			...unitParams(task),
+		});
 	}
 
 	/**
@@ -87,6 +269,9 @@ export class SchedulerDO extends DurableObject<Env> {
 	 * far-future branch, which is rare; the common path is unchanged.
 	 */
 	async ensureAlarm(): Promise<void> {
+		if (!runsWorkLoop(this.env)) {
+			return;
+		}
 		const hasWork = await this.#hasWork();
 		if (!hasWork) {
 			return;
@@ -109,14 +294,40 @@ export class SchedulerDO extends DurableObject<Env> {
 		return ((await this.ctx.storage.get<Task[]>("queue")) ?? []).length;
 	}
 
-	async #recordThrottle(
-		pacing: PacingState,
-		source: "loop" | "admin"
-	): Promise<void> {
-		await savePacing(
-			this.env.DB,
+	/**
+	 * Book a throttle against pacing as it is now, not as it was when the step
+	 * began: see `updatePacing`.
+	 */
+	async #recordThrottle(source: "loop" | "admin"): Promise<void> {
+		await updatePacing(this.env.DB, (pacing) =>
 			source === "admin" ? onAdminThrottle(pacing) : onThrottle(pacing)
 		);
+	}
+
+	/**
+	 * Count a public-endpoint fetch the loop made and Apple answered. The daily
+	 * roll raises the rate only on a day that has one. Kept in this object's own
+	 * storage rather than in D1, where a write per fetch would come out of the
+	 * budget the observations need.
+	 */
+	async #countLoopFetch(): Promise<void> {
+		const n = (await this.ctx.storage.get<number>("loopFetches")) ?? 0;
+		await this.ctx.storage.put("loopFetches", n + 1);
+	}
+
+	/**
+	 * The daily roll: close the throttle tally and move the rate against it.
+	 * Here rather than in the cron handler because the evidence it needs, the
+	 * loop's own fetch count, lives in this object.
+	 */
+	async rollPacing(today: string): Promise<void> {
+		const fetched = (await this.ctx.storage.get<number>("loopFetches")) ?? 0;
+		const { before } = await updatePacing(this.env.DB, (pacing) =>
+			maybeRaise(pacing, today, fetched > 0)
+		);
+		if (before.lastRollDay !== today) {
+			await this.ctx.storage.put("loopFetches", 0);
+		}
 	}
 
 	static #breakdown(queue: Task[]): Record<string, number> {
@@ -153,32 +364,33 @@ export class SchedulerDO extends DurableObject<Env> {
 		errors: { endpoint: string; errorClass: string | null }[];
 		threw?: string;
 	}> {
-		const pacing = await loadPacing(this.env.DB);
+		const { followUps, ...result } = await this.#runReported(task);
+		await this.enqueue(followUps);
+		return { ...result, followUps: followUps.length };
+	}
+
+	/** `runNow` without the enqueue, so `stepNow` can settle in place. */
+	async #runReported(task: Task): Promise<{
+		ok: boolean;
+		followUps: Task[];
+		errors: { endpoint: string; errorClass: string | null }[];
+		threw?: string;
+	}> {
 		const before = await this.env.DB.prepare(
 			"SELECT COALESCE(MAX(id), 0) AS id FROM fetch_error"
 		).first<{ id: number }>();
 		const watermark = before?.id ?? 0;
-		let threw: string | undefined;
 
 		try {
-			const followUps = await this.#run(task, pacing, "admin");
-			await this.enqueue(followUps);
+			const followUps = cleared(await this.#run(task, "admin"));
 			const recorded = await this.#errorsSince(watermark);
-			return {
-				errors: recorded,
-				followUps: followUps.length,
-				ok: recorded.length === 0,
-			};
+			return { errors: recorded, followUps, ok: recorded.length === 0 };
 		} catch (error) {
-			threw = error instanceof Error ? error.message : "unknown failure";
-			await recordFetchError(this.env.DB, {
-				endpoint: `admin:${task.type}`,
-				errorClass: isRestart(threw) ? "do_restarted" : "task_threw",
-				message: threw.slice(0, 1200),
-			});
+			const threw = error instanceof Error ? error.message : "unknown failure";
+			await this.#recordThrow(task, `admin:${task.type}`, threw);
 			return {
 				errors: await this.#errorsSince(watermark),
-				followUps: 0,
+				followUps: [],
 				ok: false,
 				threw,
 			};
@@ -190,6 +402,10 @@ export class SchedulerDO extends DurableObject<Env> {
 	 * particular) return follow-ups rather than looping, so verifying one end to
 	 * end means advancing the queue by hand, or the follow-ups sit
 	 * behind whatever pause the iTunes crawler is serving.
+	 *
+	 * The task stays queued while it runs and is settled by id afterwards, as
+	 * the alarm does. Removing it first lost it outright when the step threw:
+	 * a whole day's lookup batch, or the night's compaction, gone on one error.
 	 */
 	async stepNow(): Promise<
 		| { empty: true }
@@ -202,14 +418,35 @@ export class SchedulerDO extends DurableObject<Env> {
 				threw?: string;
 		  }
 	> {
-		const queue = (await this.ctx.storage.get<Task[]>("queue")) ?? [];
-		const task = queue.shift();
+		const task = this.#nextIdle(await this.#loadQueue());
 		if (!task) {
 			return { empty: true };
 		}
-		await this.ctx.storage.put("queue", queue);
-		const result = await this.runNow(task);
-		return { empty: false, task: task.type, ...result };
+		this.#running.add(task.id);
+		try {
+			const { followUps, ...result } = await this.#runReported(task);
+			const next =
+				result.threw === undefined
+					? followUps
+					: retryAfterThrow(task, result.threw);
+			await this.#settle(task.id, next);
+			if (next.length > 0) {
+				await this.ensureAlarm();
+			}
+			return {
+				empty: false,
+				task: task.type,
+				...result,
+				followUps: next.length,
+			};
+		} finally {
+			this.#running.delete(task.id);
+		}
+	}
+
+	/** The first queued task no other step is already running. */
+	#nextIdle(queue: Queued[]): Queued | undefined {
+		return queue.find((t) => !this.#running.has(t.id));
 	}
 
 	/**
@@ -237,7 +474,7 @@ export class SchedulerDO extends DurableObject<Env> {
 			(await getStateJson<number>(this.env.DB, "tier1_window_start_hour")) ?? 3;
 		const { throttled } = await crawlPair(this.env, pair, windowStartHour);
 		if (throttled) {
-			await this.#recordThrottle(await loadPacing(this.env.DB), "admin");
+			await this.#recordThrottle("admin");
 		}
 		return {
 			empty: false,
@@ -256,18 +493,16 @@ export class SchedulerDO extends DurableObject<Env> {
 	 * again soon, and the overdue ordering in pickDuePair still lets every other
 	 * due pair go first.
 	 */
-	async #crawlThrew(
-		pairId: number,
-		error: unknown,
-		now: number
-	): Promise<void> {
+	async #crawlThrew(pair: DuePair, error: unknown, now: number): Promise<void> {
 		const message = error instanceof Error ? error.message : "unknown";
 		const restarted = isRestart(message);
 		await recordFetchError(this.env.DB, {
 			endpoint: "task:crawl",
 			errorClass: restarted ? "do_restarted" : "task_threw",
 			message: message.slice(0, 1200),
-			params: String(pairId),
+			// The shape crawlPair records under: the report and the coverage page
+			// join on it, and a bare pair id made these losses invisible there.
+			params: `${pair.keyword_text}|${pair.storefront_code}|${pair.locale_code}`,
 		});
 		const transient =
 			restarted ||
@@ -276,7 +511,7 @@ export class SchedulerDO extends DurableObject<Env> {
 		await this.env.DB.prepare(
 			"UPDATE crawl_pair SET next_due_at = ? WHERE id = ?"
 		)
-			.bind(now + (transient ? CRAWL_RETRY_MS : 24 * 3_600_000), pairId)
+			.bind(now + (transient ? CRAWL_RETRY_MS : 24 * 3_600_000), pair.id)
 			.run();
 	}
 
@@ -309,7 +544,13 @@ export class SchedulerDO extends DurableObject<Env> {
 		return due !== null;
 	}
 
-	async alarm(): Promise<void> {
+	override async alarm(): Promise<void> {
+		// An alarm armed before the loop was switched off (the runner keeps its
+		// Durable Object storage between cycles) still fires once. It does nothing
+		// and re-arms nothing, which is how it stops; never `deleteAlarm()` here.
+		if (!runsWorkLoop(this.env)) {
+			return;
+		}
 		const pacing = await loadPacing(this.env.DB);
 		const now = Date.now();
 		if (pacing.pauseUntil > now) {
@@ -326,32 +567,28 @@ export class SchedulerDO extends DurableObject<Env> {
 			return;
 		}
 
-		const queue = (await this.ctx.storage.get<Task[]>("queue")) ?? [];
-		const task = queue.shift();
+		let queue = await this.#loadQueue();
+		const task = this.#nextIdle(queue);
 		let didWork = false;
 
 		if (task) {
 			didWork = true;
-			let followUps: Task[] = [];
+			this.#running.add(task.id);
+			let followUps: Task[];
 			try {
-				followUps = await this.#run(task, pacing, "loop");
+				followUps = cleared(await this.#run(task, "loop"));
 			} catch (error) {
-				const attempt = (task.attempt ?? 0) + 1;
 				const message = error instanceof Error ? error.message : "unknown";
-				await recordFetchError(this.env.DB, {
-					endpoint: `task:${task.type}`,
-					// The loop is where a deploy actually lands: the task is requeued
-					// below, so a restart here costs nothing and must not read as loss.
-					errorClass: isRestart(message) ? "do_restarted" : "task_threw",
-					message: message.slice(0, 1200),
-				});
-				if (attempt < 3) {
-					followUps = [{ ...task, attempt }];
-				}
+				await this.#recordThrow(task, `task:${task.type}`, message);
+				followUps = retryAfterThrow(task, message);
+			} finally {
+				this.#running.delete(task.id);
 			}
-			queue.push(...followUps);
-			await this.ctx.storage.put("queue", queue);
-		} else {
+			queue = await this.#settle(task.id, followUps);
+		} else if (queue.length === 0) {
+			// (A queue whose every task a manual step is running is not an empty
+			// one: crawling beside it would be a second fetch in the same tick.)
+			//
 			// No queued tasks: one Tier-1 keyword crawl if a pair is due, and only
 			// where the public endpoints are reachable at all.
 			const windowStartHour =
@@ -369,11 +606,11 @@ export class SchedulerDO extends DurableObject<Env> {
 						windowStartHour
 					);
 					console.log(`crawled pair ${pair.id} throttled=${throttled}`);
-					if (throttled) {
-						await this.#recordThrottle(pacing, "loop");
-					}
+					await (throttled
+						? this.#recordThrottle("loop")
+						: this.#countLoopFetch());
 				} catch (error) {
-					await this.#crawlThrew(pair.id, error, now);
+					await this.#crawlThrew(pair, error, now);
 				}
 			}
 		}
@@ -390,17 +627,44 @@ export class SchedulerDO extends DurableObject<Env> {
 			const delay =
 				fresh.pauseUntil > Date.now()
 					? fresh.pauseUntil - Date.now() + 1000
-					: tickMs(fresh);
+					: Math.max(tickMs(fresh), await this.#adsWaitMs(queue));
 			await this.ctx.storage.setAlarm(Date.now() + delay);
 		}
 		// else: drained. The watchdog re-arms when new work appears.
 	}
 
-	async #run(
-		task: Task,
-		pacing: PacingState,
+	/**
+	 * How long to park when nothing queued can run before Apple Ads lifts a 429.
+	 *
+	 * Every Ads step hands itself back untouched while the refusal holds, so a
+	 * queue of nothing else rotated at tick pace for the whole wait: up to a day
+	 * of ticks, each spending D1 reads and a heartbeat write to fetch nothing.
+	 * The watchdog still pulls this park in every ten minutes, which costs one
+	 * idle tick and keeps the heartbeat alive; anything else queued meanwhile
+	 * re-arms through `enqueue` as usual.
+	 */
+	async #adsWaitMs(queue: Task[]): Promise<number> {
+		if (queue.length === 0 || !queue.every((t) => t.type.startsWith("ads_"))) {
+			return 0;
+		}
+		const until = await adsRefusedUntil(this.env);
+		return until > Date.now() ? until - Date.now() + 1000 : 0;
+	}
+
+	/** Book what a public-endpoint step met: a throttle, or a loop fetch. */
+	async #booked(
+		r: { throttled: boolean; followUps: Task[] },
 		source: "loop" | "admin"
 	): Promise<Task[]> {
+		if (r.throttled) {
+			await this.#recordThrottle(source);
+		} else if (source === "loop") {
+			await this.#countLoopFetch();
+		}
+		return r.followUps;
+	}
+
+	async #run(task: Task, source: "loop" | "admin"): Promise<Task[]> {
 		if (dropsTask(this.env, task.type, source)) {
 			console.log(
 				`dropped ${task.type}: this deployment collects credentialed endpoints only`
@@ -428,25 +692,13 @@ export class SchedulerDO extends DurableObject<Env> {
 				return compactStep(this.env, task);
 			}
 			case "lookup_pull": {
-				const r = await lookupPullStep(this.env, task);
-				if (r.throttled) {
-					await this.#recordThrottle(pacing, source);
-				}
-				return r.followUps;
+				return this.#booked(await lookupPullStep(this.env, task), source);
 			}
 			case "review_pull": {
-				const r = await reviewPullStep(this.env, task);
-				if (r.throttled) {
-					await this.#recordThrottle(pacing, source);
-				}
-				return r.followUps;
+				return this.#booked(await reviewPullStep(this.env, task), source);
 			}
 			case "chart_pull": {
-				const r = await chartPullStep(this.env, task);
-				if (r.throttled) {
-					await this.#recordThrottle(pacing, source);
-				}
-				return r.followUps;
+				return this.#booked(await chartPullStep(this.env, task), source);
 			}
 			default: {
 				// Exhaustive: the Task union has no other members.

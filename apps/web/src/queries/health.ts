@@ -25,7 +25,7 @@ function lostLast24h(rows: ErrorClassRow[]): number {
 	return total;
 }
 
-export interface ErrorClassRow {
+interface ErrorClassRow {
 	error_class: string;
 	endpoint: string;
 	n: number;

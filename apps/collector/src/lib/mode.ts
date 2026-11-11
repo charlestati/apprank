@@ -62,3 +62,21 @@ export function dropsTask(
 		!collectsPublicEndpoints(env)
 	);
 }
+
+/**
+ * Whether this process runs the paced work loop at all.
+ *
+ * The borrowed-IP runner (scripts/local-refresh) drives every fetch itself
+ * through the manual triggers, at a fixed spacing it owns. Its generated config
+ * drops the crons for that reason, but a Durable Object arms its own alarm the
+ * moment anything is enqueued, so the loop ran there anyway: it drained the
+ * queue and crawled due pairs beside the script, past the script's spacing,
+ * and fetched the head task a second time (invariant 4). The 2026-11-11 run's
+ * log shows four crawls only the alarm could have made. `WORK_LOOP=off` is the
+ * runner saying so, and it is an env var rather than a collector_state row
+ * because the runner shares its D1 with the deployment, whose loop must keep
+ * running.
+ */
+export function runsWorkLoop(env: Env): boolean {
+	return env.WORK_LOOP !== "off";
+}

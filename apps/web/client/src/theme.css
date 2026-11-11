@@ -76,6 +76,7 @@
 	--ds-font-mono:
 		"Atlassian Mono", ui-monospace, Menlo, "Segoe UI Mono", "Ubuntu Mono",
 		monospace;
+	--ds-weight-regular: 400;
 	--ds-weight-medium: 500;
 	--ds-weight-bold: 653;
 
@@ -859,6 +860,33 @@ h1 {
 	margin-left: var(--ds-space-050);
 	color: var(--ds-text-warning);
 }
+/* Both marks are triggers now, so they inherit the footnote button's reset;
+   these put back what that reset would otherwise take. */
+.footnote-mark.contested {
+	display: inline-flex;
+	color: var(--ds-text-warning);
+	vertical-align: middle;
+}
+.footnote-mark.unproven {
+	vertical-align: baseline;
+}
+
+/* A row with no observation in the window. A word, set smaller and lighter
+   than a rank, so it cannot be scanned as one: the dash beside it in other
+   rows means "observed, outside the top 200", which is data. */
+/* Qualified past the skin's own rank rule, which would repaint it as a rank. */
+.report td .rank.rank-gap {
+	min-width: 0;
+	padding: 0;
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
+	font-size: 12px;
+	font-weight: var(--ds-weight-regular);
+	white-space: nowrap;
+}
+.report td .rank.rank-gap-failed {
+	color: var(--ds-text-danger);
+}
 
 .marker-line {
 	stroke: var(--ds-text-subtlest);
@@ -1010,6 +1038,11 @@ line.marker-on {
 	stroke: var(--ds-surface-raised);
 	stroke-width: 1;
 }
+/* A second and third keyword outside the top 200 on the same day: hollow
+   squares around the first, as the dots do with rings. */
+.unranked-mark-ring {
+	stroke-width: 1.5;
+}
 .hatch-line {
 	stroke: var(--ds-chart-danger);
 	stroke-width: 2;
@@ -1051,6 +1084,13 @@ line.marker-on {
 	display: flex;
 	align-items: center;
 	gap: var(--ds-space-075);
+}
+/* A long keyword ends in an ellipsis: the box is kept inside the chart, and
+   it can only be kept there if it is narrower than the chart. */
+.chart-tip-name {
+	max-width: 22ch;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 .chart-tip-rank {
 	margin-left: auto;
@@ -1502,6 +1542,19 @@ table.grid tbody tr:hover {
 	align-items: center;
 	gap: var(--ds-space-100);
 }
+/* The difficulty meter and the footnote that may follow it. The slot for the
+   mark is reserved on every row, so a row that carries one does not shorten
+   its bar against its neighbours'. */
+.meter-cell {
+	position: relative;
+	display: block;
+	padding-right: 10px;
+}
+.meter-cell .footnote-mark {
+	position: absolute;
+	top: -2px;
+	right: 0;
+}
 .meter-track {
 	flex: 1;
 	height: 6px;
@@ -1883,8 +1936,11 @@ table.grid tbody tr:hover {
 }
 
 @media (max-width: 900px) {
+	/* minmax(0, …), not a bare 1fr: a bare fraction never shrinks below its
+	   widest child, so one unwrappable row widened the whole page past the
+	   viewport and every card with it. */
 	.shell {
-		grid-template-columns: 1fr;
+		grid-template-columns: minmax(0, 1fr);
 	}
 	.sidebar {
 		flex-direction: row;
@@ -1895,8 +1951,31 @@ table.grid tbody tr:hover {
 	.nav-heading {
 		display: none;
 	}
+	/* The language select and the account name ran off the right edge and gave
+	   the whole page a horizontal scroll. */
+	.topbar {
+		flex-wrap: wrap;
+		row-gap: var(--ds-space-050);
+		padding-inline: var(--ds-space-200);
+	}
+	.topbar .spacer {
+		display: none;
+	}
 	main {
 		padding: var(--ds-space-200);
+	}
+	/* One row of four controls needs some 450px, and the card clips what does
+	   not fit: at phone width that was the export button and the row count. */
+	.table-toolbar {
+		flex-wrap: wrap;
+		gap: var(--ds-space-100);
+	}
+	.search {
+		flex: 1 1 160px;
+		min-width: 0;
+	}
+	.table-toolbar .spacer {
+		display: none;
 	}
 }
 

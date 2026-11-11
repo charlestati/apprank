@@ -1,16 +1,27 @@
-import { render, screen } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter, Route, Routes, useNavigate } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PairDetail } from "../src/pages/pair-detail";
 import {
 	APP_ID,
-	RIVAL_ID,
 	competitorPoint,
+	deferred,
 	historyPoint,
+	settle,
 	stubFetch,
 	trackedApp,
 } from "./harness";
+
+/** Moves to another pair without remounting the page, as a link would. */
+function GoTo({ to }: { to: string }) {
+	const navigate = useNavigate();
+	return (
+		<button onClick={() => navigate(to)} type="button">
+			go
+		</button>
+	);
+}
 
 function renderPair(
 	app: typeof trackedApp | null,
@@ -27,6 +38,7 @@ function renderPair(
 
 describe("PairDetail page", () => {
 	afterEach(() => {
+		vi.useRealTimers();
 		vi.unstubAllGlobals();
 	});
 
@@ -65,7 +77,10 @@ describe("PairDetail page", () => {
 		).toBeDefined();
 	});
 
-	it("renders the chart once the history resolves", async () => {
+	it("renders the chart once the history resolves, out to today", async () => {
+		// Only Date is faked: the finders still need real timers to poll.
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(new Date("2026-01-04T12:00:00Z"));
 		stubFetch({
 			competitors: [],
 			history: [
@@ -74,18 +89,94 @@ describe("PairDetail page", () => {
 			],
 		});
 		renderPair(trackedApp);
+		// Two days nobody collected since the last point: the axis runs on to
+		// the end of the requested window, so the line visibly stops short of it
+		// instead of the chart ending wherever collection did.
 		await expect(
 			screen.findByRole("img", {
-				name: /Rank history for 1 keyword over 2 days, 2026-01-01 to 2026-01-02/u,
+				name: /Rank history for 1 keyword over 4 days, 1 Jan 2026 to 4 Jan 2026/u,
 			})
 		).resolves.toBeDefined();
 	});
 
-	it("falls back to an empty chart and board when both requests fail", async () => {
+	it("marks the days collection failed, apart from days never collected", async () => {
+		stubFetch({
+			competitors: [],
+			history: {
+				fetchErrors: [
+					{ count: 2, date: "2026-01-03", errorClass: "throttled" },
+				],
+				points: [
+					historyPoint({ observed_date: "2026-01-01", position: 4 }),
+					historyPoint({ observed_date: "2026-01-02", position: 5 }),
+				],
+				window: { from: "2026-01-01", to: "2026-01-05" },
+			},
+		});
+		const { container } = renderPair(trackedApp);
+		await expect(
+			screen.findByRole("img", {
+				name: /over 5 days, 1 Jan 2026 to 5 Jan 2026/u,
+			})
+		).resolves.toBeDefined();
+		expect(container.querySelectorAll(".error-mark")).toHaveLength(1);
+	});
+
+	it("keeps the current pair's history when the previous pair's lands late", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(new Date("2026-02-03T12:00:00Z"));
+		const stale = deferred<unknown>();
+		stubFetch({
+			"/pairs/8/history": [
+				historyPoint({ observed_date: "2026-02-01", position: 3 }),
+			],
+			competitors: [],
+			history: stale.promise,
+		});
+		render(
+			<MemoryRouter initialEntries={["/pairs/7"]}>
+				<Routes>
+					<Route
+						element={
+							<>
+								<GoTo to="/pairs/8" />
+								<PairDetail app={trackedApp} />
+							</>
+						}
+						path="/pairs/:pairId"
+					/>
+				</Routes>
+			</MemoryRouter>
+		);
+		fireEvent.click(screen.getByRole("button", { name: "go" }));
+		await expect(
+			screen.findByRole("img", { name: /1 Feb 2026/u })
+		).resolves.toBeDefined();
+
+		stale.resolve([historyPoint({ observed_date: "2026-01-20", position: 9 })]);
+		await settle();
+		expect(screen.queryByRole("img", { name: /20 Jan 2026/u })).toBeNull();
+		expect(screen.getByRole("img", { name: /1 Feb 2026/u })).toBeDefined();
+	});
+
+	it("says both requests failed, rather than that nothing was collected", async () => {
 		stubFetch({
 			competitors: new Response("", { status: 500 }),
 			history: new Response("", { status: 500 }),
 		});
+		renderPair(trackedApp);
+		// One for the chart, one for the board. "The collector fills this in
+		// daily" is a claim about the data, and a 500 supports no such claim.
+		await expect(
+			screen.findAllByText(/could not be loaded/u)
+		).resolves.toHaveLength(2);
+		expect(screen.queryByText(/No ranked observations/u)).toBeNull();
+		expect(screen.queryByText("No competitor data yet.")).toBeNull();
+		expect(screen.queryByText("Loading…")).toBeNull();
+	});
+
+	it("keeps the empty states for a pair that answered with nothing", async () => {
+		stubFetch({ competitors: [], history: [] });
 		renderPair(trackedApp);
 		await expect(
 			screen.findByText(/No ranked observations in this window yet/u)
@@ -132,6 +223,5 @@ describe("PairDetail page", () => {
 		]);
 		// The tracked app's own row is highlighted.
 		expect(screen.getAllByRole("row")[1]?.className).toBe("row-self");
-		expect(RIVAL_ID).toBe(515_151);
 	});
 });

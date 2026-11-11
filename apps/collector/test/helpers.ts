@@ -2,11 +2,11 @@ import { vi } from "vitest";
 
 export interface StubbedCall {
 	url: string;
-	init?: RequestInit;
+	init?: RequestInit | undefined;
 }
 
 /**
- * Stub global fetch for the duration of a test. vitest-pool-workers runs tests
+ * Stub global fetch for the duration of a test. The Workers test pool runs tests
  * in the same isolate as the Worker and its Durable Objects, so this
  * intercepts the collector's own outbound requests too.
  */
@@ -27,13 +27,13 @@ export async function generateP8Pem(): Promise<{
 	pem: string;
 	publicKey: CryptoKey;
 }> {
-	const pair = await crypto.subtle.generateKey(
+	const pair = (await crypto.subtle.generateKey(
 		{ name: "ECDSA", namedCurve: "P-256" },
 		true,
 		["sign", "verify"]
-	);
+	)) as CryptoKeyPair;
 	const der = new Uint8Array(
-		await crypto.subtle.exportKey("pkcs8", pair.privateKey)
+		(await crypto.subtle.exportKey("pkcs8", pair.privateKey)) as ArrayBuffer
 	);
 	let bin = "";
 	for (const b of der) {

@@ -20,7 +20,19 @@ export class NotFoundError extends Error {
 	}
 }
 
-export class ScopeError extends Error {
+/**
+ * Raised when the arguments are well-formed but cannot be served: a window
+ * that ends before it starts, or one wider than the tool reads. Its message is
+ * written for the caller and is safe to return.
+ */
+export class InvalidArgumentsError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "InvalidArgumentsError";
+	}
+}
+
+class ScopeError extends Error {
 	constructor(scope: string) {
 		super(`This credential does not carry the ${scope} scope.`);
 		this.name = "ScopeError";
@@ -51,7 +63,7 @@ interface LogEntry {
 	outcome: "ok" | "denied" | "error" | "rate_limited";
 }
 
-export async function recordToolCall(
+async function recordToolCall(
 	db: D1Database,
 	principal: Principal,
 	entry: LogEntry
@@ -138,14 +150,14 @@ export function audited<A>(
 		} catch (error) {
 			const notFound = error instanceof NotFoundError;
 			finish(notFound ? "denied" : "error", null);
-			return reply(
-				{
-					error: notFound
-						? (error as Error).message
-						: `The tool failed: ${(error as Error).message}`,
-				},
-				true
-			);
+			if (notFound || error instanceof InvalidArgumentsError) {
+				return reply({ error: error.message }, true);
+			}
+			// Anything else is ours, and its message was written for a log: a
+			// driver error names tables and statements. The caller gets one stable
+			// sentence and the detail goes where an operator can read it.
+			console.error(`mcp tool ${name} failed`, error);
+			return reply({ error: "The tool failed." }, true);
 		}
 	};
 }

@@ -21,10 +21,14 @@
 			"database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID",
 		},
 	],
-	"r2_buckets": [{ "binding": "ARCHIVE", "bucket_name": "apprank-archive" }],
-	// Burst brake for the MCP endpoint, keyed per credential. The authoritative
-	// limit is the daily budget on `mcp_credential`; this one only stops a hot
-	// retry loop from reaching D1 at all. `period` accepts 10 or 60 seconds only.
+	// No R2 binding on purpose: this Worker only reads D1, and the archive is the
+	// source of truth, so the public-facing half holds no handle to it.
+	//
+	// Burst brake for the MCP endpoint, charged twice under different keys: per
+	// client address before the credential is checked, per credential after. The
+	// authoritative limit is the daily budget on `mcp_credential`; this one only
+	// stops a hot retry loop from reaching D1. `period` accepts 10 or 60 seconds
+	// only.
 	"ratelimits": [
 		{
 			"name": "MCP_RATE_LIMIT",
@@ -33,8 +37,6 @@
 		},
 	],
 	"vars": {
-		// The public origin of this deployment.
-		"APP_URL": "https://apprank.example",
 		// The MCP endpoint at /mcp is opt-in. Uncomment to publish it.
 		// "MCP_ENABLED": "true",
 	},

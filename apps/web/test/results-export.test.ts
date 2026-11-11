@@ -8,6 +8,7 @@ import worker from "../src/index";
 import {
 	APP_ID,
 	KEYWORD_A,
+	KEYWORD_B,
 	RIVAL_ID,
 	apiRequest,
 	isoDay,
@@ -116,10 +117,22 @@ describe("GET /apps/:appId/report.csv", () => {
 		const body = await res.text();
 		const lines = body.trim().split("\n");
 		expect(lines[0]).toBe(
-			"keyword,storefront,position,change,change_days_ago,best,worst,popularity,difficulty,difficulty_sample_size,results_total,top_results"
+			"keyword,storefront,position,change,change_days_ago,best,worst,popularity,difficulty,difficulty_sample_size,results_total,top_results,observations,last_observed"
 		);
 		const ranked = lines.find((l) => l.startsWith(KEYWORD_A));
-		expect(ranked).toContain(",fr,4,");
+		// Keyword B was never observed: its blank position must not read as
+		// "observed outside the top 200", so the last two columns say whether
+		// anybody looked.
+		const unobserved = lines.find((l) => l.startsWith(KEYWORD_B));
+		expect([
+			ranked?.split(",").slice(1, 3),
+			ranked?.split(",").slice(-2),
+			unobserved?.split(",").slice(-2),
+		]).toStrictEqual([
+			["fr", "4"],
+			["1", isoDay(0)],
+			["0", ""],
+		]);
 		// Every tracked keyword is present, ranked or not.
 		expect(lines).toHaveLength(3);
 	});
@@ -133,5 +146,81 @@ describe("GET /apps/:appId/report.csv", () => {
 			env
 		);
 		await expect(res.text()).resolves.toContain('"terme, accentué"');
+	});
+
+	it("defuses text a spreadsheet would run as a formula", async () => {
+		await env.DB.batch([
+			env.DB.prepare(
+				"UPDATE keyword SET text = '=HYPERLINK(\"https://example.test\")' WHERE id = 1"
+			),
+			env.DB.prepare("UPDATE keyword SET text = '@SUM(A1)' WHERE id = 2"),
+			env.DB.prepare(
+				"UPDATE app SET current_name = '+cmd|calc' WHERE id = ?1"
+			).bind(RIVAL_ID),
+		]);
+		await seedRanking({
+			date: isoDay(2),
+			entries: [
+				[1, RIVAL_ID],
+				[4, APP_ID],
+			],
+			id: 1,
+			pairId: 1,
+		});
+		await seedRanking({
+			date: isoDay(0),
+			entries: [
+				[1, RIVAL_ID],
+				[9, APP_ID],
+			],
+			id: 2,
+			pairId: 1,
+		});
+		const res = await worker.fetch(
+			apiRequest(`/apps/${APP_ID}/report.csv?storefront=fr`),
+			env
+		);
+		const body = await res.text();
+		const lines = body.trim().split("\n").slice(1);
+		const cells = lines.flatMap((l) => l.split(","));
+		expect(lines.map((l) => l.slice(0, 13)).toSorted()).toStrictEqual([
+			`"'=HYPERLINK(`,
+			"'@SUM(A1),fr,",
+		]);
+		expect(cells).toContain("'+cmd|calc");
+		// A fall is a negative number, and must stay one.
+		expect(cells.filter((c) => /^[=+@-]/u.test(c))).toStrictEqual(["-5"]);
+	});
+
+	it("keeps CR and LF in the storefront out of the response header", async () => {
+		const res = await worker.fetch(
+			apiRequest(
+				`/apps/${APP_ID}/report.csv?storefront=${encodeURIComponent('fr"\r\nSet-Cookie: x=1')}`
+			),
+			env
+		);
+		expect(res.status).toBe(200);
+		expect(res.headers.get("Set-Cookie")).toBeNull();
+		expect(res.headers.get("Content-Disposition")).toMatch(
+			/^attachment; filename="apprank-frSetCookiex1-[^"]+\.csv"$/u
+		);
+	});
+});
+
+describe("PATCH /suggestions/:id", () => {
+	it.each([
+		["a body that is not JSON", "status=accepted"],
+		["a JSON null", "null"],
+		["a JSON string", '"accepted"'],
+	])("answers 400, not 500, for %s", async (_label, body) => {
+		const res = await worker.fetch(
+			apiRequest("/suggestions/1", {
+				body,
+				headers: { "Content-Type": "application/json" },
+				method: "PATCH",
+			}),
+			env
+		);
+		expect(res.status).toBe(400);
 	});
 });

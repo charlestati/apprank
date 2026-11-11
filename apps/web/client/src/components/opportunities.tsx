@@ -27,8 +27,12 @@ const lanesFor = (t: Dictionary) =>
 // counts: a lane that reads 15 while listing three brand keywords under it is
 // describing two different sets.
 function pickExamples(rows: KeywordRow[], key: string): KeywordRow[] {
+	// Nor a keyword with no observation in the window: it has no rank to put
+	// in a lane, whatever lane its verdict names.
 	return rows
-		.filter((r) => !r.brand && r.verdict?.opportunity === key)
+		.filter(
+			(r) => !r.brand && r.points.length > 0 && r.verdict?.opportunity === key
+		)
 		.slice(0, 3);
 }
 

@@ -164,12 +164,21 @@ describe("provenance", () => {
 			{ days: 3, from: isoDay(5), to: isoDay(3) },
 		]);
 		expect(provenance.errors).toStrictEqual([
-			{ count: 3, errorClass: "throttled", from: isoDay(5), to: isoDay(3) },
+			{
+				count: 3,
+				errorClass: "throttled",
+				from: isoDay(5),
+				loss: false,
+				to: isoDay(3),
+			},
 		]);
+
 		// The warning has to be in the body as prose: a model reading a series will
 		// narrate a hole as a decline unless the answer says otherwise.
-		expect(provenance.note).toContain("throttled");
-		expect(provenance.note).toContain("not evidence of a rank change");
+		// Missing observations are counted against the cadence, in observations.
+		expect(provenance.note).toMatch(
+			/3 of 10 expected observations are missing.*not evidence of a rank change.*throttled/u
+		);
 	});
 
 	it("does not call a stretched cadence a gap", async () => {
@@ -208,7 +217,114 @@ describe("provenance", () => {
 	});
 });
 
+async function seedPairError(day: number, errorClass: string) {
+	await env.DB.prepare(
+		`INSERT INTO fetch_error (fetched_at, endpoint, params, error_class)
+     VALUES (?1, 'itunes:search', 'example keyword|fr|fr-FR', ?2)`
+	)
+		.bind(Date.parse(`${isoDay(day)}T12:00:00Z`), errorClass)
+		.run();
+}
+
+async function coverageOf(from: number) {
+	const res = await fetchMcp(
+		mcpRequest(
+			callTool("get_rank_history", {
+				from: isoDay(from),
+				pairId: 1,
+				to: isoDay(0),
+			}),
+			await token()
+		),
+		walled()
+	);
+	const { data } = await toolPayload(res);
+	return data.provenance as {
+		coverage: number;
+		degraded: boolean;
+		gaps: unknown[];
+		note: string | null;
+		errors: { errorClass: string; loss: boolean }[];
+	};
+}
+
+describe("coverage and the three kinds of fetch_error", () => {
+	it("does not degrade a fully observed pair for a throttle that was absorbed", async () => {
+		// Every day observed, one throttle that was requeued and succeeded. That
+		// is ordinary weather: flagging it put the warning on every pair.
+		for (const day of [4, 3, 2, 1, 0]) {
+			await seedRanking({
+				date: isoDay(day),
+				entries: [[5, APP_ID]],
+				id: 500 + day,
+				pairId: 1,
+			});
+		}
+		await seedPairError(2, "throttled");
+		const provenance = await coverageOf(4);
+		expect(provenance.coverage).toBe(1);
+		expect(provenance.degraded).toBeFalsy();
+		// Still named, because the provenance is the point, but without the
+		// sentence that tells the reader to distrust the window.
+		expect(provenance.note).toContain("1 throttled fetch");
+		expect(provenance.note).not.toContain("not evidence of a rank change");
+	});
+
+	it("degrades a fully observed pair for a class that cost an observation", async () => {
+		for (const day of [4, 3, 2, 1, 0]) {
+			await seedRanking({
+				date: isoDay(day),
+				entries: [[5, APP_ID]],
+				id: 500 + day,
+				pairId: 1,
+			});
+		}
+		await seedPairError(2, "task_threw");
+		const provenance = await coverageOf(4);
+		expect(provenance.degraded).toBeTruthy();
+		expect(provenance.errors).toMatchObject([
+			{ errorClass: "task_threw", loss: true },
+		]);
+		expect(provenance.note).toContain("not evidence of a rank change");
+	});
+
+	it("never counts a stretched cadence as missing days, even beside an error", async () => {
+		// A weekly pair with all three expected observations and one throttle.
+		// The note used to read "12 of 15 days have no observation".
+		await env.DB.prepare(
+			"UPDATE crawl_pair SET interval_hours = 168 WHERE id = 1"
+		).run();
+		for (const day of [14, 7, 0]) {
+			await seedRanking({
+				date: isoDay(day),
+				entries: [[5, APP_ID]],
+				id: 600 + day,
+				pairId: 1,
+			});
+		}
+		await seedPairError(3, "throttled");
+		const provenance = await coverageOf(14);
+		expect(provenance.degraded).toBeFalsy();
+		expect(provenance.gaps).toStrictEqual([]);
+		expect(provenance.note).not.toContain("missing");
+		expect(provenance.note).not.toContain("have no observation");
+	});
+});
+
 describe(findGaps, () => {
+	it("keeps only the runs a pair's cadence does not explain", () => {
+		// Checked every three days: two empty days between observations are the
+		// plan, five are a hole.
+		expect(
+			findGaps(
+				["2026-01-01", "2026-01-04", "2026-01-10"],
+				"2026-01-01",
+				"2026-01-10",
+				3
+			)
+		).toStrictEqual([{ days: 5, from: "2026-01-05", to: "2026-01-09" }]);
+	});
+
 	it("finds leading, interior and trailing runs", () => {
 		expect(findGaps(["2026-01-03"], "2026-01-01", "2026-01-05")).toStrictEqual([
 			{ days: 2, from: "2026-01-01", to: "2026-01-02" },
@@ -234,7 +350,9 @@ describe(summariseSeries, () => {
 		const summary = summariseSeries(points);
 		expect(summary.best).toBe(4);
 		expect(summary.worst).toBe(20);
-		expect(summary.latest).toBe(4);
+		// The newest day saw the app outside the top 200, so 4 is no longer its
+		// rank: latest follows the newest observation, not the newest rank.
+		expect(summary.latest).toBeNull();
 		expect(summary.observations).toBe(3);
 		// A one-place drift is Apple reshuffling; a fifteen-place climb is not.
 		expect(summary.inflections).toStrictEqual([

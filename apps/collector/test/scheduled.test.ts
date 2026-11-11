@@ -12,7 +12,13 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import worker from "../src/index";
 import { setState } from "../src/lib/state";
 import { latestCompleteWeekStart } from "../src/tasks/ads";
-import { chartMarker, lookupMarker, reviewMarker } from "../src/tasks/pulls";
+import { recomputeCadence } from "../src/tasks/cadence";
+import {
+	chartMarker,
+	compactMarker,
+	lookupMarker,
+	reviewMarker,
+} from "../src/tasks/pulls";
 import type { Task } from "../src/tasks/types";
 import { generateP8Pem } from "./helpers";
 
@@ -28,6 +34,7 @@ function drainQueue(): Promise<Task[]> {
 	return runInDurableObject(schedulerStub(), async (_instance, state) => {
 		const tasks = (await state.storage.get<Task[]>("queue")) ?? [];
 		await state.storage.put("queue", []);
+		await state.storage.delete("loopFetches");
 		await state.storage.deleteAlarm();
 		return tasks;
 	});
@@ -67,9 +74,22 @@ beforeEach(async () => {
 	await drainQueue();
 });
 
-afterEach(() => {
+afterEach(async () => {
 	vi.unstubAllGlobals();
+	vi.useRealTimers();
+	// An alarm left armed would tick after this file, against the D1 and the
+	// fetch stub of whichever file runs next.
+	await drainQueue();
 });
+
+// A Monday: the day the weekly Ads work is first due. Tests that assert the
+// absence of that work fix the clock here, because on a real Sunday the
+// weekday gate alone would make them pass.
+const MONDAY = new Date("2026-09-07T03:00:00Z");
+
+function daysAgo(n: number): string {
+	return new Date(Date.now() - n * 24 * 3_600_000).toISOString().slice(0, 10);
+}
 
 async function runCron(cron: string, overrides: Record<string, unknown> = {}) {
 	const controller = createScheduledController({
@@ -78,6 +98,49 @@ async function runCron(cron: string, overrides: Record<string, unknown> = {}) {
 	});
 	const ctx = createExecutionContext();
 	await worker.scheduled(controller, { ...env, ...overrides } as never, ctx);
+}
+
+function seedPacing() {
+	return env.DB.prepare(
+		"INSERT INTO collector_state (key, value, updated_at) VALUES ('pacing', ?, 0)"
+	)
+		.bind(
+			JSON.stringify({
+				lastErrorAt: 0,
+				lastRollDay: "",
+				pauseUntil: 0,
+				ratePerMin: 4,
+				windowErrorCount: 0,
+			})
+		)
+		.run();
+}
+
+async function storedPacing() {
+	const row = await env.DB.prepare(
+		"SELECT value FROM collector_state WHERE key = 'pacing'"
+	).first<{ value: string }>();
+	return JSON.parse(row?.value ?? "{}") as {
+		ratePerMin: number;
+		lastRollDay: string;
+	};
+}
+
+async function seedSeed() {
+	await env.DB.batch([
+		env.DB.prepare(
+			"INSERT OR IGNORE INTO keyword (id, text, normalized, language) VALUES (9101, 'seed term', 'seed term', 'fr')"
+		),
+		env.DB.prepare(
+			"INSERT INTO crawl_pair (keyword_id, storefront_code, locale_code, tier, ref_count, interval_hours, next_due_at) VALUES (9101, 'fr', 'fr-FR', 1, 1, 24, 0)"
+		),
+		env.DB.prepare(
+			"INSERT INTO tracked_keyword (user_id, app_id, keyword_id, created_at) VALUES ('admin', 424242, 9101, 0)"
+		),
+		env.DB.prepare(
+			"INSERT INTO tracked_keyword_storefront (tracked_keyword_id, storefront_code, locale_code, created_at) SELECT id, 'fr', 'fr-FR', 0 FROM tracked_keyword WHERE keyword_id = 9101"
+		),
+	]);
 }
 
 describe("scheduled handler", () => {
@@ -95,6 +158,28 @@ describe("scheduled handler", () => {
 			.toISOString()
 			.slice(0, 10);
 		expect(compact).toMatchObject({ date: yesterday });
+	});
+
+	it("catches up a missed compaction while its staging still exists", async () => {
+		// Only yesterday was ever queued, so a day whose cron or compaction failed
+		// expired out of staging a week later, never reaching rankings/v1.
+		const keys = [3, 4, 9].map((n) => `staging/rankings/${daysAgo(n)}/1.json`);
+		for (const key of keys) {
+			await env.ARCHIVE.put(key, JSON.stringify({ storefront: "fr" }));
+		}
+		await setState(env.DB, compactMarker(daysAgo(4)), daysAgo(4));
+		try {
+			await runCron("0 3 * * *");
+			const queued = await drainQueue();
+			const dates = queued.flatMap((t) =>
+				t.type === "compact" ? [t.date] : []
+			);
+			// Day 4 is already done, and day 9's staging has partly expired: a
+			// compaction there would overwrite a whole day with a fragment.
+			expect(dates.toSorted()).toStrictEqual([daysAgo(3), daysAgo(1)]);
+		} finally {
+			await env.ARCHIVE.delete(keys);
+		}
 	});
 
 	it("skips the Apple API jobs while their secrets are unset", async () => {
@@ -409,6 +494,8 @@ describe("scheduled handler", () => {
 		// Guessing a category would write popularity for terms nobody tracks, so
 		// the genre-keyed work is skipped and the storefront-wide chart, which
 		// needs no genre, still runs.
+		vi.useFakeTimers();
+		vi.setSystemTime(MONDAY);
 		await env.DB.batch([
 			env.DB.prepare(
 				"INSERT INTO app (id, current_name, first_seen_at, last_seen_at) VALUES (?, 'Tracked App', 0, 0)"
@@ -430,6 +517,53 @@ describe("scheduled handler", () => {
 		expect((charts as { queue: unknown[] }).queue).toHaveLength(3);
 	});
 
+	it("budgets exactly the app-level pulls it queues", async () => {
+		// The planner used to count charts its own way (pair storefronts times a
+		// constant two genres) and came out at half of what was queued here.
+		await env.DB.batch([
+			env.DB.prepare(
+				"INSERT OR IGNORE INTO storefront (code, name, weight, active) VALUES ('be', 'Belgium', 0.5, 1)"
+			),
+			env.DB.prepare("UPDATE storefront SET active = 1 WHERE code = 'be'"),
+			env.DB.prepare(
+				"INSERT OR IGNORE INTO storefront_locale (storefront_code, locale_code, is_default) VALUES ('be', 'fr-FR', 0)"
+			),
+			env.DB.prepare(
+				"INSERT INTO app (id, current_name, primary_genre_id, first_seen_at, last_seen_at) VALUES (?, 'Tracked App', 6013, 0, 0)"
+			).bind(APP_ID),
+			env.DB.prepare(
+				"INSERT INTO app (id, current_name, primary_genre_id, first_seen_at, last_seen_at) VALUES (?, 'Second App', 6014, 0, 0)"
+			).bind(APP_ID + 1),
+			env.DB.prepare(
+				"INSERT INTO tracked_app (user_id, app_id, created_at) VALUES ('admin', ?, 0)"
+			).bind(APP_ID),
+			env.DB.prepare(
+				"INSERT INTO tracked_app (user_id, app_id, created_at) VALUES ('admin', ?, 0)"
+			).bind(APP_ID + 1),
+			env.DB.prepare(
+				"INSERT INTO app_language (app_id, language) VALUES (?, 'fr')"
+			).bind(APP_ID),
+			env.DB.prepare(
+				"INSERT INTO app_language (app_id, language) VALUES (?, 'fr')"
+			).bind(APP_ID + 1),
+		]);
+
+		await runCron("0 3 * * *");
+		const tasks = await drainQueue();
+		const units = (type: string) =>
+			(tasks.find((t) => t.type === type) as { queue: unknown[] }).queue.length;
+		// Two apps × two storefronts, and two storefronts × (two genres + the
+		// storefront-wide slot) × three charts.
+		expect(units("lookup_pull")).toBe(4);
+		expect(units("review_pull")).toBe(4);
+		expect(units("chart_pull")).toBe(18);
+
+		const plan = await recomputeCadence(env);
+		expect(plan.capacity.overheadPerDay).toBe(
+			units("lookup_pull") + units("review_pull") + units("chart_pull")
+		);
+	});
+
 	it("queues no app-level pulls when nothing is tracked", async () => {
 		await runCron("0 3 * * *");
 		const tasks = await drainQueue();
@@ -437,25 +571,31 @@ describe("scheduled handler", () => {
 		expect(tasks.some((t) => t.type === "chart_pull")).toBeFalsy();
 	});
 
-	it("raises the learned crawl rate on a clean day", async () => {
-		await env.DB.prepare(
-			"INSERT INTO collector_state (key, value, updated_at) VALUES ('pacing', ?, 0)"
-		)
-			.bind(
-				JSON.stringify({
-					lastErrorAt: 0,
-					lastRaiseDay: "",
-					pauseUntil: 0,
-					ratePerMin: 4,
-					windowErrorCount: 0,
-				})
-			)
-			.run();
+	it("raises the learned crawl rate after a clean day the loop fetched on", async () => {
+		await seedPacing();
+		await runInDurableObject(schedulerStub(), (_instance, state) =>
+			state.storage.put("loopFetches", 12)
+		);
 		await runCron("0 3 * * *");
-		const row = await env.DB.prepare(
-			"SELECT value FROM collector_state WHERE key = 'pacing'"
-		).first<{ value: string }>();
-		expect(JSON.parse(row?.value ?? "{}").ratePerMin).toBeCloseTo(4.4, 5);
+		const pacing = await storedPacing();
+		expect(pacing.ratePerMin).toBeCloseTo(4.4, 5);
+		// The evidence is spent with the day it belonged to.
+		await expect(
+			runInDurableObject(schedulerStub(), (_instance, state) =>
+				state.storage.get<number>("loopFetches")
+			)
+		).resolves.toBe(0);
+	});
+
+	it("holds the rate on a day the loop fetched nothing, and still closes it", async () => {
+		// A credentialed-only deployment and the manually driven runner both end
+		// every day with an empty tally. That is silence, not a clean day: the
+		// rate used to climb 10% on each of them.
+		await seedPacing();
+		await runCron("0 3 * * *");
+		const pacing = await storedPacing();
+		expect(pacing.ratePerMin).toBe(4);
+		expect(pacing.lastRollDay).toBe(new Date().toISOString().slice(0, 10));
 	});
 
 	it("still queues the day's work when the cadence recompute fails", async () => {
@@ -467,7 +607,7 @@ describe("scheduled handler", () => {
 			get(target, prop) {
 				if (prop === "prepare") {
 					return (query: string) => {
-						if (query.includes("app_storefronts")) {
+						if (query.includes("SET volatility")) {
 							throw new Error("D1_ERROR: Network connection lost.");
 						}
 						return target.prepare(query);
@@ -489,14 +629,19 @@ describe("scheduled handler", () => {
 	});
 
 	it("flags an ASC date Apple never published while running the daily jobs", async () => {
-		await env.DB.batch([
-			env.DB.prepare(
-				`INSERT INTO asc_report_instance (app_id, report_type, granularity, processing_date, instance_id, fetched_at) VALUES (${APP_ID}, 'R', 'DAILY', '2026-08-28', 'i1', 0)`
-			),
-			env.DB.prepare(
-				`INSERT INTO asc_report_instance (app_id, report_type, granularity, processing_date, instance_id, fetched_at) VALUES (${APP_ID}, 'R', 'DAILY', '2026-08-30', 'i2', 0)`
-			),
-		]);
+		// What the last poll saw Apple list: the 29th is missing from it.
+		await env.DB.prepare(
+			"INSERT INTO collector_state (key, value, updated_at) VALUES (?, ?, 0)"
+		)
+			.bind(
+				`asc:listed:${APP_ID}:R`,
+				JSON.stringify({
+					appId: String(APP_ID),
+					dates: ["2026-08-28", "2026-08-30"],
+					reportType: "R",
+				})
+			)
+			.run();
 		await runCron("0 3 * * *");
 		const err = await env.DB.prepare(
 			"SELECT error_class FROM fetch_error WHERE error_class = 'skipped_processing_date'"
@@ -569,10 +714,9 @@ describe("collection mode", () => {
 	});
 });
 
-describe("ads weekly gate", () => {
-	// The Ads pull is Monday-only, so these must run on one or the cron never
-	// queues the task and the assertions pass for the wrong reason.
-	const MONDAY = new Date("2026-09-07T03:00:00Z");
+describe("ads weekly pulls", () => {
+	const TUESDAY = new Date("2026-09-08T03:00:00Z");
+	const SUNDAY = new Date("2026-09-13T03:00:00Z");
 
 	beforeEach(async () => {
 		vi.useFakeTimers();
@@ -588,10 +732,6 @@ describe("ads weekly gate", () => {
 				"INSERT OR IGNORE INTO tracked_app (user_id, app_id, created_at) VALUES ('admin', 424242, 0)"
 			),
 		]);
-	});
-
-	afterEach(() => {
-		vi.useRealTimers();
 	});
 
 	it("queues the pull when the week has not been collected", async () => {
@@ -620,23 +760,34 @@ describe("ads weekly gate", () => {
 		expect(queued.find((t) => t.type === "ads_pull")).toBeDefined();
 	});
 
-	it("queues discovery on Mondays, from the storefronts each user tracks", async () => {
+	it("asks again on Tuesday for a unit Monday did not land", async () => {
+		// Monday-only meant one attempt a week: a cron that never fired, or a
+		// unit that failed, lost the week, because by the next Monday the
+		// published week had moved on. The marker is what makes a repeat free.
+		vi.setSystemTime(TUESDAY);
+		await runCron("0 3 * * *", { ADS_CLIENT_ID: "x" });
+		const queued = await drainQueue();
+		expect(queued.find((t) => t.type === "ads_pull")).toMatchObject({
+			queue: [{ category: "HEALTH_FITNESS", storefront: "fr" }],
+			weekStart: latestCompleteWeekStart(TUESDAY),
+		});
+	});
+
+	it("waits out the Sunday the published week rolls over on", async () => {
+		// Sunday is the day `latestCompleteWeekStart` moves to a new week; Monday
+		// is the first day Apple has been seen to hold it.
+		vi.setSystemTime(SUNDAY);
+		await seedSeed();
+		await runCron("0 3 * * *", { ADS_CLIENT_ID: "x" });
+		const queued = await drainQueue();
+		expect(queued.find((t) => t.type === "ads_pull")).toBeUndefined();
+		expect(queued.find((t) => t.type === "ads_discover")).toBeUndefined();
+	});
+
+	it("queues discovery from the storefronts each user tracks", async () => {
 		// Discovery only ran when someone triggered it by hand, so the suggestions
 		// inbox stayed empty unless somebody remembered to.
-		await env.DB.batch([
-			env.DB.prepare(
-				"INSERT OR IGNORE INTO keyword (id, text, normalized, language) VALUES (9101, 'seed term', 'seed term', 'fr')"
-			),
-			env.DB.prepare(
-				"INSERT INTO crawl_pair (keyword_id, storefront_code, locale_code, tier, ref_count, interval_hours, next_due_at) VALUES (9101, 'fr', 'fr-FR', 1, 1, 24, 0)"
-			),
-			env.DB.prepare(
-				"INSERT INTO tracked_keyword (user_id, app_id, keyword_id, created_at) VALUES ('admin', 424242, 9101, 0)"
-			),
-			env.DB.prepare(
-				"INSERT INTO tracked_keyword_storefront (tracked_keyword_id, storefront_code, locale_code, created_at) SELECT id, 'fr', 'fr-FR', 0 FROM tracked_keyword WHERE keyword_id = 9101"
-			),
-		]);
+		await seedSeed();
 		await runCron("0 3 * * *", { ADS_CLIENT_ID: "x" });
 		const queued = await drainQueue();
 		expect(queued.find((t) => t.type === "ads_discover")).toMatchObject({
@@ -646,10 +797,36 @@ describe("ads weekly gate", () => {
 		});
 	});
 
+	it("queues discovery once a week, and on Tuesday when Monday never ran", async () => {
+		// One Ads request per seed: without a marker, running daily would spend
+		// seven passes a week on associations Apple barely moves.
+		await seedSeed();
+		vi.setSystemTime(TUESDAY);
+		await runCron("0 3 * * *", { ADS_CLIENT_ID: "x" });
+		const first = await drainQueue();
+		expect(first.find((t) => t.type === "ads_discover")).toBeDefined();
+
+		vi.setSystemTime(new Date("2026-09-09T03:00:00Z"));
+		await runCron("0 3 * * *", { ADS_CLIENT_ID: "x" });
+		const second = await drainQueue();
+		expect(second.find((t) => t.type === "ads_discover")).toBeUndefined();
+	});
+
 	it("queues the by-name pass on any day, for the keywords the week lacks", async () => {
-		// Tuesday: no genre pull, but a week missing a storefront-wide answer for
-		// a tracked keyword is asked for again rather than waiting for Monday.
-		vi.setSystemTime(new Date("2026-09-08T03:00:00Z"));
+		// Tuesday, with the genre pull and discovery already held for the week:
+		// a week missing a storefront-wide answer for a tracked keyword is still
+		// asked for, and nothing else is.
+		vi.setSystemTime(TUESDAY);
+		await setState(
+			env.DB,
+			"ads:pulled:fr:HEALTH_FITNESS",
+			latestCompleteWeekStart(TUESDAY)
+		);
+		await setState(
+			env.DB,
+			"ads:discover:queued",
+			latestCompleteWeekStart(TUESDAY)
+		);
 		await env.DB.batch([
 			env.DB.prepare(
 				"INSERT OR IGNORE INTO keyword (id, text, normalized, language) VALUES (9102, 'plain term', 'plain term', 'fr')"

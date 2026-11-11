@@ -10,5 +10,11 @@ indent_style = tab
 insert_final_newline = true
 trim_trailing_whitespace = true
 
+# YAML forbids tabs for indentation.
+[*.{yml,yaml}]
+indent_style = space
+
+# Markdown nests lists with spaces; tabs render as code blocks in some viewers.
 [*.md]
+indent_style = space
 trim_trailing_whitespace = false

@@ -11,10 +11,12 @@ function row(over: Partial<KeywordRow> = {}): KeywordRow {
 		changeDaysAgo: null,
 		difficulty: null,
 		fetchErrors: [],
+		heldDays: null,
 		keyword: "example keyword",
 		keywordId: 1,
 		pairId: 1,
-		points: [],
+		// One observation by default: a row with none has no verdict at all.
+		points: [{ date: "2026-01-01", position: over.position ?? null }],
 		popularity: 40,
 		popularityStatus: "measured",
 		position: 30,
@@ -153,14 +155,45 @@ describe(classify, () => {
 		).toBe("dormant");
 	});
 
-	it("flags a rank that moved in the last 48h as unproven", () => {
+	it("flags a rank held for 48h or less as unproven", () => {
 		expect(
-			classify(row({ change: 12, changeDaysAgo: 1, position: 8 })).unproven
+			classify(row({ change: 12, heldDays: 1, position: 8 })).unproven
 		).toBeTruthy();
 		expect(
-			classify(row({ change: 12, changeDaysAgo: 6, position: 8 })).unproven
+			classify(row({ change: 12, heldDays: 6, position: 8 })).unproven
 		).toBeFalsy();
-		expect(classify(row({ change: null, position: 8 })).unproven).toBeFalsy();
+		expect(
+			classify(row({ change: null, heldDays: 0, position: 8 })).unproven
+		).toBeFalsy();
+	});
+
+	it("judges unproven on how long the rank was held, not on the crawl interval", () => {
+		// A pair checked weekly: the previous different rank is always at least
+		// seven days back, so measuring that distance called a rank seen exactly
+		// once, today, settled.
+		expect(
+			classify(row({ change: -4, changeDaysAgo: 7, heldDays: 0, position: 9 }))
+				.unproven
+		).toBeTruthy();
+	});
+
+	it("gives a keyword nobody observed no verdict, rather than calling it dormant", () => {
+		// Null position with no points is the absence of an answer. Read as
+		// "not ranking at all", a throttled week became advice to drop the term.
+		const v = classify(row({ points: [], position: null }));
+		expect(v).toStrictEqual({
+			opportunity: "unknown",
+			reason: expect.stringContaining("No observation in this window"),
+			reasonKey: "noObservation",
+			unproven: false,
+		});
+	});
+
+	it("still calls an observed, unranked keyword dormant", () => {
+		const v = classify(
+			row({ points: [{ date: "2026-01-01", position: null }], position: null })
+		);
+		expect(v.reasonKey).toBe("dormantUnranked");
 	});
 });
 
@@ -234,6 +267,25 @@ describe(summarise, () => {
 		const s = summarise(mixed);
 		expect(s.unmeasuredKeywords).toBe(1);
 		expect(s.unqueriedKeywords).toBe(1);
+	});
+
+	it("counts unobserved keywords apart from every lane", () => {
+		const mixed = [
+			row({ pairId: 30, points: [], position: null }),
+			row({ brand: true, pairId: 31, points: [], position: null }),
+			// Ranked in reach with no published volume: the real "unknown" lane.
+			row({
+				pairId: 32,
+				popularity: null,
+				popularityStatus: "absent",
+				position: 30,
+			}),
+			row({ pairId: 33, position: null }),
+		].map((r) => ({ ...r, brand: r.brand ?? false, verdict: classify(r) }));
+		const s = summarise(mixed);
+		expect(s.unobserved).toBe(2);
+		expect(s.unknown).toBe(1);
+		expect(s.dormant).toBe(1);
 	});
 
 	it("separates brand demand from generic progress", () => {

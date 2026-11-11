@@ -2,7 +2,15 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { Suggestions } from "../src/pages/suggestions";
-import { stubFetch, suggestion } from "./harness";
+import { deferred, stubFetch, suggestion } from "./harness";
+
+function promote(id: number, term: string) {
+	return suggestion({
+		id,
+		payload: JSON.stringify({ seed: "seed term", storefront: "fr", term }),
+		type: "promote_keyword",
+	});
+}
 
 describe("Suggestions page", () => {
 	afterEach(() => {
@@ -21,10 +29,13 @@ describe("Suggestions page", () => {
 		await expect(screen.findByText(/Nothing pending/u)).resolves.toBeDefined();
 	});
 
-	it("treats a failed request as an empty inbox", async () => {
+	it("says a failed request failed, not that nothing is pending", async () => {
 		stubFetch({ suggestions: new Response("", { status: 401 }) });
 		render(<Suggestions />);
-		await expect(screen.findByText(/Nothing pending/u)).resolves.toBeDefined();
+		await expect(
+			screen.findByText(/could not be loaded/u)
+		).resolves.toBeDefined();
+		expect(screen.queryByText(/Nothing pending/u)).toBeNull();
 	});
 
 	it("offers a proposed keyword as a decision, not as JSON", async () => {
@@ -112,6 +123,48 @@ describe("Suggestions page", () => {
 			).toBeFalsy()
 		);
 		expect(screen.getByText("météo locale gratuite")).toBeDefined();
+	});
+
+	it("keeps a row disabled while its own answer is still in flight", async () => {
+		const held = deferred<unknown>();
+		stubFetch({
+			"suggestions/7": held.promise,
+			"suggestions/8": new Response("", { status: 500 }),
+			suggestions: [promote(7, "first term"), promote(8, "second term")],
+		});
+		render(<Suggestions />);
+		const [first, second] = await screen.findAllByRole("button", {
+			name: "Track it",
+		});
+		fireEvent.click(first as HTMLElement);
+		fireEvent.click(second as HTMLElement);
+		// The second answer fails and frees its own row. Held as one id, that
+		// also re-enabled the first row mid-request, open to a double submit.
+		await waitFor(() =>
+			expect((second as HTMLElement).hasAttribute("disabled")).toBeFalsy()
+		);
+		expect((first as HTMLElement).hasAttribute("disabled")).toBeTruthy();
+		held.resolve({});
+	});
+
+	it("shows a promotion missing a field as its payload instead of crashing", async () => {
+		stubFetch({
+			suggestions: [
+				suggestion({
+					id: 3,
+					payload: '{"term":"half a payload","seed":"seed term"}',
+					type: "promote_keyword",
+				}),
+			],
+		});
+		render(<Suggestions />);
+		// No storefront to print: reading it threw in render, and with no error
+		// boundary the whole dashboard went blank.
+		await expect(screen.findByLabelText("Payload")).resolves.toHaveProperty(
+			"textContent",
+			'{"term":"half a payload","seed":"seed term"}'
+		);
+		expect(screen.queryByRole("button", { name: "Track it" })).toBeNull();
 	});
 
 	it("lists the type and raw payload of each pending suggestion", async () => {

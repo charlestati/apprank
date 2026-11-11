@@ -20,12 +20,16 @@ the bearer gate, so leaving it in place with the route switched off would turn
 the one path that skips Basic into a path that skips authentication entirely.
 `test/mcp-auth.test.ts` asserts both halves.
 
-Four things hold it together, and none of them is optional once it is on:
+Five things hold it together, and none of them is optional once it is on:
 
 - **The gate runs before the handler is built.** `handleMcp` authenticates, then
   constructs the server with the resolved principal closed over. Tool code is
   unreachable without a principal, so a misregistered tool is still not callable
   by a stranger, and no tool has to handle "who is this?" returning nothing.
+- **The burst brake is keyed by what the caller cannot choose.** Before the gate
+  that is the client address; the per-credential bucket is charged only after
+  the secret matches. Keyed on the token's id first, anyone who had seen an id
+  (the revoke command prints it) could spend its holder's bucket.
 - **MCP credentials are a separate table and a separate gate.** `mcp_credential`
   holds only the SHA-256 of the secret, unlike `BASIC_AUTH_ACCOUNTS`, which is a
   Worker secret and may hold plaintext; this is an ordinary D1 table that gets
@@ -44,13 +48,28 @@ Four things hold it together, and none of them is optional once it is on:
   analysis layer and a throttled week reads as a ranking collapse. Coverage is
   measured against each pair's `interval_hours`, never the calendar: a pair on a
   stretched rung is _supposed_ to have gaps, and counting those as missing days
-  makes the whole signal useless.
+  makes the whole signal useless. `degraded` means short of that cadence or a
+  class `isLoss()` counts; an absorbed throttle on a fully observed pair is
+  named in the note and degrades nothing, or the flag is on every pair in
+  ordinary weather.
 
-`test/mcp-auth.test.ts` walks every scoped tool in a `SCOPED_TOOLS` list and
-fails if one is added without a guard, the way `test/access.test.ts` does for
-routes. `test/worker-config.test.ts` asserts `run_worker_first: true`, which is
-the only reason `not_found_handling: single-page-application` cannot claim
-`/mcp` or `/api`.
+**A null position has two causes and every read keeps them apart.** Observed and
+outside the top 200 is Apple's answer. No observation in the window is no
+answer: such a row keeps `points: []` and gets the `noObservation` verdict, in
+no lane, because the unranked lane turned a throttled week into advice to drop
+the keyword. And an app's position is read from `ranking.result_ids` when
+`rank_entry` holds no row for it (`appPositionSql` in `queries/rankings.ts`),
+since the index covers only the top ten and what was tracked at crawl time. That
+read uses string functions on purpose: D1 bills each element `json_each` yields
+as a row read.
+
+`test/mcp-auth.test.ts` reads the scoped tools off `tools/list` and
+`test/access.test.ts` reads the scoped routes off the router, so a tool or route
+added without a guard fails without anyone having to list it. The scope each
+tool is registered under is a table in that test, checked for completeness
+against the same list. `test/worker-config.test.ts` asserts
+`run_worker_first: true`, which is the only reason
+`not_found_handling: single-page-application` cannot claim `/mcp` or `/api`.
 
 ## Access control
 
@@ -92,7 +111,12 @@ apart:
   account.
 - Ownership is on the tracked set, not the observations: `crawl_pair` is
   deliberately the union of what everyone tracks, so `ownsPair` asks whether the
-  caller tracks that _keyword_.
+  caller has a `tracked_keyword_storefront` row for that pair's keyword,
+  storefront and locale. It used to ask about the keyword alone, which let an
+  operator tracking a word in France open, list and report on another operator's
+  pair for the same word in Germany. Every read that enumerates the caller's
+  pairs joins through `TRACKED_PAIRS` in `queries/apps.ts` for the same reason;
+  migration 0002 backfilled the rows for tracks that predate the table.
 
 When adding a route that takes an `:appId` or `:pairId`, add the `ownsApp` /
 `ownsPair` guard. `test/access.test.ts` walks every scoped route and fails if
@@ -112,11 +136,17 @@ accounts that never change.
   The flag also makes `wrangler types` ask for `@types/node`, which is installed
   and listed in that workspace's `tsconfig.json` `types` array; it would
   otherwise never load.
-- **The web app's scarce resource is reads, not writes** (5M rows/day free). Its
-  three "latest observation per pair" CTEs are bounded to 90 days: unbounded,
-  they scan the whole `ranking` table on every dashboard load, and that table
-  grows by one row per pair per day, so a year of history means ~45,000 rows
-  read per page view and so ~110 views would exhaust the daily tier. Measured,
-  not assumed: the obvious correlated-subquery rewrite reads _more_ today (400
-  vs 50, being one index seek per pair against a small table) and only overtakes
-  once the table passes ~400 rows.
+- **The web app's scarce resource is reads, not writes** (5M rows/day free). The
+  "latest observation per pair" CTEs (`LATEST_FOR_APP` in `queries/apps.ts`, and
+  the top-results one in `report.ts`) are bounded to 90 days **and driven from
+  the caller's own pairs**. The bound alone bounded nothing: grouping the whole
+  `ranking` index by pair and filtering the date afterwards walked every
+  operator's history, ~36,500 rows for 100 pairs a year in, on every dashboard
+  load. Joined from the caller's pairs it is one index range per pair.
+  `test/query-budget.test.ts` asserts `meta.rows_read`.
+- **Two more D1 ceilings.** A statement binds at most 100 parameters (local
+  workerd enforces this one too), so a set of ids goes in as one JSON parameter
+  through `json_each(?1)`, never as an `IN (?, ?, …)` list. And Workers Free
+  allows 50 queries per invocation, so a tool never issues a query per app or
+  per pair: `pairsCoverage` and `storefrontsByApp` answer for the whole set at
+  once. `test/query-budget.test.ts` counts both.

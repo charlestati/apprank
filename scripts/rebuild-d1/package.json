@@ -3,7 +3,7 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"rebuild": "node rebuild.mjs"
+		"start": "node rebuild.mjs"
 	},
 	"dependencies": {
 		"aws4fetch": "1.0.20"

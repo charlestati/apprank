@@ -3,7 +3,7 @@
 
 import { Triangle } from "lucide-react";
 
-import { useT } from "../i18n";
+import { fmt, useT } from "../i18n";
 
 /**
  * The direction marker for any rank delta, in the table and in the tiles.
@@ -55,9 +55,11 @@ export function Delta({ change, daysAgo }: Props) {
 			}
 		>
 			<TrendArrow up={improved} />
-			<span className="sr-only">{improved ? "up " : "down "}</span>
+			<span className="sr-only">{`${improved ? t.deltaUp : t.deltaDown} `}</span>
 			{Math.abs(change)}
-			{daysAgo ? <span className="delta-age">{daysAgo}d</span> : null}
+			{daysAgo ? (
+				<span className="delta-age">{fmt(t.deltaAge, { n: daysAgo })}</span>
+			) : null}
 		</span>
 	);
 }

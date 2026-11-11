@@ -2,10 +2,22 @@ import type { Env } from "./env";
 import { authorize } from "./lib/admin";
 import { resolveAdsCategory } from "./lib/ads-genres";
 import type { GenreRow } from "./lib/ads-genres";
+import {
+	CHARTS,
+	chartGenres,
+	pullTargets,
+	targetStorefronts,
+	trackedGenreIds,
+} from "./lib/fanout";
+import type { PullTarget } from "./lib/fanout";
 import { collectsPublicEndpoints } from "./lib/mode";
-import { loadPacing, savePacing, maybeRaise } from "./lib/pacing";
 import { tracked } from "./lib/runs";
-import { getState, getStateJson, recordFetchError } from "./lib/state";
+import {
+	getState,
+	getStateJson,
+	recordFetchError,
+	setState,
+} from "./lib/state";
 import {
 	buildTermsTasks,
 	latestCompleteWeekStart,
@@ -16,6 +28,7 @@ import { recomputeCadence } from "./tasks/cadence";
 import { recomputeDifficulty } from "./tasks/difficulty";
 import {
 	chartMarker,
+	compactMarker,
 	lookupMarker,
 	pulledOn,
 	reviewMarker,
@@ -31,35 +44,11 @@ import type {
 export { SchedulerDO } from "./scheduler";
 
 /**
- * The genres to work in: the distinct primary genre of every tracked app.
- *
- * A hardcoded list here is wrong for every operator whose app is in another
- * category, and invariant 5 keeps reference data in rows. Apple already tells
- * us the answer: primary_genre_id is written on every app the collector sees,
- * so no extra fetch is needed.
- *
- * Empty is a real answer rather than a failure. On a fresh deploy no app has
- * been looked up yet, and under COLLECTION_MODE=credentialed that lookup runs
- * from the Actions runner rather than this Worker, so the column stays null
- * until the first run lands. Guessing a category then would write popularity
- * for terms nobody tracks.
- */
-async function trackedGenreIds(env: Env): Promise<number[]> {
-	const rows = await env.DB.prepare(
-		`SELECT DISTINCT a.primary_genre_id AS id
-       FROM tracked_app t
-       JOIN app a ON a.id = t.app_id
-      WHERE a.primary_genre_id IS NOT NULL`
-	).all<{ id: number }>();
-	return rows.results.map((r) => r.id);
-}
-
-/**
  * The week's Ads popularity pull, or null when there is nothing to ask for.
- * Shared by the Monday cron and the manual trigger, which skips the
- * day-of-week gate, which is a scheduling choice, not a correctness one:
- * `popularity` is unique on (keyword, storefront, genre, week_start), so
- * re-pulling the same week is a no-op.
+ * Shared by the daily cron and the manual trigger. The cron skips the units
+ * whose `ads:pulled:` marker already names this week; the manual trigger does
+ * not (`force`), because `popularity` is unique on (keyword, storefront,
+ * genre, week_start) and re-pulling the same week is a no-op.
  */
 async function buildAdsTask(
 	env: Env,
@@ -67,7 +56,7 @@ async function buildAdsTask(
 ): Promise<Extract<Task, { type: "ads_pull" }> | null> {
 	const genres =
 		(await getStateJson<number[]>(env.DB, "ads:focus_genres")) ??
-		(await trackedGenreIds(env));
+		(await trackedGenreIds(env.DB));
 	if (genres.length === 0) {
 		return null;
 	}
@@ -198,6 +187,9 @@ async function buildDiscovery(env: Env): Promise<Task[]> {
 	return [...byUnit.values()];
 }
 
+/** collector_state key naming the published week discovery was last queued for. */
+const DISCOVERY_MARKER = "ads:discover:queued";
+
 /**
  * Run one piece of daily bookkeeping without letting it cancel the day.
  *
@@ -234,6 +226,47 @@ async function bestEffort(
 	}
 }
 
+/**
+ * The oldest day back the catch-up reaches. Staging expires after seven days
+ * (R2 lifecycle, docs/deploy.md), and a day's objects were written over its
+ * whole 24 hours, so six days back at 03:00 is the last cron that still sees
+ * all of them. Compacting a half-expired day would overwrite a complete
+ * output with a partial one.
+ */
+const COMPACT_CATCHUP_DAYS = 6;
+
+/**
+ * Compactions for days before yesterday that still hold staging and carry no
+ * marker: a cron that never fired, a compaction that threw or was dropped.
+ * Only yesterday was ever queued, so any such day expired out of staging a
+ * week later without reaching `rankings/v1`, the rebuild source (invariant
+ * 2). One marker read, then at most five single-object R2 lists.
+ */
+async function missedCompactions(env: Env): Promise<Task[]> {
+	const marked = await env.DB.prepare(
+		"SELECT key FROM collector_state WHERE key LIKE 'compact:%'"
+	).all<{ key: string }>();
+	const done = new Set(marked.results.map((r) => r.key));
+	const tasks: Task[] = [];
+	// Oldest first: it is the one closest to expiring.
+	for (let back = COMPACT_CATCHUP_DAYS; back >= 2; back -= 1) {
+		const date = new Date(Date.now() - back * 24 * 3_600_000)
+			.toISOString()
+			.slice(0, 10);
+		if (done.has(compactMarker(date))) {
+			continue;
+		}
+		const staged = await env.ARCHIVE.list({
+			limit: 1,
+			prefix: `staging/rankings/${date}/`,
+		});
+		if (staged.objects.length > 0) {
+			tasks.push({ date, type: "compact" });
+		}
+	}
+	return tasks;
+}
+
 async function runDailyJobs(env: Env): Promise<{
 	queued: number;
 	tasks: string[];
@@ -245,10 +278,10 @@ async function runDailyJobs(env: Env): Promise<{
 		.toISOString()
 		.slice(0, 10);
 
-	// Pacing: raise the learned rate after a clean 24h; reset window counters.
-	await bestEffort(env, "pacing", async () =>
-		savePacing(env.DB, maybeRaise(await loadPacing(env.DB), today))
-	);
+	// Pacing: close the day's throttle tally and move the learned rate against
+	// it. Rolled inside the Durable Object, which holds the count of fetches its
+	// own loop made: a day the loop fetched nothing is no evidence to raise on.
+	await bestEffort(env, "pacing", () => stub.rollPacing(today));
 
 	// Re-space every tracked pair against the budget the learned rate affords,
 	// now that the rate for the day is settled. Growth in apps or keywords costs
@@ -260,8 +293,12 @@ async function runDailyJobs(env: Env): Promise<{
 	// changes.
 	await bestEffort(env, "difficulty", () => recomputeDifficulty(env));
 
-	// Compact yesterday's staging observations into the permanent archive.
+	// Compact yesterday's staging observations into the permanent archive, and
+	// any earlier day still staged but never compacted, while its staging lasts.
 	tasks.push({ date: yesterday, type: "compact" });
+	await bestEffort(env, "compact_catchup", async () => {
+		tasks.push(...(await missedCompactions(env)));
+	});
 
 	// ASC Analytics poll (secrets arrive via `wrangler secret put`; skip quietly
 	// until then rather than filling fetch_error with credential noise).
@@ -269,10 +306,20 @@ async function runDailyJobs(env: Env): Promise<{
 		tasks.push({ type: "asc_poll" });
 	}
 
+	const adsWeek = latestCompleteWeekStart();
+	let discovery: Task[] = [];
 	if (env.ADS_CLIENT_ID) {
-		// Weekly genre pull on Mondays (data posts with ~1 week delay). Its
-		// builder reads D1 too, so it gets the same guard as the pass below.
-		if (new Date().getUTCDay() === 1) {
+		// The weekly genre pull and discovery, on the first day that can have
+		// them and on every later day that still lacks them. Both used to run on
+		// Mondays only, so a Monday whose cron never fired, whose builder met a D1
+		// outage, or whose units failed or were abandoned lost the week: by the
+		// next Monday `latestCompleteWeekStart` had moved on. Not on Sunday: that
+		// is the day the published week rolls over, and Monday is the day Apple
+		// has been seen to hold it.
+		if (new Date().getUTCDay() !== 0) {
+			// The per-unit `ads:pulled:` marker is what makes the repeat free: a
+			// unit that holds the week is not rebuilt. The builder reads D1, so it
+			// gets the same guard as the pass below.
 			await bestEffort(env, "ads_pull", async () => {
 				const adsTask = await buildAdsTask(env);
 				if (adsTask) {
@@ -282,9 +329,14 @@ async function runDailyJobs(env: Env): Promise<{
 			// Discovery, weekly beside it. Left to the manual trigger, the
 			// suggestions inbox only filled when somebody remembered to ask. Weekly
 			// because Apple's associations move slowly and each seed is one Ads
-			// request; what an operator dismissed is never proposed again.
+			// request; what an operator dismissed is never proposed again. It has
+			// no per-unit marker, so one for the whole pass records the week it was
+			// last queued, written only once the queue holds it.
 			await bestEffort(env, "ads_discover", async () => {
-				tasks.push(...(await buildDiscovery(env)));
+				if ((await getState(env.DB, DISCOVERY_MARKER)) !== adsWeek) {
+					discovery = await buildDiscovery(env);
+					tasks.push(...discovery);
+				}
 			});
 		}
 		// The by-name pass, daily, for whatever the latest week still lacks. On
@@ -302,63 +354,17 @@ async function runDailyJobs(env: Env): Promise<{
 	// deployment that cannot reach them skips queueing work whose only outcome is
 	// a throttle and an abandoned batch.
 	//
-	// Coverage is the union of two sources because neither alone is right.
-	// Content language (language ≠ storefront) gives the storefronts Apple
-	// cross-localises the app into, which is what an app tracked before it has
-	// any keywords should still get. Live crawl pairs give the storefronts
-	// somebody actually chose, and they are the only way a storefront indexing
-	// nothing in the app's language is reached at all: Spain for a French app
-	// indexes Spanish, Catalan and English, so the language join can never
-	// produce it, and on its own that storefront yields keyword ranks with no
-	// metadata, reviews or charts for as long as it runs.
-	//
-	// Locale preference, in order: the storefront's own default among the app's
-	// languages, then any locale in one of them, then the pair's. The first rung
-	// is what makes a multi-language app correct, and app_language is a set with
-	// no primary: a French *and* English app indexes both fr-FR and en-GB in
-	// France, and picking by name alone would fetch the English listing and store
-	// it as France's. Apple honours the lang parameter whenever the app really is
-	// localised in that storefront, so that metadata would be wrong, not merely
-	// mislabelled. Belgium is why the second rung exists: it indexes French, but
-	// its default is English, so a French-only app has no default to match.
-	//
-	// Every branch is an aggregate rather than a bare column on purpose: SQLite
-	// only pins a bare column to the min()/max() row when there is exactly one
-	// such aggregate, and on ties it picks among them arbitrarily.
+	// Which targets, and in which locale, is `pullTargets` in lib/fanout, shared
+	// with the cadence planner so the budget charges what is queued here.
 	//
 	// Best effort, like the reads above: everything from here to `enqueue` is a
 	// D1 call standing between the day's work and the queue it has to reach, and
 	// a throw in any of them takes the compaction and credentialed tasks already
 	// built with it. That is the 2026-09-11 shape exactly. A failure here costs
 	// today's app-level pulls, which is bad; it must not also cost the rest.
-	let targets: { app_id: number; code: string; locale_code: string }[] = [];
+	let targets: PullTarget[] = [];
 	await bestEffort(env, "pull_targets", async () => {
-		const rows = await env.DB.prepare(
-			`SELECT app_id, code,
-            COALESCE(
-              MIN(CASE WHEN pref = 0 AND is_default = 1 THEN locale_code END),
-              MIN(CASE WHEN pref = 0 THEN locale_code END),
-              MIN(CASE WHEN pref = 1 THEN locale_code END)
-            ) AS locale_code
-       FROM (
-         SELECT ta.app_id AS app_id, sl.storefront_code AS code,
-                sl.locale_code AS locale_code, sl.is_default AS is_default,
-                0 AS pref
-           FROM tracked_app ta
-           JOIN app_language al ON al.app_id = ta.app_id
-           JOIN locale l ON l.language = al.language
-           JOIN storefront_locale sl ON sl.locale_code = l.code
-           JOIN storefront s ON s.code = sl.storefront_code AND s.active = 1
-         UNION ALL
-         SELECT tk.app_id AS app_id, cp.storefront_code AS code,
-                cp.locale_code AS locale_code, 0 AS is_default, 1 AS pref
-           FROM tracked_keyword tk
-           JOIN crawl_pair cp ON cp.keyword_id = tk.keyword_id AND cp.ref_count > 0
-           JOIN storefront s ON s.code = cp.storefront_code AND s.active = 1
-       )
-      GROUP BY app_id, code`
-		).all<{ app_id: number; code: string; locale_code: string }>();
-		targets = rows.results;
+		targets = await pullTargets(env.DB);
 	});
 
 	if (targets.length > 0 && collectsPublicEndpoints(env)) {
@@ -383,7 +389,6 @@ async function runDailyJobs(env: Env): Promise<{
 		});
 		const lookups: LookupUnit[] = [];
 		const reviews: ReviewUnit[] = [];
-		const storefrontSet = new Set<string>();
 		for (const t of targets) {
 			const lookup: LookupUnit = {
 				appId: t.app_id,
@@ -397,10 +402,6 @@ async function runDailyJobs(env: Env): Promise<{
 			if (!pulled.has(reviewMarker(review))) {
 				reviews.push(review);
 			}
-			// The chart set is per storefront, not per target, and a storefront whose
-			// charts are all held still has to be counted here or the ones that are
-			// not would never be built.
-			storefrontSet.add(t.code);
 		}
 		// An empty queue is not a task: `lookup_pull` with nothing in it is a tick
 		// spent to discover it has no work, and on a resumed day most of them are.
@@ -415,16 +416,13 @@ async function runDailyJobs(env: Env): Promise<{
 		// lookups and reviews are already on the list. Guarded so that losing them
 		// costs the charts alone.
 		await bestEffort(env, "chart_units", async () => {
-			// null is the storefront-wide chart, which needs no genre, so charts
-			// still work on day one when no app has been looked up yet.
-			const chartGenres = (await getStateJson<(number | null)[]>(
-				env.DB,
-				"chart_genres"
-			)) ?? [...(await trackedGenreIds(env)), null];
+			// The chart set is per storefront, not per target: every storefront the
+			// targets span, whether or not its lookups are already held.
+			const genres = await chartGenres(env.DB);
 			const charts: ChartUnit[] = [];
-			for (const code of storefrontSet) {
-				for (const g of chartGenres) {
-					for (const chart of ["free", "paid", "grossing"] as const) {
+			for (const code of targetStorefronts(targets)) {
+				for (const g of genres) {
+					for (const chart of CHARTS) {
 						const unit: ChartUnit = { storefront: code, genreId: g, chart };
 						if (!pulled.has(chartMarker(unit))) {
 							charts.push(unit);
@@ -439,6 +437,13 @@ async function runDailyJobs(env: Env): Promise<{
 	}
 
 	await stub.enqueue(tasks);
+	if (discovery.length > 0) {
+		// After the enqueue, never before: a marker written for a pass that did
+		// not reach the queue would skip discovery for the rest of the week.
+		await bestEffort(env, "ads_discover_marker", () =>
+			setState(env.DB, DISCOVERY_MARKER, adsWeek)
+		);
+	}
 	// Gap *detection*, not collection: it reads what ASC already gave us and
 	// writes notes. Nothing downstream waits on it, so it must not be the thing
 	// that fails a run whose work is already queued.
@@ -585,7 +590,7 @@ async function runJob(
 			return json({ job, ...result }, result.ok ? 200 : 502);
 		}
 		case "ads_backfill": {
-			return await queueAdsJob(env, stub, job, buildAdsBackfill, "weeks");
+			return await queueAdsJob(env, stub, job, buildAdsBackfill, "tasks");
 		}
 		case "ads_discover": {
 			return await queueAdsJob(env, stub, job, buildDiscovery, "units");

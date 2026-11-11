@@ -2,7 +2,18 @@ import { env } from "cloudflare:test";
 import { describe, it, expect, beforeEach } from "vitest";
 
 import app from "../src/index";
+import { PREFERENCE_ROW_CAP } from "../src/queries/preferences";
 import { apiRequest, resetDb } from "./fixtures";
+
+function store(key: string, value = "[1]") {
+	return app.fetch(
+		apiRequest(`/preferences/${encodeURIComponent(key)}`, {
+			body: JSON.stringify({ value }),
+			method: "PUT",
+		}),
+		env
+	);
+}
 
 describe("preferences", () => {
 	// No seed: a preference is keyed by the caller's user id alone and carries no
@@ -58,6 +69,64 @@ describe("preferences", () => {
 		);
 		const res = await app.fetch(apiRequest("/preferences"), env);
 		await expect(res.json()).resolves.toStrictEqual({});
+	});
+
+	it("stores only the keys the interface writes", async () => {
+		// The key is a path segment: without an allow-list it is as good a place
+		// to park text as the value the cap was written for.
+		for (const key of [
+			"anything",
+			"x".repeat(500),
+			"chart:1",
+			"chart:abc:fr",
+			"chart:1:fr:extra",
+			"app2",
+		]) {
+			const res = await app.fetch(
+				apiRequest(`/preferences/${encodeURIComponent(key)}`, {
+					body: JSON.stringify({ value: "1" }),
+					method: "PUT",
+				}),
+				env
+			);
+			expect([key, res.status]).toStrictEqual([key, 400]);
+		}
+		for (const key of ["app", "lang", "health:ack", "chart:424242:fr"]) {
+			const res = await app.fetch(
+				apiRequest(`/preferences/${encodeURIComponent(key)}`, {
+					body: JSON.stringify({ value: "1" }),
+					method: "PUT",
+				}),
+				env
+			);
+			expect([key, res.status]).toStrictEqual([key, 204]);
+		}
+		const res = await app.fetch(apiRequest("/preferences"), env);
+		await expect(res.json()).resolves.toStrictEqual({
+			app: "1",
+			"chart:424242:fr": "1",
+			"health:ack": "1",
+			lang: "1",
+		});
+	});
+
+	it("caps the rows one account can hold, and still updates the ones it has", async () => {
+		await env.DB.prepare(
+			`INSERT INTO user_preference (user_id, key, value, updated_at)
+       WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < ?2)
+       SELECT 'admin', 'chart:' || i || ':fr', '[]', 0 FROM n`
+		)
+			.bind("unused", PREFERENCE_ROW_CAP)
+			.run();
+		const refused = await store("chart:999999:fr");
+		expect(refused.status).toBe(400);
+		const updated = await store("chart:1:fr");
+		expect(updated.status).toBe(204);
+
+		const rows = await env.DB.prepare(
+			"SELECT COUNT(*) AS n, SUM(value = '[1]') AS changed FROM user_preference WHERE user_id = 'admin'"
+		).first<{ n: number; changed: number }>();
+		expect(rows).toStrictEqual({ changed: 1, n: PREFERENCE_ROW_CAP });
 	});
 
 	it("refuses a value too large to be a preference", async () => {

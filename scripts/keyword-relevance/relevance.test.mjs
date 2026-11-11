@@ -1,7 +1,16 @@
+/* oxlint-disable vitest/no-import-node-test, vitest/prefer-importing-vitest-globals -- `pnpm test:scripts` runs these under node --test, which vitest cannot reach */
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { cosine, nearest, scoreCandidates, split } from "./relevance.mjs";
+import {
+	cosine,
+	dismissSql,
+	nearest,
+	parseThreshold,
+	scoreByUser,
+	scoreCandidates,
+	split,
+} from "./relevance.mjs";
 
 const tracked = [
 	{ term: "météo locale", vector: [1, 0, 0] },
@@ -57,4 +66,56 @@ test("splits at the threshold the caller chose", () => {
 	const { drop, keep } = split(scored, 0.6);
 	assert.equal(drop.length, 1);
 	assert.equal(keep.length, 1);
+});
+
+test("judges each user's suggestion against that user's tracked set, not everyone's", () => {
+	// Bob tracks weather; Alice tracks calendars. A weather-like suggestion is
+	// relevant to Bob and a false friend for Alice, and another user's set
+	// must neither rescue nor condemn it.
+	const users = [
+		{ term: "météo locale", userId: "bob", vector: [1, 0, 0] },
+		{ term: "calendrier", userId: "alice", vector: [0, 1, 0] },
+	];
+	const { scored } = scoreByUser(
+		[
+			{ id: 1, term: "météo", userId: "alice", vector: [1, 0, 0] },
+			{ id: 2, term: "météo", userId: "bob", vector: [1, 0, 0] },
+		],
+		users
+	);
+	const { drop, keep } = split(scored, 0.75);
+	assert.deepEqual(
+		drop.map((d) => [d.id, d.nearest]),
+		[[1, "calendrier"]]
+	);
+	assert.deepEqual(
+		keep.map((k) => [k.id, k.nearest]),
+		[[2, "météo locale"]]
+	);
+});
+
+test("leaves a user's suggestions unscored when that user tracks nothing to compare against", () => {
+	const { scored, unscored } = scoreByUser(
+		[{ id: 3, term: "météo", userId: "carol", vector: [1, 0, 0] }],
+		[{ term: "météo locale", userId: "bob", vector: [1, 0, 0] }]
+	);
+	assert.deepEqual(scored, []);
+	assert.deepEqual(unscored, [{ id: 3, term: "météo", userId: "carol" }]);
+});
+
+test("a threshold is a number between 0 and 1, or it is refused", () => {
+	// 75 was a percentage typed by habit: every score is below it, so --apply
+	// dismissed the whole inbox, for good.
+	assert.equal(parseThreshold("0.75"), 0.75);
+	assert.equal(parseThreshold("0"), 0);
+	assert.equal(parseThreshold("1"), 1);
+	for (const bad of ["75", "-0.1", "abc", "", "--apply", undefined]) {
+		assert.equal(parseThreshold(bad), null, String(bad));
+	}
+});
+
+test("dismisses only suggestions that are still pending", () => {
+	// One accepted on the dashboard while the model ran keeps its status.
+	const sql = dismissSql([3, 7]);
+	assert.match(sql, /WHERE status = 'pending' AND id IN \(3,7\)$/u);
 });

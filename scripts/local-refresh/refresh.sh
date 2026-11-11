@@ -10,8 +10,19 @@
 # same provenance and the same idempotent keys as the scheduler's own.
 #
 # It is deliberately not a second scheduler. It crawls only what D1 says is
-# due, at the rate lib/pacing.ts starts at, and stops dead on the first
-# throttle.
+# due, at the fixed SPACING below rather than lib/pacing.ts's adaptive rate,
+# and ends the cycle on the first throttle, crawl or step alike.
+#
+# Exit status, which is the only thing a scheduler sees:
+#   0  everything due was collected and verify passed
+#   1  verify found an inconsistency, or the cycle could not start
+#   2  verify could not read the database, so nothing was checked
+#   3  verify passed, but the cycle was throttled or stopped with work still
+#      due. On GitHub Actions there is one cron a day, so this red run is the
+#      alert that a day went partly uncollected; loop.sh logs it and tries
+#      again an interval later.
+#   4  the port was held: another cycle is still running, and this one
+#      collected nothing
 set -uo pipefail
 
 # launchd starts jobs with a minimal PATH, not the interactive shell's, so
@@ -34,7 +45,7 @@ STATE_DIR="$LOG_DIR/state"
 # limit with room to spare, and above the 3s spacing developers report as
 # reliable. Reputation of the egress IP binds harder than the number does, so
 # treat this as the operating point to walk back from, not a target: the first
-# 403 pauses the loop for 30 minutes anyway.
+# throttle ends the cycle, and loop.sh tries again an INTERVAL later.
 SPACING="${APPRANK_REFRESH_SPACING:-3.75}"
 # The step loop gets its own, slower value. The two loops look alike and are
 # not: a keyword search takes Apple ~2.7s to answer, so the crawl loop is paced
@@ -46,9 +57,8 @@ SPACING="${APPRANK_REFRESH_SPACING:-3.75}"
 STEP_SPACING="${APPRANK_REFRESH_STEP_SPACING:-10}"
 # Ceilings on one cycle, in units. Measured: a crawl costs ~10s (Apple's own
 # latency, mostly) and a step ~13s, so these two are roughly 83 and 17 minutes
-# of wall clock. The workflow's timeout-minutes keeps far more than that,
-# because a single 403 parks the loop for 30 minutes and the ladder goes to
-# four hours.
+# of wall clock. The workflow's timeout-minutes keeps more than that, for the
+# warm-up, the daily fan-out and the ERROR_PAUSE retries around them.
 #
 # The pair ceiling has to clear the tracked set or the tail is never reached:
 # ordering is overdue-age x storefront weight, so a cap below the set count
@@ -86,27 +96,45 @@ say() {
 # readable by anyone with the run URL, and the tracked keyword set is the
 # operator's ASO strategy and has no business being published with it. Applied
 # to every body logged whole, not only the ones known to carry the field today.
+#
+# `threw` goes too: it is a raw exception message, written by whatever failed,
+# and nothing promises it names no term. The same text is in fetch_error.message
+# for whoever can read the database.
 redact() {
-  printf '%s' "$1" | sed -E 's/"keyword":"([^"\\]|\\.)*"/"keyword":"<redacted>"/g'
+  printf '%s' "$1" | sed -E \
+    -e 's/"keyword":"([^"\\]|\\.)*"/"keyword":"<redacted>"/g' \
+    -e 's/"threw":"([^"\\]|\\.)*"/"threw":"<redacted, see fetch_error>"/g'
 }
 
 # The first line of an error body. wrangler's dev middleware answers a thrown
 # error with the whole stack, and the frames name nothing the log needs: the
 # message is the diagnosis, and the file already keeps the full wrangler log.
 headline() {
-  printf '%s' "$1" | head -n 1
+  redact "$1" | head -n 1
 }
 
 cd "$COLLECTOR" || { say "FATAL cannot cd to $COLLECTOR"; exit 1; }
 [ -f "$CONFIG" ] || { say "FATAL missing $CONFIG"; exit 1; }
+# A config written before WORK_LOOP existed starts the Durable Object's own
+# alarm loop beside this script, which fetches past SPACING and sometimes the
+# very unit this script is on (CLAUDE.md, invariant 4). The file is generated
+# once on a laptop and never per cycle, so an old one has to be refused here.
+grep -q '"WORK_LOOP": "off"' "$CONFIG" || {
+  say "FATAL $CONFIG predates WORK_LOOP; regenerate it: D1_DATABASE_ID=... node scripts/local-refresh/write-config.mjs"
+  exit 1
+}
 [ -f .dev.vars ] || { say "FATAL missing .dev.vars (ADMIN_TOKEN)"; exit 1; }
 TOKEN="$(sed -n 's/^ADMIN_TOKEN=//p' .dev.vars | head -1)"
 [ -n "$TOKEN" ] || { say "FATAL ADMIN_TOKEN empty"; exit 1; }
 
-# A previous cycle that died leaves the port held; refuse rather than fight it.
+# A previous cycle still running, or one that died and left a workerd child
+# behind, holds the port; refuse rather than fight it. Not a success: this cycle
+# collected nothing, and answering 0 let an orphan turn every later cycle into
+# a green no-op. Its own code, so a supervisor can tell an overlap (which clears
+# by itself) from a failure.
 if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
-  say "SKIP port $PORT already in use, a cycle is still running"
-  exit 0
+  say "SKIP port $PORT already in use: a cycle is still running, or left a process behind (lsof -nP -iTCP:$PORT)"
+  exit 4
 fi
 
 say "=== cycle start ==="
@@ -158,9 +186,12 @@ REQUEST_TIMEOUT="${APPRANK_REFRESH_REQUEST_TIMEOUT:-60}"
 # than one unit, which is the wrong side to be wrong on: they happen once per
 # cycle, so a generous ceiling costs nothing until it is needed.
 SLOW_TIMEOUT="${APPRANK_REFRESH_SLOW_TIMEOUT:-300}"
+# The token goes to curl on stdin, never on its command line: argv is readable
+# by every process on the machine through ps, which collect.yml goes out of its
+# way to avoid by writing it to .dev.vars rather than the environment.
 post() {
-  curl -s --max-time "${2:-$REQUEST_TIMEOUT}" -X POST \
-    -H "Authorization: Bearer $TOKEN" "$BASE?job=$1"
+  printf 'Authorization: Bearer %s\n' "$TOKEN" |
+    curl -s --max-time "${2:-$REQUEST_TIMEOUT}" -X POST -H @- "$BASE?job=$1"
 }
 
 # First authenticated call opens the remote-binding session and can take far
@@ -191,10 +222,13 @@ done
 crawled=0
 throttled=0
 misses=0
+# Whether the cycle ended with work it knows it left behind: a crawl loop that
+# stopped before D1 said nothing was due, or a step queue that was not drained.
+incomplete=1
 for _ in $(seq 1 "$MAX_UNITS"); do
   r="$(post crawl)"
   case "$r" in
-    *'"empty":true'*) say "drained after $crawled pair(s)"; break ;;
+    *'"empty":true'*) incomplete=0; say "drained after $crawled pair(s)"; break ;;
     *'"throttled":true'*)
       throttled=1
       say "THROTTLED, stopping this cycle: $(redact "$r")"
@@ -222,7 +256,7 @@ for _ in $(seq 1 "$MAX_UNITS"); do
       # a transient one clears on retry, and a genuine bug still stops the loop
       # after MAX_MISSES in a row, with its message in the log each time.
       misses=$((misses + 1))
-      say "error response (miss $misses of $MAX_MISSES): $(headline "$(redact "$r")")"
+      say "error response (miss $misses of $MAX_MISSES): $(headline "$r")"
       [ "$misses" -ge "$MAX_MISSES" ] && { say "stopping after $misses consecutive failed requests"; break; }
       sleep "$ERROR_PAUSE" ;;
   esac
@@ -261,15 +295,30 @@ if [ "$throttled" -eq 0 ] && [ ! -f "$DAILY_MARKER" ]; then
   done
 fi
 
+# Every step is an Apple fetch from the same address the crawl just got
+# throttled on, so a throttled cycle drains nothing (CLAUDE.md, invariant 4).
+# The queue persists in .wrangler/state and the next cycle picks it up.
 steps=0
 step_fails=0
+[ "$throttled" -eq 1 ] && say "skipping the step drain: throttled"
+# The queue dies with this dev session on a runner, so a drain that stops short
+# leaves units nobody will fetch today.
+drained=0
 for _ in $(seq 1 "$MAX_STEPS"); do
+  [ "$throttled" -eq 1 ] && break
   r="$(post step)"
   case "$r" in
-    *'"empty":true'*) [ "$steps" -gt 0 ] && say "queue drained after $steps step(s)"; break ;;
+    *'"empty":true'*) drained=1; [ "$steps" -gt 0 ] && say "queue drained after $steps step(s)"; break ;;
+    *'"errorClass":"throttled"'*|*'"errorClass":"rate_limited"'*)
+      # Back-pressure, not a bad unit: the task is requeued, and retrying it
+      # here is the hammering the throttle asked us to stop. Checked before
+      # "ok" because a task can record a throttle and still return.
+      steps=$((steps + 1)); throttled=1
+      say "THROTTLED on a step, stopping this cycle: $(redact "$r")"
+      break ;;
     *'"ok":true'*)
       steps=$((steps + 1)); step_fails=0
-      say "step: $r"
+      say "step: $(redact "$r")"
       sleep "$STEP_SPACING" ;;
     "")
       step_fails=$((step_fails + 1))
@@ -280,14 +329,15 @@ for _ in $(seq 1 "$MAX_STEPS"); do
       # A step that records a fetch_error still returns and still advances the
       # queue, so one bad unit must not end the drain, only a run of them.
       steps=$((steps + 1)); step_fails=$((step_fails + 1))
-      say "step (recorded an error): $r"
+      say "step (recorded an error): $(redact "$r")"
       [ "$step_fails" -ge 4 ] && { say "stopping drain after $step_fails failing steps"; break; }
       sleep "$STEP_SPACING" ;;
   esac
 done
 
-say "crawled=$crawled throttled=$throttled steps=$steps"
-printf '%s crawled=%s throttled=%s steps=%s\n' "$(date -u +%FT%TZ)" "$crawled" "$throttled" "$steps" \
+[ "$throttled" -eq 0 ] && [ "$drained" -eq 0 ] && incomplete=1
+say "crawled=$crawled throttled=$throttled steps=$steps incomplete=$incomplete"
+printf '%s crawled=%s throttled=%s steps=%s incomplete=%s\n' "$(date -u +%FT%TZ)" "$crawled" "$throttled" "$steps" "$incomplete" \
   >>"$STATE_DIR/cycles.tsv"
 
 "$ROOT/scripts/local-refresh/verify.sh" >>"$LOG" 2>&1
@@ -303,5 +353,14 @@ case "$verify_status" in
 esac
 # Keep only the last day of per-cycle wrangler logs.
 find "$LOG_DIR" -name 'wrangler-*.log' -mtime +1 -delete 2>/dev/null
+# Verify speaks first: an inconsistency in what was written outranks a shortfall
+# in how much was. Only a verified cycle is then judged on whether it finished,
+# because a green run on a day Apple throttled the first request told nobody
+# that the day's ranks were gone (invariant 1).
+status="$verify_status"
+if [ "$status" -eq 0 ] && { [ "$throttled" -eq 1 ] || [ "$incomplete" -eq 1 ]; }; then
+  say "INCOMPLETE: throttled=$throttled, work left due=$incomplete; exiting 3"
+  status=3
+fi
 say "=== cycle end ==="
-exit "$verify_status"
+exit "$status"

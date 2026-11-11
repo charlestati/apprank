@@ -1,11 +1,9 @@
 export interface Env {
 	DB: D1Database;
-	ARCHIVE: R2Bucket;
 	/** The built SPA. The Worker serves it only to authenticated requests. */
 	ASSETS: Fetcher;
 
 	// Vars
-	APP_URL: string; // e.g. https://apprank.example
 	/**
 	 * Local development only. With no accounts configured the Worker fails
 	 * closed; setting this to "true" serves the data to anyone, so it must never
@@ -35,7 +33,8 @@ export interface Env {
 	MCP_ENABLED?: string;
 
 	/**
-	 * Optional burst brake in front of the MCP gate, keyed per credential.
+	 * Optional burst brake around the MCP gate: by client address before it, by
+	 * credential once the secret has matched.
 	 *
 	 * Optional on purpose. The authoritative limit is the daily budget on
 	 * `mcp_credential`, which is exact; this one is per-colo and, in

@@ -26,7 +26,7 @@ export interface Heartbeat {
 	tasks?: Record<string, number>;
 }
 
-export const HEARTBEAT_KEY = "loop_heartbeat";
+const HEARTBEAT_KEY = "loop_heartbeat";
 
 export async function recordHeartbeat(
 	db: D1Database,
@@ -35,19 +35,33 @@ export async function recordHeartbeat(
 	await setStateJson(db, HEARTBEAT_KEY, beat);
 }
 
-/** Opens a run row and returns its id, for `finishRun` to close. */
+/**
+ * Opens a run row and returns its id, for `finishRun` to close.
+ *
+ * Best effort: 0 when the insert fails. The row is evidence about the job,
+ * and the 03:00 cron is not retried, so a D1 blip on this one insert used to
+ * cancel the whole day's queueing. A day nobody collected cannot be
+ * backfilled; a missing run row only costs the bracket.
+ */
 export async function startRun(
 	db: D1Database,
 	job: string,
 	trigger: "cron" | "admin"
 ): Promise<number> {
-	const row = await db
-		.prepare(
-			"INSERT INTO collector_run (job, trigger, started_at) VALUES (?, ?, ?) RETURNING id"
-		)
-		.bind(job, trigger, Date.now())
-		.first<{ id: number }>();
-	return row?.id ?? 0;
+	try {
+		const row = await db
+			.prepare(
+				"INSERT INTO collector_run (job, trigger, started_at) VALUES (?, ?, ?) RETURNING id"
+			)
+			.bind(job, trigger, Date.now())
+			.first<{ id: number }>();
+		return row?.id ?? 0;
+	} catch (error) {
+		console.log(
+			`collector_run for ${job} not opened: ${error instanceof Error ? error.message : "unknown"}`
+		);
+		return 0;
+	}
 }
 
 export async function finishRun(

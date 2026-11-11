@@ -8,4 +8,51 @@ allowBuilds:
   esbuild: true
   workerd: true
 
+catalog:
+  "@cloudflare/vitest-plugin": 1.4.1
+  "@vitest/coverage-istanbul": 5.0.4
+  typescript: 7.0.2
+  vitest: 5.0.4
+  wrangler: 4.150.0
+
 minimumReleaseAge: 10080
+
+saveExact: true
+
+overrides:
+  # drizzle-kit 0.31 still loads its config through the deprecated
+  # @esbuild-kit loader, which pins esbuild ~0.18 (GHSA-67mh-4wv8-2f99, dev
+  # server CORS). No drizzle-kit release drops it, so the loader gets the same
+  # esbuild drizzle-kit itself already depends on. Remove once drizzle-kit
+  # stops depending on @esbuild-kit.
+  "@esbuild-kit/core-utils>esbuild": 0.25.12
+  # Transitive advisories with a patched release that the packages pulling them
+  # in have not picked up yet. None is a direct dependency, so each is pinned
+  # here to the first patched version old enough for minimumReleaseAge. Drop an
+  # entry once its parent's own range reaches the patched version.
+  #   undici: through @cloudflare/vitest-plugin > miniflare and wrangler
+  #     (GHSA-xjj6-f33q-929c and seven more), test and dev time only.
+  #   zod: through @cloudflare/vitest-plugin (GHSA-mrhx-c7xc-m3w5).
+  #   happy-dom: through vitest (GHSA-834v-8h66-3h79).
+  #   body-parser, qs, fast-uri: through agents > @modelcontextprotocol/sdk >
+  #     express and ajv (GHSA-27r3-jxmh-p828, GHSA-6pq8-jhm2-2vcw,
+  #     GHSA-w74x-v6f9-j3xg and three more). The Worker never starts express.
+  "undici@>=7.0.0 <7.30.1": 7.30.1
+  "zod@>=4.0.0 <4.6.6": 4.6.7
+  "happy-dom@>=17.0.0 <21.0.4": 21.0.4
+  "body-parser@>=2.0.0 <2.4.0": 2.4.0
+  "qs@>=6.7.0 <6.16.1": 6.17.1
+  "fast-uri@>=3.0.0 <3.1.9": 3.1.9
+
+audit:
+  ignore:
+    # braces <=3.0.3, stack exhaustion on deeply nested patterns; no patched
+    # release exists. Reached only through ultracite > find-workspaces >
+    # fast-glob > micromatch, at lint time, on glob patterns this repository
+    # writes itself, so no untrusted pattern can reach it. Review by 2027-01-20.
+    - GHSA-vfj7-8cjw-p6xm
+    # deepmerge 4.2.0 to 4.3.1, prototype poisoning of the object mergeObject()
+    # returns; no patched release exists. Reached only through ultracite, at
+    # lint time, merging lint configuration this repository writes itself, so
+    # no untrusted object can reach it. Review by 2027-01-20.
+    - GHSA-gcqx-w48m-w2h4

@@ -3,12 +3,32 @@
 // may return follow-up tasks. Everything a step writes must be idempotent:
 // alarms are at-least-once.
 
-export type Task =
+/**
+ * What the scheduler stamps on every queued task, beside the step's own shape.
+ *
+ * `id` is how a finished step finds itself again. A step awaits Apple and D1,
+ * and while it does the object's input gate is open, so `enqueue` and
+ * `stepNow` can change the queue underneath it; writing back the copy read
+ * before the step erased whatever arrived meanwhile (the 03:00 cron's tasks
+ * among them). Tasks queued before ids existed get one on first read.
+ *
+ * `threw` counts throws, apart from `attempt`, which the steps own and spend
+ * on throttles and rate limits. Sharing one counter let two throttles and a
+ * single throw drop a whole batch.
+ */
+interface TaskMeta {
+	id?: string;
+	threw?: number;
+}
+
+export type Task = TaskMeta & TaskBody;
+
+type TaskBody =
 	| {
 			type: "asc_poll";
 			stage?: "init" | "reports" | "instances";
-			appId?: string; // App Store id, from the tracked_app table, never config
-			requestId?: string;
+			appId?: string | undefined; // App Store id, from the tracked_app table, never config
+			requestId?: string | undefined;
 			reportQueue?: AscReportRef[];
 			attempt?: number;
 	  }
@@ -32,7 +52,7 @@ export type Task =
 			 * know Apple answered; making it rewrite 500 terms per unit spent a
 			 * meaningful slice of the daily write budget to learn nothing new.
 			 */
-			verifyOnly?: boolean;
+			verifyOnly?: boolean | undefined;
 	  }
 	| {
 			type: "ads_terms";
@@ -43,7 +63,7 @@ export type Task =
 			terms: string[];
 			attempt?: number;
 			/** As on `ads_pull`: archive the answer, write no rows. */
-			verifyOnly?: boolean;
+			verifyOnly?: boolean | undefined;
 	  }
 	| {
 			type: "ads_discover";
@@ -60,7 +80,7 @@ export type Task =
 			rest: string[];
 			attempt?: number;
 			/** Fetch and archive, propose nothing. */
-			verifyOnly?: boolean;
+			verifyOnly?: boolean | undefined;
 	  }
 	| { type: "lookup_pull"; queue: LookupUnit[]; attempt?: number }
 	| { type: "review_pull"; queue: ReviewUnit[]; attempt?: number }

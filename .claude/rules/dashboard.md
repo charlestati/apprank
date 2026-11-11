@@ -72,7 +72,14 @@ than against yesterday. The explanation does not live in a `title`, which
 neither touch nor the keyboard can reach; `title` stays for the per-row reading
 ("Search popularity 55 of 100 — Medium"), never for the only statement of what a
 column means. A bare mark, the difficulty asterisk included, is a footnote with
-no page to turn to.
+no page to turn to, so the asterisk, the "~" unproven mark and the contested
+arrow are the same trigger (`Hint` in `components/info-tip.tsx`). That trigger
+is a Base UI **popover with `openOnHover`, not a tooltip**: a tooltip opens on
+mouse hover and keyboard focus only, and a tap is neither, so on a phone every
+"?" was a button that did nothing. The difficulty footnote sits beside its
+meter, never inside it, because the children of `role="meter"` are
+presentational. A toggle keeps one name and carries its state in `aria-pressed`;
+a name that flips with the state reads "Hide X, pressed".
 
 **The rank chart's x axis is the calendar, never the list of observed days.**
 One slot per observed date draws a seven-day cadence gap at the same width as an
@@ -95,4 +102,52 @@ enforced, not merely a default: the table's tick boxes disable once four
 keywords are on the chart and say why, rather than accepting a fifth and drawing
 it in a hue nobody can separate from the other four. The tick box also has to be
 a tick box — a bare swatch only answers "is this on the chart?" after it has
-been clicked.
+been clicked. The cap is counted on what is drawn, never on the stored list: a
+stored selection is filtered to the pairs the report has rows for and sliced to
+four, so a selection saved before the cap, or one naming a pair that has gone,
+can neither draw a fifth line nor make a chart showing three refuse a fourth.
+
+The table keeps the same states apart, and `position: null` alone cannot: the
+server sends it both for "observed outside the top 200" and for a keyword with
+no observation in the window (`points: []`, verdict `noObservation`). The first
+keeps its dash. The second prints a word, "no data", or "failed" when
+`fetchErrors` is not empty, in the rank and best/worst cells, because a dash
+there told the reader a throttled week was a keyword that had stopped ranking.
+
+Marks that share a slot are never nudged apart, since a nudge states a date or a
+rank the data does not have: ranked dots on one point become rings, keywords
+outside the top 200 on one day become hollow squares on the rail, a day that
+failed with two error classes is one hatched mark naming both, and two releases
+captured on one day keep one rule with their tags side by side. Release pins are
+focused by index, not by date, for the same reason. A muted series keeps its
+lone dots, in the neutral colour: a pair on a stretched cadence is nothing but
+lone dots, and dropping them made it vanish. With no crosshair yet, the first
+arrow key lands on the newest day.
+
+The pair page draws the same four states. `/pairs/:id/history` answers
+`{ points, fetchErrors, window }`, the pair's failed crawls joined the way the
+report joins them, and without `appId` it reads the one app the caller tracks
+that keyword for (400 when there are several, rather than guessing). The window
+keeps the days since the last observation on the axis as a gap.
+
+**Every fetch is stamped with what it answers.** The report, the storefront
+choice, reviews and pair history are held with the app (and storefront, window
+or pair) they were fetched for and read back only while that still matches.
+Switching app therefore shows the loading state, never the previous app's
+numbers under the new name and CSV link, and an answer that lands after the
+reader moved on is dropped rather than drawn. The storefront choice survives an
+app switch only where the new app is tracked too; carrying it over blindly asked
+for a report the new app has no pairs for.
+
+**A failed request is its own state, never the empty one.** "Nothing collected
+yet", "nothing pending" and "the collector fills this in daily" are claims about
+the data, and a 500 supports none of them, so the pair, health, reviews and
+suggestions pages each say the load failed. The same goes for "not answered
+yet": the app list is null until it answers, because starting from an empty
+array printed "No app is being tracked yet." on every load, and the report page
+tells an empty storefront list from a failed one instead of waiting for a report
+nobody asked for. The shell starts its four requests together.
+
+Stored preferences are read once per page load and shared (`loadPreferences`),
+with this session's own writes laid over the answer, so a read that left before
+a click cannot undo the click.

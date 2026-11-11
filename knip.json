@@ -1,0 +1,9 @@
+{
+	"$schema": "https://unpkg.com/knip@6/schema.json",
+	"ignoreDependencies": ["cloudflare"],
+	"workspaces": {
+		"scripts/mcp-token": {
+			"entry": ["issue.mjs"]
+		}
+	}
+}

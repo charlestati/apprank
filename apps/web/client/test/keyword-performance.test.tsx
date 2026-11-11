@@ -10,7 +10,13 @@ import { Delta } from "../src/components/delta";
 import { Meter } from "../src/components/meter";
 import { SummaryTiles } from "../src/components/summary-tiles";
 import { KeywordPerformance } from "../src/pages/keyword-performance";
-import { chooseOption, stubFetch, trackedApp } from "./harness";
+import {
+	chooseOption,
+	deferred,
+	settle,
+	stubFetch,
+	trackedApp,
+} from "./harness";
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -99,6 +105,10 @@ function report(over: Partial<Report> = {}): Report {
 		storefront: "fr",
 		...over,
 	};
+}
+
+function cellsOf(row: HTMLElement | undefined): HTMLElement[] {
+	return within(row as HTMLElement).getAllByRole("cell");
 }
 
 function renderPage(routes: Record<string, unknown>) {
@@ -244,7 +254,8 @@ describe("Keyword performance page", () => {
 						best: null,
 						change: null,
 						changeDaysAgo: null,
-						points: [],
+						// Observed, and outside the top 200: that is data.
+						points: [{ date: "2026-08-31", position: null }],
 						popularity: null,
 						position: null,
 						resultCount: null,
@@ -261,6 +272,75 @@ describe("Keyword performance page", () => {
 		const cells = within(row).getAllByRole("cell");
 		expect(cells[1]?.textContent).toBe("—");
 		expect(cells[5]?.textContent).toBe("— / —");
+	});
+
+	it("says a keyword was not observed, rather than that it does not rank", async () => {
+		// What the server sends for a keyword with nothing in the window: the
+		// same null position as "outside the top 200", told apart by its points.
+		const unobserved = {
+			best: null,
+			change: null,
+			changeDaysAgo: null,
+			points: [],
+			position: null,
+			resultCount: null,
+			topResults: [],
+			verdict: {
+				opportunity: "unknown" as const,
+				reason: "No observation in this window.",
+				reasonKey: "noObservation",
+				unproven: false,
+			},
+			worst: null,
+		};
+		renderPage({
+			report: report({
+				rows: [
+					keywordRow({ ...unobserved, keyword: "new term", pairId: 2 }),
+					keywordRow({
+						...unobserved,
+						fetchErrors: [
+							{ count: 7, date: "2026-08-30", errorClass: "throttled" },
+						],
+						keyword: "throttled term",
+						pairId: 3,
+					}),
+				],
+			}),
+			storefronts,
+		});
+		await screen.findAllByText("new term");
+		const [, pending, failed] = screen.getAllByRole("row").slice(-3);
+
+		// A dash here told the reader the keyword had stopped ranking.
+		expect(cellsOf(pending)[1]?.textContent).toBe("no data");
+		expect(cellsOf(pending)[5]?.textContent).toBe("no data");
+		expect(
+			within(pending as HTMLElement).getAllByTitle(/Not observed yet/u)
+		).toHaveLength(2);
+		// A week of throttles is a collection failure, and says so.
+		expect(cellsOf(failed)[1]?.textContent).toBe("failed");
+		expect(
+			within(failed as HTMLElement).getAllByTitle(
+				/Every collection attempt in this period failed/u
+			)
+		).toHaveLength(2);
+	});
+
+	it("says there is no storefront rather than loading for ever", async () => {
+		renderPage({ storefronts: [] });
+		await expect(
+			screen.findByText(/No keyword is tracked for this app/u)
+		).resolves.toBeDefined();
+		expect(screen.queryByText("Loading…")).toBeNull();
+	});
+
+	it("says the storefront list failed rather than loading for ever", async () => {
+		renderPage({ storefronts: new Response("", { status: 500 }) });
+		await expect(
+			screen.findByText(/storefront list could not be loaded/u)
+		).resolves.toBeDefined();
+		expect(screen.queryByText("Loading…")).toBeNull();
 	});
 
 	it("says the report failed rather than spinning forever", async () => {
@@ -353,7 +433,12 @@ describe("Rank credibility", () => {
 			storefronts,
 		});
 		await screen.findAllByText("example keyword");
-		expect(screen.getByTitle(/moved in the last 48h/u)).toBeDefined();
+		// A trigger, not a title: a tap or Enter opens the sentence.
+		const mark = screen.getByRole("button", { name: "Unproven" });
+		fireEvent.click(mark);
+		await expect(
+			screen.findByText(/moved in the last 48 hours/u)
+		).resolves.toBeDefined();
 	});
 
 	it("flags a term whose result page is filling up", async () => {
@@ -362,7 +447,10 @@ describe("Rank credibility", () => {
 			storefronts,
 		});
 		await screen.findAllByText("example keyword");
-		expect(screen.getByTitle(/more contested/u)).toBeDefined();
+		fireEvent.click(screen.getByRole("button", { name: "More contested" }));
+		await expect(
+			screen.findByText(/120 more results than at the start/u)
+		).resolves.toBeDefined();
 	});
 });
 
@@ -400,9 +488,17 @@ describe("Difficulty column", () => {
 		await screen.findAllByText("example keyword");
 		// The mark explains itself to a keyboard and a touch reader, so it is a
 		// labelled trigger rather than a `title` nobody can reach.
-		expect(
-			screen.getByRole("button", { name: /Fewer than 5 of the top 10/u })
-		).toBeDefined();
+		const mark = screen.getByRole("button", {
+			name: /Fewer than 5 of the top 10/u,
+		});
+		// Beside the meter, not inside it: the children of a meter are
+		// presentational, so a button in there can lose its name.
+		expect(mark.closest('[role="meter"]')).toBeNull();
+		// A tap is a click and nothing else, and it has to open the sentence.
+		fireEvent.click(mark);
+		await expect(
+			screen.findByText(/Fewer than 5 of the top 10/u)
+		).resolves.toBeDefined();
 	});
 
 	it("dashes a keyword that has never been scored", async () => {
@@ -435,6 +531,18 @@ describe("Column explanations", () => {
 		}
 	});
 
+	it("opens an explanation on a tap, not only on hover or focus", async () => {
+		renderPage({ report: report(), storefronts });
+		await screen.findAllByText("example keyword");
+		expect(screen.queryByText(/on the most recent day collected/u)).toBeNull();
+		// What a touch screen sends. A hover-and-focus tooltip ignored it, so
+		// every "?" on a phone was a button that did nothing.
+		fireEvent.click(screen.getByRole("button", { name: "About Position" }));
+		await expect(
+			screen.findByText(/on the most recent day collected/u)
+		).resolves.toBeDefined();
+	});
+
 	it("reads the popularity bar out in words", async () => {
 		renderPage({ report: report(), storefronts });
 		await screen.findAllByText("example keyword");
@@ -457,11 +565,15 @@ describe("Chart series selection", () => {
 
 		fireEvent.click(
 			screen.getByRole("button", {
-				name: "Remove example keyword from the chart",
+				name: "example keyword on the chart",
+				pressed: true,
 			})
 		);
 		expect(
-			screen.getByRole("button", { name: "Add example keyword to the chart" })
+			screen.getByRole("button", {
+				name: "example keyword on the chart",
+				pressed: false,
+			})
 		).toBeDefined();
 	});
 
@@ -486,11 +598,12 @@ describe("Chart series selection", () => {
 		// finding it off the chart is only explicable by the stored selection.
 		await expect(
 			screen.findByRole("button", {
-				name: "Add example keyword to the chart",
+				name: "example keyword on the chart",
+				pressed: false,
 			})
 		).resolves.toBeDefined();
 		expect(
-			screen.getByRole("button", { name: "Remove second from the chart" })
+			screen.getByRole("button", { name: "second on the chart", pressed: true })
 		).toBeDefined();
 	});
 
@@ -521,7 +634,10 @@ describe("Chart series selection", () => {
 		// "example keyword" outranks "second" and is drawn by default, so finding
 		// it off the chart is only explicable by the cache having been read.
 		expect(
-			screen.getByRole("button", { name: "Add example keyword to the chart" })
+			screen.getByRole("button", {
+				name: "example keyword on the chart",
+				pressed: false,
+			})
 		).toBeDefined();
 	});
 
@@ -537,7 +653,8 @@ describe("Chart series selection", () => {
 		await screen.findAllByText("keyword 1");
 
 		const fifth = screen.getByRole("button", {
-			name: "Add keyword 5 to the chart",
+			name: "keyword 5 on the chart",
+			pressed: false,
 		});
 		expect(fifth.hasAttribute("disabled")).toBeTruthy();
 		fireEvent.click(fifth);
@@ -546,11 +663,14 @@ describe("Chart series selection", () => {
 
 		// Freeing a slot re-opens the one that was refused.
 		fireEvent.click(
-			screen.getByRole("button", { name: "Remove keyword 1 from the chart" })
+			screen.getByRole("button", {
+				name: "keyword 1 on the chart",
+				pressed: true,
+			})
 		);
 		expect(
 			screen
-				.getByRole("button", { name: "Add keyword 5 to the chart" })
+				.getByRole("button", { name: "keyword 5 on the chart", pressed: false })
 				.hasAttribute("disabled")
 		).toBeFalsy();
 	});
@@ -568,7 +688,8 @@ describe("Chart series selection", () => {
 
 		fireEvent.click(
 			within(legend).getByRole("button", {
-				name: "Hide example keyword from the chart",
+				name: "Show example keyword on the chart",
+				pressed: true,
 			})
 		);
 		expect(document.querySelectorAll(".series")).toHaveLength(1);
@@ -577,6 +698,7 @@ describe("Chart series selection", () => {
 		// back. Built from the drawn series, the legend deleted its own control.
 		const restore = within(legend).getByRole("button", {
 			name: "Show example keyword on the chart",
+			pressed: false,
 		});
 		expect(restore.getAttribute("aria-pressed")).toBe("false");
 		fireEvent.click(restore);
@@ -597,16 +719,17 @@ describe("Chart series selection", () => {
 				.getByRole("button", { name })
 				.querySelector("line")
 				?.getAttribute("stroke");
-		const before = strokeOf("Hide second from the chart");
+		const before = strokeOf("Show second on the chart");
 
 		fireEvent.click(
 			within(legend).getByRole("button", {
-				name: "Hide example keyword from the chart",
+				name: "Show example keyword on the chart",
+				pressed: true,
 			})
 		);
 		// Slots follow membership, not what is drawn, so the surviving line keeps
 		// the colour the reader had already learned it by.
-		expect(strokeOf("Hide second from the chart")).toBe(before);
+		expect(strokeOf("Show second on the chart")).toBe(before);
 	});
 
 	it("says the lines are hidden rather than that nothing was collected", async () => {
@@ -615,11 +738,76 @@ describe("Chart series selection", () => {
 
 		fireEvent.click(
 			screen.getByRole("button", {
-				name: "Hide example keyword from the chart",
+				name: "Show example keyword on the chart",
+				pressed: true,
 			})
 		);
 		expect(screen.getByText(/Every line is hidden/u)).toBeDefined();
 		expect(screen.queryByText(/No ranked observations/u)).toBeNull();
+	});
+
+	it("says no keyword is selected rather than that nothing was collected", async () => {
+		renderPage({ report: report(), storefronts });
+		await screen.findAllByText("example keyword");
+
+		fireEvent.click(
+			screen.getByRole("button", {
+				name: "example keyword on the chart",
+				pressed: true,
+			})
+		);
+		// The reader's own empty selection was blamed on the collector.
+		expect(screen.getByText(/No keyword is on the chart/u)).toBeDefined();
+		expect(screen.queryByText(/No ranked observations/u)).toBeNull();
+	});
+
+	it("stops dimming the chart when focus leaves the table", async () => {
+		renderPage({
+			report: report({
+				rows: [keywordRow(), keywordRow({ keyword: "second", pairId: 2 })],
+			}),
+			storefronts,
+		});
+		await screen.findAllByText("example keyword");
+		const tick = screen.getByRole("button", {
+			name: "second on the chart",
+			pressed: true,
+		});
+
+		fireEvent.focus(tick);
+		expect(document.querySelectorAll(".series-muted")).toHaveLength(1);
+		// Nothing cleared it on the way out, so the chart stayed greyed.
+		fireEvent.blur(tick);
+		expect(document.querySelectorAll(".series-muted")).toHaveLength(0);
+	});
+});
+
+describe("Result page drawer", () => {
+	it("says the page failed without also saying it is loading", async () => {
+		renderPage({
+			report: report(),
+			results: new Response("", { status: 500 }),
+			storefronts,
+		});
+		await screen.findAllByText("example keyword");
+		fireEvent.click(screen.getByRole("button", { name: "View" }));
+		await expect(
+			screen.findByText("Could not load the result page.")
+		).resolves.toBeDefined();
+		expect(screen.queryByText(/Loading…/u)).toBeNull();
+	});
+
+	it("says a pair has no observation yet, with a singular count", async () => {
+		renderPage({
+			report: report(),
+			results: { date: null, resultCount: 1, results: [] },
+			storefronts,
+		});
+		await screen.findAllByText("example keyword");
+		fireEvent.click(screen.getByRole("button", { name: "View" }));
+		await expect(
+			screen.findByText(/no observation yet · 1 result$/u)
+		).resolves.toBeDefined();
 	});
 });
 
@@ -708,7 +896,8 @@ describe(Meter, () => {
 
 	it("reads out as no data when the value is missing", () => {
 		render(<Meter label="Popularity" value={null} />);
-		expect(screen.getByLabelText("Popularity: no data")).toBeDefined();
+		// Read as text: an aria-label on a role-less span may never be announced.
+		expect(screen.getByText("Popularity: no data")).toBeDefined();
 		expect(screen.getByText("—")).toBeDefined();
 	});
 });
@@ -781,5 +970,204 @@ describe(SummaryTiles, () => {
 		);
 		const segs = [...document.querySelectorAll<HTMLElement>(".movement-seg")];
 		expect(segs.every((s) => s.style.width === "0%")).toBeTruthy();
+	});
+});
+
+const OTHER_APP = { ...trackedApp, current_name: "Other App", id: 999 };
+
+function renderSwitchable(routes: Record<string, unknown>) {
+	const calls = stubFetch(routes);
+	const view = render(
+		<MemoryRouter>
+			<KeywordPerformance app={trackedApp} />
+		</MemoryRouter>
+	);
+	const switchTo = (app: typeof trackedApp) =>
+		view.rerender(
+			<MemoryRouter>
+				<KeywordPerformance app={app} />
+			</MemoryRouter>
+		);
+	return { calls, switchTo };
+}
+
+describe("Keyword performance across an app switch", () => {
+	it("asks for the new app's storefront, not the previous app's", async () => {
+		const { calls, switchTo } = renderSwitchable({
+			"/apps/999/storefronts": [{ code: "us", keywords: 3, name: "USA" }],
+			"/apps/999/report": report({ storefront: "us" }),
+			report: report(),
+			storefronts,
+		});
+		await screen.findAllByText("example keyword");
+
+		switchTo(OTHER_APP);
+		await vi.waitFor(() =>
+			expect(
+				calls.some((c) => c.includes("/apps/999/report?storefront=us"))
+			).toBeTruthy()
+		);
+		// "fr" is only tracked for the first app: asking for it under the second
+		// is a report for a pair set that does not exist.
+		expect(
+			calls.some((c) => c.includes("/apps/999/report?storefront=fr"))
+		).toBeFalsy();
+	});
+
+	it("keeps the chosen storefront when the new app is tracked there too", async () => {
+		const { calls, switchTo } = renderSwitchable({
+			"/apps/999/storefronts": [
+				{ code: "us", keywords: 3, name: "USA" },
+				{ code: "be", keywords: 3, name: "Belgium" },
+			],
+			report: report(),
+			storefronts,
+		});
+		await screen.findAllByText("example keyword");
+		chooseOption("Storefront", "Belgium (25)");
+		await vi.waitFor(() =>
+			expect(calls.some((c) => c.includes("storefront=be"))).toBeTruthy()
+		);
+
+		switchTo(OTHER_APP);
+		await vi.waitFor(() =>
+			expect(
+				calls.some((c) => c.includes("/apps/999/report?storefront=be"))
+			).toBeTruthy()
+		);
+		expect(
+			calls.some((c) => c.includes("/apps/999/report?storefront=us"))
+		).toBeFalsy();
+	});
+
+	it("never draws the previous app's report under the new one", async () => {
+		const first = deferred<Report>();
+		const second = deferred<Report>();
+		const { switchTo } = renderSwitchable({
+			"/apps/999/report": second.promise,
+			"/apps/999/storefronts": storefronts,
+			report: first.promise,
+			storefronts,
+		});
+		// Let the first app's storefronts land, so its report is in flight.
+		await vi.waitFor(() =>
+			expect(screen.getByLabelText("Storefront").textContent).toContain(
+				"France"
+			)
+		);
+
+		switchTo(OTHER_APP);
+		second.resolve(
+			report({ rows: [keywordRow({ keyword: "current app term" })] })
+		);
+		await screen.findAllByText("current app term");
+
+		// The slower, older answer lands last and must not win.
+		first.resolve(report({ rows: [keywordRow({ keyword: "stale term" })] }));
+		await settle();
+		expect(screen.queryAllByText("stale term")).toHaveLength(0);
+		expect(screen.getAllByText("current app term").length).toBeGreaterThan(0);
+		expect(screen.getByText("Export CSV").getAttribute("href")).toBe(
+			"/api/apps/999/report.csv?storefront=fr&days=30"
+		);
+	});
+
+	it("shows the loading state, not the old report, while the new one loads", async () => {
+		const pending = deferred<Report>();
+		const { switchTo } = renderSwitchable({
+			"/apps/999/report": pending.promise,
+			"/apps/999/storefronts": storefronts,
+			report: report({ rows: [keywordRow({ keyword: "old app term" })] }),
+			storefronts,
+		});
+		await screen.findAllByText("old app term");
+
+		switchTo(OTHER_APP);
+		await vi.waitFor(() =>
+			expect(screen.queryAllByText("old app term")).toHaveLength(0)
+		);
+		expect(screen.getByText("Loading…")).toBeDefined();
+		pending.resolve(report());
+		await screen.findAllByText("example keyword");
+	});
+});
+
+function renderWithStored(rows: KeywordRow[], stored: number[]) {
+	stubFetch({ report: report({ rows }), storefronts });
+	localStorage.setItem(
+		`apprank.chart:${trackedApp.id}:fr`,
+		JSON.stringify(stored)
+	);
+	render(
+		<MemoryRouter>
+			<KeywordPerformance app={trackedApp} />
+		</MemoryRouter>
+	);
+}
+
+describe("Keyword performance chart selection", () => {
+	it("draws no more than four series, whatever was stored", async () => {
+		const rows = [1, 2, 3, 4, 5, 6].map((n) =>
+			keywordRow({ keyword: `keyword ${n}`, pairId: n, position: n })
+		);
+		renderWithStored(rows, [1, 2, 3, 4, 5, 6]);
+		await screen.findAllByText("keyword 1");
+
+		expect(document.querySelectorAll(".legend li")).toHaveLength(4);
+		expect(screen.getByText(/4 of 4 keywords on the chart/u)).toBeDefined();
+		expect(
+			screen
+				.getByRole("button", { name: "keyword 5 on the chart", pressed: false })
+				.hasAttribute("disabled")
+		).toBeTruthy();
+	});
+
+	it("lets a keyword on when the stored ids no longer exist", async () => {
+		// Three of the four stored pairs are gone from this report. Measured
+		// against the stored list the chart is full; measured against what it
+		// draws, it holds one.
+		const rows = [1, 2].map((n) =>
+			keywordRow({ keyword: `keyword ${n}`, pairId: n, position: n })
+		);
+		renderWithStored(rows, [1, 97, 98, 99]);
+		await screen.findAllByText("keyword 1");
+
+		fireEvent.click(
+			screen.getByRole("button", {
+				name: "keyword 2 on the chart",
+				pressed: false,
+			})
+		);
+		expect(
+			screen.getByRole("button", {
+				name: "keyword 2 on the chart",
+				pressed: true,
+			})
+		).toBeDefined();
+	});
+});
+
+describe("Keyword performance table details", () => {
+	it("says the band is empty without quoting an empty search", async () => {
+		renderPage({
+			report: report({ rows: [keywordRow({ popularity: 30 })] }),
+			storefronts,
+		});
+		await screen.findAllByText("example keyword");
+
+		chooseOption("Filter by popularity", "Very high (85–100)");
+		expect(
+			screen.getByText("No keywords in this popularity band.")
+		).toBeDefined();
+		expect(screen.queryByText(/No keywords match/u)).toBeNull();
+	});
+
+	it("names each leading competitor icon for a screen reader", async () => {
+		renderPage({ report: report(), storefronts });
+		await screen.findAllByText("example keyword");
+
+		// The image and the letter fallback both carry the name, not a title alone.
+		expect(screen.getByRole("img", { name: "1. Rival App" })).toBeDefined();
+		expect(screen.getByRole("img", { name: "2. Another App" })).toBeDefined();
 	});
 });

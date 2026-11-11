@@ -1,7 +1,14 @@
+/* oxlint-disable vitest/no-import-node-test, vitest/prefer-importing-vitest-globals -- `pnpm test:scripts` runs these under node --test, which vitest cannot reach */
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { comparePair, measure, noiseFloor } from "./churn.mjs";
+import {
+	comparePair,
+	isStorefrontCode,
+	measure,
+	noiseFloor,
+	parseDays,
+} from "./churn.mjs";
 
 const ids = (n, from = 1) => Array.from({ length: n }, (_, i) => from + i);
 
@@ -95,4 +102,19 @@ test("ignores a band nothing was ever observed in", () => {
 		{ band: "11-25", dropRate: 0.5, samples: 4 },
 	];
 	assert.equal(noiseFloor(rows, 0.1), 11);
+});
+
+test("refuses a --days that is not a whole number of days", () => {
+	assert.equal(parseDays(30), 30);
+	assert.equal(parseDays("7"), 7);
+	for (const bad of ["abc", "0", "-3", "1.5", undefined, "1e9"]) {
+		assert.equal(parseDays(bad), null, String(bad));
+	}
+});
+
+test("a storefront flag is a two-letter code and nothing else", () => {
+	assert.ok(isStorefrontCode("fr"));
+	for (const bad of ["FR", "f", "fra", "fr' OR 1=1 --", "", undefined]) {
+		assert.ok(!isStorefrontCode(bad), String(bad));
+	}
 });
