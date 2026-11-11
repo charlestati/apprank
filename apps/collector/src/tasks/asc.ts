@@ -57,6 +57,17 @@ async function recordFetchErrorOnce(
 	}
 }
 
+/** The processing dates Apple listed for one app's report at the last poll. */
+interface ListedDates {
+	appId: string;
+	reportType: string;
+	dates: string[];
+}
+
+function listedKey(appId: string, reportType: string): string {
+	return `asc:listed:${appId}:${reportType}`;
+}
+
 async function fanOutStep(env: Env): Promise<Task[]> {
 	// The apps to ingest come from the database, never from configuration:
 	// ASC reports exist only for apps the operator owns, which in practice is
@@ -178,6 +189,20 @@ async function instancesStep(
 	}
 	const rest = queue.slice(1);
 	const instances = await asc.listInstances(report.reportId, "DAILY");
+	// What Apple lists, kept for the gap check. It used to infer a skipped date
+	// from our own table instead, where a segment download that failed here
+	// looks exactly like a date Apple never published.
+	await setStateJson(env.DB, listedKey(task.appId ?? "", report.name), {
+		appId: task.appId ?? "",
+		dates: [
+			...new Set(
+				instances
+					.filter((i) => i.attributes.granularity === "DAILY")
+					.map((i) => i.attributes.processingDate)
+			),
+		].toSorted(),
+		reportType: report.name,
+	} satisfies ListedDates);
 	const followUps: Task[] = [];
 	for (const inst of instances) {
 		const seen = await env.DB.prepare(
@@ -284,54 +309,65 @@ export async function ascFetchInstanceStep(
 	return [];
 }
 
+/** Every calendar day strictly between two ISO dates. */
+function daysBetween(first: string, last: string): string[] {
+	const days: string[] = [];
+	const d = new Date(`${first}T00:00:00Z`);
+	const end = Date.parse(`${last}T00:00:00Z`);
+	// A malformed date from Apple must not turn this into an unbounded loop.
+	if (Number.isNaN(d.getTime()) || Number.isNaN(end)) {
+		return days;
+	}
+	for (;;) {
+		d.setUTCDate(d.getUTCDate() + 1);
+		if (d.getTime() >= end) {
+			return days;
+		}
+		days.push(d.toISOString().slice(0, 10));
+	}
+}
+
 /**
- * Daily gap check: yesterday-2 should exist for each report we ingest.
+ * Daily gap check: a processing date missing from the middle of what Apple
+ * lists for a report.
  *
- * Grouped per app. Apple skips a processing date per report request, and
- * requests are per app, so with the app dimension collapsed, one app's
- * published Monday satisfied the `NOT EXISTS` for every other app's missing
- * Monday and the defect went unreported.
+ * Read from Apple's own instance list, as the last poll recorded it, never
+ * from the instances we hold. Inferring it from our table booked our failures
+ * as Apple's: a segment download that threw three times left no row for that
+ * date, the next night's check found the hole under a later date and recorded
+ * a permanent `skipped_processing_date`, and the poll after it fetched the
+ * instance without anything retracting the finding. The same happened whenever
+ * the fetch queue was still draining when the check ran.
  *
- * A skipped date is permanent, so the check runs over the whole history every
- * day and must not report the same gap twice: each one is recorded once, by
- * excluding gaps that already have their fetch_error row. There is no cap on
- * how many are found per run, because a cap without that exclusion re-found
- * the same oldest gaps every day and never reached a later one.
+ * Per app and report, because Apple skips a date per report request and
+ * requests are per app: with the app collapsed, one app's published Monday hid
+ * another app's missing one.
+ *
+ * A skipped date is permanent and Apple keeps listing around it, so each gap
+ * is recorded once, by its params. There is no cap on how many are found per
+ * run, because a cap without that dedupe re-found the same oldest gaps every
+ * day and never reached a later one.
  */
 export async function ascDetectSkippedDates(env: Env): Promise<void> {
 	const rows = await env.DB.prepare(
-		"SELECT app_id, report_type, MAX(processing_date) AS latest FROM asc_report_instance WHERE granularity = 'DAILY' GROUP BY app_id, report_type"
-	).all<{
-		app_id: number;
-		report_type: string;
-		latest: string;
-	}>();
-	for (const r of rows.results) {
-		const prefix = `${r.app_id} ${r.report_type} `;
-		const gaps = await env.DB.prepare(
-			`SELECT DISTINCT DATE(a.processing_date, '+1 day') AS missing FROM asc_report_instance a
-       WHERE a.granularity = 'DAILY' AND a.app_id = ? AND a.report_type = ?
-         AND DATE(a.processing_date, '+1 day') < ?
-         AND NOT EXISTS (
-           SELECT 1 FROM asc_report_instance b
-           WHERE b.app_id = a.app_id AND b.report_type = a.report_type
-             AND b.granularity = 'DAILY'
-             AND b.processing_date = DATE(a.processing_date, '+1 day'))
-         AND NOT EXISTS (
-           SELECT 1 FROM fetch_error f
-           WHERE f.endpoint = 'asc:instance'
-             AND f.error_class = 'skipped_processing_date'
-             AND f.params = ? || DATE(a.processing_date, '+1 day'))
-       ORDER BY missing`
-		)
-			.bind(r.app_id, r.report_type, r.latest, prefix)
-			.all<{ missing: string }>();
-		for (const g of gaps.results) {
-			await recordFetchError(env.DB, {
-				endpoint: "asc:instance",
-				errorClass: "skipped_processing_date",
-				params: `${prefix}${g.missing}`,
-			});
+		"SELECT value FROM collector_state WHERE key LIKE 'asc:listed:%' ORDER BY key"
+	).all<{ value: string }>();
+	for (const row of rows.results) {
+		const listed = JSON.parse(row.value) as ListedDates;
+		const have = new Set(listed.dates);
+		const first = listed.dates.at(0);
+		const last = listed.dates.at(-1);
+		if (!(first && last)) {
+			continue;
+		}
+		for (const missing of daysBetween(first, last)) {
+			if (!have.has(missing)) {
+				await recordFetchErrorOnce(env.DB, {
+					endpoint: "asc:instance",
+					errorClass: "skipped_processing_date",
+					params: `${listed.appId} ${listed.reportType} ${missing}`,
+				});
+			}
 		}
 	}
 }

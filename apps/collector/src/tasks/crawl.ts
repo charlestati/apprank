@@ -128,7 +128,8 @@ export async function crawlPair(
 		);
 		await recordFetchError(env.DB, {
 			endpoint: "itunes:search",
-			errorClass: outcome.kind === "error" ? "http_error" : "invalid_body",
+			errorClass:
+				outcome.kind === "error" ? outcome.errorClass : "invalid_body",
 			httpStatus: outcome.status,
 			params: `${pair.keyword_text}|${pair.storefront_code}|${pair.locale_code}`,
 			r2Key: archived ? key : undefined,

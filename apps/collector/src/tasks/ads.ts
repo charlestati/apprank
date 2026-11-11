@@ -146,7 +146,44 @@ export function normalize(term: string): string {
 const MAX_RATE_LIMITED_ATTEMPTS = 5;
 
 /**
- * Requeue a refused unit, or give up on it alone.
+ * Where the end of Apple's current refusal is kept, as epoch milliseconds.
+ *
+ * In `collector_state` and not on the refused task, because the quota is the
+ * account's: a wait carried by one task would not stop the by-name pass for the
+ * next storefront, or a discovery seed, from asking inside the same window.
+ */
+const REFUSED_UNTIL_KEY = "ads:refused_until";
+
+/**
+ * The longest wait a single 429 can impose. Everything here is weekly and
+ * rebuilt by the next daily pass, so a header asking for longer than a day, or
+ * a malformed one, must not be able to park Apple Ads collection for good.
+ */
+const MAX_RETRY_AFTER_MS = 24 * 3_600_000;
+
+/** When the refusal ends, in epoch ms; 0 when Apple has refused nothing. */
+export async function adsRefusedUntil(env: Env): Promise<number> {
+	const until = Number(await getState(env.DB, REFUSED_UNTIL_KEY));
+	return Number.isFinite(until) ? until : 0;
+}
+
+/**
+ * Whether Apple is still refusing the account, per the last 429's
+ * `Retry-After`.
+ *
+ * Every Ads step asks this before it fetches and hands itself back untouched
+ * while it holds, so nothing is spent: no request, and no attempt. The wait
+ * used to be computed and never read. The refused task was simply requeued, the
+ * next tick asked again inside the window, and five refusals fifteen seconds
+ * apart abandoned a unit that an hour's patience would have collected, then
+ * moved on to do the same to the unit behind it.
+ */
+export async function adsRefused(env: Env, now = Date.now()): Promise<boolean> {
+	return now < (await adsRefusedUntil(env));
+}
+
+/**
+ * Record the refusal, then requeue the unit or give up on it alone.
  *
  * `onGiveUp` is what the task would have handed on had this unit succeeded: the
  * remaining genre units, chunks or seeds. Giving up used to return nothing,
@@ -155,16 +192,27 @@ const MAX_RATE_LIMITED_ATTEMPTS = 5;
 export async function rateLimited<T extends Task>(
 	env: Env,
 	task: T,
+	refusal: AdsRateLimitedError,
 	endpoint: string,
 	params: string,
 	onGiveUp: Task[]
 ): Promise<Task[]> {
+	const waitMs = Math.min(
+		Math.max(0, refusal.retryAfterSeconds) * 1000,
+		MAX_RETRY_AFTER_MS
+	);
 	await recordFetchError(env.DB, {
 		endpoint,
 		errorClass: "rate_limited",
 		httpStatus: 429,
+		message: refusal.message,
 		params,
 	});
+	// A wait that is not a number (a header Apple mangled) sets nothing, and the
+	// attempt cap below is then the only brake, as it was before.
+	if (Number.isFinite(waitMs)) {
+		await setState(env.DB, REFUSED_UNTIL_KEY, String(Date.now() + waitMs));
+	}
 	const attempt = (task.attempt ?? 0) + 1;
 	if (attempt < MAX_RATE_LIMITED_ATTEMPTS) {
 		return [{ ...task, attempt }];
@@ -271,6 +319,9 @@ export async function adsPullStep(
 	const [unit] = task.queue;
 	if (!unit) {
 		return [];
+	}
+	if (await adsRefused(env)) {
+		return [task];
 	}
 	const rest = task.queue.slice(1);
 	const requeue: Task[] =
@@ -388,10 +439,10 @@ export async function adsPullStep(
 		return requeue;
 	} catch (error) {
 		if (error instanceof AdsRateLimitedError) {
-			// Put the unit back; the scheduler's next tick naturally spaces retries.
 			return rateLimited(
 				env,
 				task,
+				error,
 				"ads:popularity",
 				`${unit.storefront}/${unit.genreId}`,
 				requeue
@@ -427,6 +478,9 @@ export async function adsTermsStep(
 	const chunk = task.terms.slice(0, TERM_CHUNK);
 	if (chunk.length === 0) {
 		return [];
+	}
+	if (await adsRefused(env)) {
+		return [task];
 	}
 	const rest = task.terms.slice(TERM_CHUNK);
 	const requeue: Task[] =
@@ -505,6 +559,7 @@ export async function adsTermsStep(
 			return rateLimited(
 				env,
 				task,
+				error,
 				"ads:popularity_terms",
 				`${task.storefront}/${chunk.length} terms`,
 				requeue

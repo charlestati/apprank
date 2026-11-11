@@ -77,9 +77,16 @@ paths:
   had already cost quota, before it was archived, and the retry paid again, so
   only a real 429 is a refusal. There, `Retry-After` wins over
   `RateLimit-Reset`: Apple documents it as the exact wait for the request it
-  just rejected. A rate-limited Ads task is requeued at most five times, then
-  recorded as `pull_abandoned`, because an uncapped requeue cycled on every tick
-  while the health page counted it as harmless back-pressure.
+  just rejected. That wait is kept in `collector_state` as `ads:refused_until`
+  and every Ads step (genre pull, by-name pass, discovery) reads it before it
+  fetches, handing itself back untouched while it holds: the quota is the
+  account's, so a wait carried on the refused task alone would not stop the next
+  task asking inside the same window. It used to be parsed and never read, and
+  five refusals a tick apart abandoned a unit an hour's patience would have
+  collected. Waiting spends no attempt, and one header cannot park collection
+  for more than a day. A rate-limited Ads task is requeued at most five times,
+  then recorded as `pull_abandoned`, because an uncapped requeue cycled on every
+  tick while the health page counted it as harmless back-pressure.
 - Apple's own Node SDK does not run on workerd (`fs` + axios). The hand-rolled
   clients in `packages/core/src/apple` are deliberate.
 - App Store Connect `ONGOING` report requests die if not polled
@@ -87,11 +94,15 @@ paths:
   `processingDate` then skips the next day permanently. Both are detected and
   recorded; do not treat either as normal. Both persist in what Apple lists, so
   each is recorded **once**: a stopped request per request id, a skipped date
-  per app, report and date. The gap check scans the whole history daily with no
-  cap; a `LIMIT 10` without that dedupe re-recorded the same ten gaps every day
-  and never reached the eleventh. A stopped request counts as a loss on the
-  health page (the replacement does not cover the days before it); a duplicated
-  or skipped date is a finding about Apple's data.
+  per app, report and date. The gap check reads the dates **Apple listed** at
+  the last poll (`asc:listed:{appId}:{report}` in `collector_state`), never the
+  instances we hold: inferred from our own table, a segment download that failed
+  here was booked as Apple's skipped date, permanently, a day before the
+  instance was fetched. It walks every listing daily with no cap; a `LIMIT 10`
+  without the dedupe re-recorded the same ten gaps every day and never reached
+  the eleventh. A stopped request counts as a loss on the health page (the
+  replacement does not cover the days before it); a duplicated or skipped date
+  is a finding about Apple's data.
 - **ASC bookkeeping is per app, and that column is load-bearing.** Report
   requests are created per app, so `asc_report_instance.app_id` is known at
   write time, and it must be stored. Without it both anomaly detectors answer
@@ -165,9 +176,12 @@ paths:
   backwards, a reseed or a manual re-run, re-crawls the whole set. (2) The `app`
   upsert carries a `WHERE`, because `last_seen_at = now` always differs and
   would make every top-10 app on every pair a guaranteed daily write for a
-  column nothing reads. (3) `rank_entry` is rewritten only when the indexed page
-  moved; a board holding its order otherwise costs a delete plus eleven inserts
-  to arrive at the same rows.
+  column nothing reads. The lookup's upsert sets and compares the same columns
+  as the crawl's: tracking an app creates a bare row, and a lookup that updated
+  the name alone left `primary_genre_id` null until the app surfaced in a crawl.
+  (3) `rank_entry` is rewritten only when the indexed page moved; a board
+  holding its order otherwise costs a delete plus eleven inserts to arrive at
+  the same rows.
 - Two write paths are knowingly left unconditional. The **heartbeat**
   (`collector_state.loop_heartbeat`) writes once per alarm tick, about 150/day,
   but its whole value is that its timestamp always changes, so throttling it

@@ -11,11 +11,11 @@
 //          is consumed by other Workers on the same address; halving our own
 //          share on one stray 429 costs coverage and relieves nothing.
 //
-// Start 4/min, ×1.1 per day that stayed within tolerance (ceiling 18/min),
-// ×0.5 on a day that did not (floor 1/min). Persisted in D1 so redeploys keep
-// discovery.
+// Start 4/min, ×1.1 per day that stayed within tolerance and on which the loop
+// actually fetched (ceiling 18/min), ×0.5 on a day that did not stay within it
+// (floor 1/min). Persisted in D1 so redeploys keep discovery.
 
-import { getStateJson, setStateJson } from "./state";
+import { getState, getStateJson, setStateJson } from "./state";
 
 export interface PacingState {
 	ratePerMin: number;
@@ -67,7 +67,59 @@ export async function savePacing(
 	await setStateJson(db, KEY, p);
 }
 
-/** Milliseconds until the next Apple-facing fetch, with ±50% jitter. */
+/**
+ * Three writers share this row: the work loop, the manual triggers and the
+ * daily roll, and each of them awaits Apple or D1 between reading it and
+ * writing it back. A whole-object save from a copy loaded before that await
+ * erased whatever landed meanwhile: a manual throttle saved one second after
+ * the loop's put `pauseUntil` back to zero, and the loop fetched again while
+ * Apple was still refusing. So a change is applied to the row as it is now,
+ * and the write only lands if the row is still the one that was read.
+ */
+const SWAP_ATTEMPTS = 4;
+
+export async function updatePacing(
+	db: D1Database,
+	change: (p: PacingState) => PacingState
+): Promise<{ before: PacingState; after: PacingState }> {
+	for (let attempt = 0; attempt < SWAP_ATTEMPTS; attempt += 1) {
+		const raw = await getState(db, KEY);
+		const before: PacingState = {
+			...DEFAULTS,
+			...(raw === null ? {} : (JSON.parse(raw) as Partial<PacingState>)),
+		};
+		const after = change(before);
+		if (after === before) {
+			return { after, before };
+		}
+		const next = JSON.stringify(after);
+		const written =
+			raw === null
+				? await db
+						.prepare(
+							"INSERT INTO collector_state (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO NOTHING"
+						)
+						.bind(KEY, next, Date.now())
+						.run()
+				: await db
+						.prepare(
+							"UPDATE collector_state SET value = ?, updated_at = ? WHERE key = ? AND value = ?"
+						)
+						.bind(next, Date.now(), KEY, raw)
+						.run();
+		if (written.meta.changes > 0) {
+			return { after, before };
+		}
+	}
+	// Outrun every time, which takes a writer per attempt. A throttle that is
+	// not recorded is the worse outcome, so the last word is a plain save.
+	const before = await loadPacing(db);
+	const after = change(before);
+	await savePacing(db, after);
+	return { after, before };
+}
+
+/** Milliseconds until the next Apple-facing fetch, with ±25% jitter. */
 export function tickMs(p: PacingState): number {
 	const base = 60_000 / p.ratePerMin;
 	return Math.round(base * (0.75 + Math.random() * 0.5));
@@ -130,8 +182,20 @@ export function onAdminThrottle(p: PacingState, now = Date.now()): PacingState {
  * rate was a one-way ratchet: every stray 429 halved it and nothing ever put
  * it back. Sitting at the floor is not a safe default: it silently shrinks the
  * budget that decides how often each pair is checked.
+ *
+ * A quiet day is not a clean one. The only writer of the tally is a loop
+ * throttle, so a day on which the loop fetched nothing (a deployment that
+ * collects credentialed endpoints only, or a runner driven entirely through
+ * the manual triggers, whose throttles are deliberately kept out of the tally)
+ * closed at zero and raised the rate all the same: 4 to the ceiling in about
+ * sixteen days, on no evidence at all. `loopFetched` is that evidence: the
+ * loop reached Apple at least once in the closed period and was answered.
  */
-export function maybeRaise(p: PacingState, today: string): PacingState {
+export function maybeRaise(
+	p: PacingState,
+	today: string,
+	loopFetched: boolean
+): PacingState {
 	if (p.lastRollDay === today) {
 		return p;
 	}
@@ -141,7 +205,7 @@ export function maybeRaise(p: PacingState, today: string): PacingState {
 		throttlesPrevDay: p.windowErrorCount,
 		windowErrorCount: 0,
 	};
-	if (rolled.throttlesPrevDay > DAILY_THROTTLE_TOLERANCE) {
+	if (rolled.throttlesPrevDay > DAILY_THROTTLE_TOLERANCE || !loopFetched) {
 		return rolled;
 	}
 	return {

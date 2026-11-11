@@ -86,6 +86,50 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
+/**
+ * The bindings with an archive that refuses every write, the way R2 did on
+ * 2026-09-11. A copy, never a spy on the shared binding: nothing to restore,
+ * so a failed assertion cannot leave the next test without an archive.
+ */
+function refusingArchive(): typeof env {
+	return {
+		...env,
+		ARCHIVE: new Proxy(env.ARCHIVE, {
+			get(target, prop) {
+				if (prop === "put") {
+					return () =>
+						Promise.reject(
+							new Error(
+								"We encountered an internal error. Please try again. (10001)"
+							)
+						);
+				}
+				const value = Reflect.get(target, prop);
+				return typeof value === "function" ? value.bind(target) : value;
+			},
+		}),
+	};
+}
+
+async function rowCount(table: string): Promise<number> {
+	const row = await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first<{
+		n: number;
+	}>();
+	return row?.n ?? 0;
+}
+
+function lastError() {
+	return env.DB.prepare(
+		"SELECT endpoint, error_class, http_status, response_ms, message FROM fetch_error ORDER BY id DESC LIMIT 1"
+	).first<{
+		endpoint: string;
+		error_class: string;
+		http_status: number | null;
+		response_ms: number | null;
+		message: string | null;
+	}>();
+}
+
 /** Apple's throttle signature: 403 carrying an empty result set. */
 function throttle() {
 	stubFetch(() =>
@@ -219,6 +263,7 @@ describe(lookupPullStep, () => {
 	});
 
 	it("bursts the crawl cadence for 14 days after a tracked app's metadata changes", async () => {
+		const before = Date.now();
 		await env.DB.batch([
 			env.DB.prepare(
 				"INSERT OR IGNORE INTO storefront (code, name, weight, active) VALUES ('fr', 'France', 1.0, 1)"
@@ -250,7 +295,81 @@ describe(lookupPullStep, () => {
 			"SELECT burst_until, interval_hours FROM crawl_pair WHERE id = 1"
 		).first<{ burst_until: number; interval_hours: number }>();
 		expect(pair?.interval_hours).toBe(24);
-		expect(pair?.burst_until).toBeGreaterThan(Date.now());
+		const fortnight = 14 * 24 * 3_600_000;
+		expect(pair?.burst_until).toBeGreaterThan(before + fortnight - 1);
+		expect(pair?.burst_until).toBeLessThanOrEqual(Date.now() + fortnight);
+	});
+
+	// `pnpm track` creates the app row before any lookup runs, with a name and
+	// nothing else. The upsert used to update the name alone, so the genre
+	// stayed null until the app surfaced in one of its own crawls, and a null
+	// genre means no genre chart and no Ads pull.
+	it("fills the genre, bundle id and developer on the bare row tracking created", async () => {
+		await env.DB.prepare(
+			"INSERT INTO app (id, current_name, first_seen_at, last_seen_at) VALUES (?, 'Tracked App', 5, 5)"
+		)
+			.bind(APP_ID)
+			.run();
+		stubFetch(() => Response.json(lookupResponse()));
+		await lookupPullStep(env, {
+			queue: [{ appId: APP_ID, localeCode: "fr-FR", storefront: "fr" }],
+		});
+		const app = await env.DB.prepare(
+			"SELECT bundle_id, developer_id, developer_name, primary_genre_id, first_seen_at FROM app WHERE id = ?"
+		)
+			.bind(APP_ID)
+			.first();
+		expect(app).toStrictEqual({
+			bundle_id: "test.app",
+			developer_id: 900,
+			developer_name: "Tracked Dev",
+			first_seen_at: 5,
+			primary_genre_id: 7019,
+		});
+	});
+
+	it("leaves an app row alone when the lookup changes nothing in it", async () => {
+		stubFetch(() => Response.json(lookupResponse()));
+		const unit = { appId: APP_ID, localeCode: "fr-FR", storefront: "fr" };
+		await lookupPullStep(env, { queue: [unit] });
+		// A sentinel no real clock produces: any rewrite of the row replaces it.
+		await env.DB.prepare("UPDATE app SET last_seen_at = 7 WHERE id = ?")
+			.bind(APP_ID)
+			.run();
+		await lookupPullStep(env, { queue: [unit] });
+		const app = await env.DB.prepare(
+			"SELECT last_seen_at FROM app WHERE id = ?"
+		)
+			.bind(APP_ID)
+			.first<{ last_seen_at: number }>();
+		expect(app?.last_seen_at).toBe(7);
+	});
+
+	it("follows a genre change on a row it has already filled", async () => {
+		const unit = { appId: APP_ID, localeCode: "fr-FR", storefront: "fr" };
+		stubFetch(() => Response.json(lookupResponse()));
+		await lookupPullStep(env, { queue: [unit] });
+		vi.unstubAllGlobals();
+		stubFetch(() => Response.json(lookupResponse({ primaryGenreId: 6014 })));
+		await lookupPullStep(env, { queue: [unit] });
+		const app = await env.DB.prepare(
+			"SELECT primary_genre_id FROM app WHERE id = ?"
+		)
+			.bind(APP_ID)
+			.first<{ primary_genre_id: number }>();
+		expect(app?.primary_genre_id).toBe(6014);
+	});
+
+	it("derives nothing from a lookup whose archive did not land", async () => {
+		stubFetch(() => Response.json(lookupResponse()));
+		const unit = { appId: APP_ID, localeCode: "fr-FR", storefront: "fr" };
+		await expect(
+			lookupPullStep(refusingArchive(), { queue: [unit] })
+		).rejects.toThrow(/archive did not persist/u);
+		await expect(rowCount("rating_snapshot")).resolves.toBe(0);
+		await expect(rowCount("app_metadata_version")).resolves.toBe(0);
+		await expect(rowCount("app")).resolves.toBe(0);
+		await expect(getState(env.DB, lookupMarker(unit))).resolves.toBeNull();
 	});
 
 	it("records an absent app rather than inventing a row", async () => {
@@ -280,6 +399,67 @@ describe(lookupPullStep, () => {
 		expect(r.followUps[0]).toMatchObject({ attempt: 1, type: "lookup_pull" });
 	});
 
+	// Apple's rate limit is a 403 carrying a well-formed, empty answer. Read as
+	// an answer it says the app is not in this storefront, and marks the unit
+	// done for the day.
+	it("writes nothing from a 403, however well-formed its empty body", async () => {
+		throttle();
+		const unit = { appId: APP_ID, localeCode: "fr-FR", storefront: "fr" };
+		const r = await lookupPullStep(env, { queue: [unit] });
+		expect(r.throttled).toBeTruthy();
+		await expect(
+			Promise.all([
+				rowCount("rating_snapshot"),
+				rowCount("app_metadata_version"),
+				rowCount("app"),
+			])
+		).resolves.toStrictEqual([0, 0, 0]);
+		await expect(getState(env.DB, lookupMarker(unit))).resolves.toBeNull();
+		const classes = await env.DB.prepare(
+			"SELECT error_class FROM fetch_error ORDER BY id"
+		).all<{ error_class: string }>();
+		expect(classes.results.map((c) => c.error_class)).toStrictEqual([
+			"throttled",
+		]);
+	});
+
+	it("keeps the refusal's body and timing with the throttle it records", async () => {
+		stubFetch(
+			() =>
+				new Response(
+					"Rate limit has been exceeded for: itunes-apple-com|general|x",
+					{ status: 429 }
+				)
+		);
+		await lookupPullStep(env, {
+			queue: [{ appId: APP_ID, localeCode: "fr-FR", storefront: "fr" }],
+		});
+		const err = await lastError();
+		expect(err?.error_class).toBe("throttled");
+		expect(err?.message).toContain("Rate limit has been exceeded");
+		expect(err?.response_ms).toBeGreaterThanOrEqual(0);
+	});
+
+	// A 200 that is not JSON is Apple's edge serving an error page. It is not an
+	// HTTP error, and with no body kept it was a row nobody could diagnose.
+	it("classes a 200 that is not JSON as an invalid body and keeps what it said", async () => {
+		stubFetch(() => new Response(`<html>${"x".repeat(5000)}</html>`));
+		const unit = { appId: APP_ID, localeCode: "fr-FR", storefront: "fr" };
+		const r = await lookupPullStep(env, { queue: [unit] });
+		expect(r).toStrictEqual({ followUps: [], throttled: false });
+		const err = await lastError();
+		expect(err).toMatchObject({
+			endpoint: "itunes:lookup",
+			error_class: "invalid_body",
+			http_status: 200,
+		});
+		// The head of the page, cut to what the column is meant to hold.
+		expect(err?.message).toBe(`<html>${"x".repeat(1194)}`);
+		expect(err?.response_ms).toBeGreaterThanOrEqual(0);
+		// No marker: nothing was collected, so the unit is tried again today.
+		await expect(getState(env.DB, lookupMarker(unit))).resolves.toBeNull();
+	});
+
 	it("drops only the failing unit on a server error", async () => {
 		stubFetch(() => new Response("boom", { status: 500 }));
 		const r = await lookupPullStep(env, {
@@ -294,6 +474,9 @@ describe(lookupPullStep, () => {
 			"SELECT error_class FROM fetch_error ORDER BY id DESC LIMIT 1"
 		).first<{ error_class: string }>();
 		expect(err?.error_class).toBe("http_error");
+		const detail = await lastError();
+		expect(detail).toMatchObject({ http_status: 500, message: "boom" });
+		expect(detail?.response_ms).toBeGreaterThanOrEqual(0);
 	});
 });
 
@@ -339,6 +522,39 @@ describe(reviewPullStep, () => {
 		});
 		expect(r.throttled).toBeTruthy();
 		expect(r.followUps[0]).toMatchObject({ type: "review_pull" });
+	});
+
+	it("stores no review from a 403, even one carrying a whole feed", async () => {
+		stubFetch(() => Response.json(reviewFeed(3), { status: 403 }));
+		const unit = { appId: APP_ID, storefront: "fr" };
+		const r = await reviewPullStep(env, { queue: [unit] });
+		expect(r.throttled).toBeTruthy();
+		await expect(rowCount("review")).resolves.toBe(0);
+		await expect(getState(env.DB, reviewMarker(unit))).resolves.toBeNull();
+	});
+
+	it("classes a 200 that is not JSON as an invalid body", async () => {
+		stubFetch(() => new Response("<html>Bad Gateway</html>"));
+		const unit = { appId: APP_ID, storefront: "fr" };
+		await reviewPullStep(env, { queue: [unit] });
+		const err = await lastError();
+		expect(err).toMatchObject({
+			endpoint: "itunes:reviews",
+			error_class: "invalid_body",
+			http_status: 200,
+			message: "<html>Bad Gateway</html>",
+		});
+		await expect(getState(env.DB, reviewMarker(unit))).resolves.toBeNull();
+	});
+
+	it("derives nothing from a feed whose archive did not land", async () => {
+		stubFetch(() => Response.json(reviewFeed(3)));
+		const unit = { appId: APP_ID, storefront: "fr" };
+		await expect(
+			reviewPullStep(refusingArchive(), { queue: [unit] })
+		).rejects.toThrow(/archive did not persist/u);
+		await expect(rowCount("review")).resolves.toBe(0);
+		await expect(getState(env.DB, reviewMarker(unit))).resolves.toBeNull();
 	});
 
 	it("records a server error and moves on", async () => {
@@ -447,6 +663,39 @@ describe(chartPullStep, () => {
 		});
 		expect(r.throttled).toBeTruthy();
 		expect(r.followUps[0]).toMatchObject({ attempt: 1, type: "chart_pull" });
+	});
+
+	it("stores no chart from a 403, even one carrying a whole board", async () => {
+		stubFetch(() => Response.json(chartFeed, { status: 403 }));
+		const unit = { chart: "paid" as const, genreId: null, storefront: "fr" };
+		const r = await chartPullStep(env, { queue: [unit] });
+		expect(r.throttled).toBeTruthy();
+		await expect(rowCount("chart_ranking")).resolves.toBe(0);
+		await expect(getState(env.DB, chartMarker(unit))).resolves.toBeNull();
+	});
+
+	it("classes a 200 that is not JSON as an invalid body", async () => {
+		stubFetch(() => new Response("<html>Bad Gateway</html>"));
+		const unit = { chart: "free" as const, genreId: 6014, storefront: "fr" };
+		await chartPullStep(env, { queue: [unit] });
+		const err = await lastError();
+		expect(err).toMatchObject({
+			endpoint: "itunes:charts",
+			error_class: "invalid_body",
+			http_status: 200,
+			message: "<html>Bad Gateway</html>",
+		});
+		await expect(rowCount("chart_ranking")).resolves.toBe(0);
+	});
+
+	it("derives nothing from a board whose archive did not land", async () => {
+		stubFetch(() => Response.json(chartFeed));
+		const unit = { chart: "free" as const, genreId: null, storefront: "fr" };
+		await expect(
+			chartPullStep(refusingArchive(), { queue: [unit] })
+		).rejects.toThrow(/archive did not persist/u);
+		await expect(rowCount("chart_ranking")).resolves.toBe(0);
+		await expect(getState(env.DB, chartMarker(unit))).resolves.toBeNull();
 	});
 
 	it("records a server error and continues with the rest", async () => {
@@ -589,6 +838,25 @@ describe(compactStep, () => {
 		await expect(
 			getState(env.DB, compactMarker("2000-01-01"))
 		).resolves.toBeNull();
+	});
+
+	// The marker is what tells the daily catch-up a day needs no second pass.
+	// Written before the outputs landed, a refused write would retire a day
+	// whose staging then expires with nothing merged from it.
+	it("leaves the day unmarked when an output does not land", async () => {
+		const date = new Date(Date.now() - 3 * 24 * 3_600_000)
+			.toISOString()
+			.slice(0, 10);
+		const key = `staging/rankings/${date}/5.json`;
+		await env.ARCHIVE.put(key, JSON.stringify({ pairId: 5, storefront: "fr" }));
+		try {
+			await expect(compactStep(refusingArchive(), { date })).rejects.toThrow(
+				/archive did not persist/u
+			);
+		} finally {
+			await env.ARCHIVE.delete(key);
+		}
+		await expect(getState(env.DB, compactMarker(date))).resolves.toBeNull();
 	});
 
 	it("is a no-op when nothing was staged", async () => {

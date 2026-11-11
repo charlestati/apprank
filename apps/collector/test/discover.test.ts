@@ -137,6 +137,10 @@ describe(adsDiscoverStep, () => {
 		({ pem } = await generateP8Pem());
 		await env.DB.batch([
 			env.DB.prepare("DELETE FROM fetch_error"),
+			// A refusal one test provokes must not hold the next one back.
+			env.DB.prepare(
+				"DELETE FROM collector_state WHERE key = 'ads:refused_until'"
+			),
 			env.DB.prepare("DELETE FROM suggestion"),
 			env.DB.prepare("DELETE FROM tracked_keyword_storefront"),
 			env.DB.prepare("DELETE FROM tracked_keyword"),
@@ -256,6 +260,59 @@ describe(adsDiscoverStep, () => {
 			rest: ["pluie"],
 			seed: "radar",
 		});
+	});
+
+	it("proposes nothing from an answer whose archive did not land", async () => {
+		await env.DB.batch(trackIn(1, "météo"));
+		suggestionsFetch([
+			{ popularity: 60, text: "météo locale gratuit" },
+			{ popularity: 55, text: "météo locale radar" },
+		]);
+		const refusing = {
+			...discoverEnv(),
+			ARCHIVE: new Proxy(env.ARCHIVE, {
+				get(target, prop) {
+					if (prop === "put") {
+						return () => Promise.reject(new Error("internal error (10001)"));
+					}
+					const value = Reflect.get(target, prop);
+					return typeof value === "function" ? value.bind(target) : value;
+				},
+			}),
+		} as typeof env;
+		await adsDiscoverStep(refusing, task());
+		const n = await env.DB.prepare(
+			"SELECT COUNT(*) AS n FROM suggestion"
+		).first<{ n: number }>();
+		expect(n?.n).toBe(0);
+		const err = await env.DB.prepare(
+			"SELECT error_class, message FROM fetch_error ORDER BY id DESC LIMIT 1"
+		).first<{ error_class: string; message: string }>();
+		expect(err?.error_class).toBe("upstream_error");
+		expect(err?.message).toContain("archive did not persist");
+	});
+
+	it("asks nothing while Apple is refusing the account", async () => {
+		const calls = stubFetch((url) => {
+			if (url.includes("appleid.apple.com")) {
+				return Response.json({ access_token: "tok", expires_in: 3600 });
+			}
+			if (url.includes("/v1/acls")) {
+				return Response.json({ data: { acls: [{ adAccount: { id: 777 } }] } });
+			}
+			return new Response("", {
+				headers: { "Retry-After": "900" },
+				status: 429,
+			});
+		});
+		const seeded = task({ rest: ["radar"] });
+		const [refused] = await adsDiscoverStep(discoverEnv(), seeded);
+		expect(refused).toMatchObject({ attempt: 1, seed: seeded.seed });
+		const asked = calls.length;
+		await expect(
+			adsDiscoverStep(discoverEnv(), refused as typeof seeded)
+		).resolves.toStrictEqual([refused]);
+		expect(calls).toHaveLength(asked);
 	});
 
 	it("walks one seed per tick and hands the rest on", async () => {

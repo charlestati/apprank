@@ -10,7 +10,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { Task } from "../src/tasks/types";
 import { fakeSearchResponse, stubFetch } from "./helpers";
 
+// Every object a test reached, so the file can leave none of them armed.
+const touched = new Set<string>();
+
 function stub(name: string) {
+	touched.add(name);
 	return env.SCHEDULER.get(env.SCHEDULER.idFromName(name));
 }
 
@@ -51,9 +55,39 @@ beforeEach(async () => {
 	]);
 });
 
-afterEach(() => {
+afterEach(async () => {
 	vi.unstubAllGlobals();
+	// An alarm left armed keeps ticking after its test: against the pairs the
+	// next test seeds, skewing a throttle tally asserted as exactly one, and
+	// against the real network once the stub above is gone.
+	for (const name of touched) {
+		await runInDurableObject(stub(name), async (_i, state) => {
+			await state.storage.deleteAlarm();
+			await state.storage.deleteAll();
+		});
+	}
+	touched.clear();
 });
+
+function loopFetchesOf(name: string): Promise<number> {
+	return runInDurableObject(
+		stub(name),
+		async (_i, state) => (await state.storage.get<number>("loopFetches")) ?? 0
+	);
+}
+
+function storedPacing(): Promise<{
+	pauseUntil: number;
+	windowErrorCount: number;
+	lastErrorAt: number;
+	ratePerMin: number;
+}> {
+	return env.DB.prepare(
+		"SELECT value FROM collector_state WHERE key = 'pacing'"
+	)
+		.first<{ value: string }>()
+		.then((row) => JSON.parse(row?.value ?? "{}"));
+}
 
 async function seedDuePair() {
 	await env.DB.batch([
@@ -197,11 +231,17 @@ describe("SchedulerDO work loop", () => {
 				type: "chart_pull",
 			},
 		]);
+		const before = Date.now();
 		await runDurableObjectAlarm(stub(name));
 		// The step consumed the first unit and requeued the rest.
 		const remaining = await queueOf(name);
 		expect(remaining).toHaveLength(1);
-		await expect(alarmOf(name)).resolves.not.toBeNull();
+		// The next tick is a whole interval away: 60s over the cold-start 4/min,
+		// less the jitter's 25%. Re-arming any sooner is the fetch rate rising
+		// (invariant 4).
+		const next = await alarmOf(name);
+		expect(next).toBeGreaterThanOrEqual(before + (60_000 / 4) * 0.75);
+		expect(next).toBeLessThanOrEqual(Date.now() + (60_000 / 4) * 1.25);
 		const rows = await env.DB.prepare(
 			"SELECT COUNT(*) AS n FROM chart_ranking"
 		).first<{ n: number }>();
@@ -374,6 +414,53 @@ describe("SchedulerDO work loop", () => {
 		expect(pacing.pauseUntil).toBe(
 			before ? JSON.parse(before.value).pauseUntil : 0
 		);
+	});
+});
+
+const ADS_UNIT = { category: "PRODUCTIVITY", genreId: 6007, storefront: "fr" };
+
+describe("SchedulerDO during an Apple Ads refusal", () => {
+	it("parks until the refusal lifts when only Ads tasks are queued", async () => {
+		const name = "ads-refused-park";
+		await reset(name);
+		const until = Date.now() + 3_600_000;
+		await env.DB.prepare(
+			"INSERT INTO collector_state (key, value, updated_at) VALUES ('ads:refused_until', ?, ?)"
+		)
+			.bind(String(until), Date.now())
+			.run();
+		const fetched = stubFetch(() => new Response("{}", { status: 500 }));
+		await stub(name).enqueue([
+			{ queue: [ADS_UNIT], type: "ads_pull", weekStart: "2026-08-23" } as Task,
+		]);
+
+		await runDurableObjectAlarm(stub(name));
+
+		expect(fetched).toHaveLength(0);
+		await expect(queueOf(name)).resolves.toHaveLength(1);
+		const alarm = await alarmOf(name);
+		expect(alarm).toBeGreaterThanOrEqual(until);
+	});
+
+	it("keeps ticking at pace when something other than Ads is queued", async () => {
+		const name = "ads-refused-mixed";
+		await reset(name);
+		const until = Date.now() + 3_600_000;
+		await env.DB.prepare(
+			"INSERT INTO collector_state (key, value, updated_at) VALUES ('ads:refused_until', ?, ?)"
+		)
+			.bind(String(until), Date.now())
+			.run();
+		stubFetch(() => new Response("{}", { status: 500 }));
+		await stub(name).enqueue([
+			{ queue: [ADS_UNIT], type: "ads_pull", weekStart: "2026-08-23" } as Task,
+			{ date: "2026-08-30", type: "compact" },
+		]);
+
+		await runDurableObjectAlarm(stub(name));
+
+		const alarm = await alarmOf(name);
+		expect(alarm).toBeLessThan(until);
 	});
 });
 
@@ -584,14 +671,14 @@ describe("SchedulerDO throw cap and settling", () => {
 		}
 	);
 
-	it("queues the remainder once when a manual step finishes the task mid-alarm", async () => {
-		// The alarm's fetch opens the input gate and a manual step runs the same
-		// head task to completion. The alarm then finds its task gone; appending
-		// its own follow-ups too would run the rest of the batch twice.
+	it("does not fetch the head task a second time when a manual step lands mid-alarm", async () => {
+		// The alarm's fetch opens the input gate, and the task stays queued while
+		// it runs, so a manual step used to read the same head task and fetch its
+		// unit from Apple again. It now sees the task is being run and leaves it.
 		const name = "settled-elsewhere";
 		await reset(name);
 		let manual: unknown;
-		stubFetch(async () => {
+		const calls = stubFetch(async () => {
 			if (manual === undefined) {
 				manual = "running";
 				manual = await stub(name).stepNow();
@@ -612,14 +699,47 @@ describe("SchedulerDO throw cap and settling", () => {
 			},
 		]);
 		await runDurableObjectAlarm(stub(name));
-		expect(manual).toMatchObject({ empty: false, followUps: 1, ok: true });
+		expect(manual).toStrictEqual({ empty: true });
+		expect(calls).toHaveLength(1);
 		await expect(queueOf(name)).resolves.toMatchObject([
+			{ date: "2026-08-30", type: "compact" },
 			{
 				queue: [{ chart: "paid", genreId: null, storefront: "fr" }],
 				type: "chart_pull",
 			},
-			{ date: "2026-08-30", type: "compact" },
 		]);
+	});
+
+	it("lets a manual step run the next task while the alarm holds the head", async () => {
+		const name = "step-past-head";
+		await reset(name);
+		let manual: unknown;
+		stubFetch(async () => {
+			if (manual === undefined) {
+				manual = "running";
+				manual = await stub(name).stepNow();
+			}
+			return Response.json({
+				feed: { entry: [{ id: { attributes: { "im:id": "5" } } }] },
+			});
+		});
+		await stub(name).enqueue([
+			{
+				queue: [{ chart: "free", genreId: null, storefront: "fr" }],
+				type: "chart_pull",
+			},
+			{
+				queue: [{ chart: "paid", genreId: null, storefront: "fr" }],
+				type: "chart_pull",
+			},
+		]);
+		await runDurableObjectAlarm(stub(name));
+		expect(manual).toMatchObject({ empty: false, ok: true });
+		await expect(queueOf(name)).resolves.toStrictEqual([]);
+		const rows = await env.DB.prepare(
+			"SELECT COUNT(*) AS n FROM chart_ranking"
+		).first<{ n: number }>();
+		expect(rows?.n).toBe(2);
 	});
 
 	it("records a deploy mid-step as do_restarted, not as a loss", async () => {
@@ -680,5 +800,200 @@ describe("SchedulerDO throw cap and settling", () => {
 		await expect(stub(name).crawlNow()).resolves.toStrictEqual({
 			empty: true,
 		});
+	});
+});
+
+describe("SchedulerDO pacing under interleaving", () => {
+	it("keeps a pause that was saved while a manual step was awaiting Apple", async () => {
+		// The lost update. The manual step used to load pacing before its fetch
+		// and save a throttle computed from that copy afterwards, which put
+		// pauseUntil back to zero one second after the loop had set it: the loop
+		// then fetched again while Apple was still refusing.
+		const name = "pause-survives";
+		await reset(name);
+		const pauseUntil = Date.now() + 1_800_000;
+		stubFetch(async () => {
+			await env.DB.prepare(
+				"INSERT OR REPLACE INTO collector_state (key, value, updated_at) VALUES ('pacing', ?, 0)"
+			)
+				.bind(
+					JSON.stringify({
+						lastErrorAt: 1,
+						lastRollDay: "",
+						pauseUntil,
+						ratePerMin: 4,
+						throttlesPrevDay: 0,
+						windowErrorCount: 1,
+					})
+				)
+				.run();
+			return Response.json({ resultCount: 0, results: [] }, { status: 403 });
+		});
+		await stub(name).enqueue([
+			{
+				queue: [{ chart: "free", genreId: null, storefront: "fr" }],
+				type: "chart_pull",
+			},
+		]);
+		await stub(name).stepNow();
+		const pacing = await storedPacing();
+		expect(pacing.pauseUntil).toBe(pauseUntil);
+		expect(pacing.windowErrorCount).toBe(1);
+		// The manual throttle is still recorded.
+		expect(pacing.lastErrorAt).toBeGreaterThan(1);
+	});
+});
+
+describe("SchedulerDO loop evidence", () => {
+	it("counts a crawl the loop made and Apple answered", async () => {
+		const name = "evidence-crawl";
+		await reset(name);
+		await seedDuePair();
+		stubFetch(() => Response.json(fakeSearchResponse(3)));
+		await stub(name).ensureAlarm();
+		await runDurableObjectAlarm(stub(name));
+		await expect(loopFetchesOf(name)).resolves.toBe(1);
+	});
+
+	it("counts a queued public pull the loop made", async () => {
+		const name = "evidence-pull";
+		await reset(name);
+		stubFetch(() =>
+			Response.json({
+				feed: { entry: [{ id: { attributes: { "im:id": "5" } } }] },
+			})
+		);
+		await stub(name).enqueue([
+			{
+				queue: [{ chart: "free", genreId: null, storefront: "fr" }],
+				type: "chart_pull",
+			},
+		]);
+		await runDurableObjectAlarm(stub(name));
+		await expect(loopFetchesOf(name)).resolves.toBe(1);
+	});
+
+	it("counts neither a throttled fetch nor a manual one", async () => {
+		const name = "evidence-none";
+		await reset(name);
+		await seedDuePair();
+		stubFetch(() => Response.json(fakeSearchResponse(3)));
+		await stub(name).crawlNow();
+		await env.DB.prepare("UPDATE crawl_pair SET next_due_at = 0").run();
+		vi.unstubAllGlobals();
+		stubFetch(() =>
+			Response.json({ resultCount: 0, results: [] }, { status: 403 })
+		);
+		await stub(name).ensureAlarm();
+		await runDurableObjectAlarm(stub(name));
+		await expect(loopFetchesOf(name)).resolves.toBe(0);
+	});
+
+	it("raises on the roll only when the loop fetched, and spends the count", async () => {
+		const name = "evidence-roll";
+		await reset(name);
+		await stub(name).rollPacing("2026-09-01");
+		await expect(storedPacing()).resolves.toMatchObject({ ratePerMin: 4 });
+
+		await runInDurableObject(stub(name), (_i, state) =>
+			state.storage.put("loopFetches", 3)
+		);
+		await stub(name).rollPacing("2026-09-02");
+		const pacing = await storedPacing();
+		expect(pacing.ratePerMin).toBeCloseTo(4.4, 5);
+		await expect(loopFetchesOf(name)).resolves.toBe(0);
+	});
+
+	it("keeps the count when the day was already rolled", async () => {
+		const name = "evidence-rerolled";
+		await reset(name);
+		await stub(name).rollPacing("2026-09-01");
+		await runInDurableObject(stub(name), (_i, state) =>
+			state.storage.put("loopFetches", 3)
+		);
+		await stub(name).rollPacing("2026-09-01");
+		await expect(loopFetchesOf(name)).resolves.toBe(3);
+	});
+});
+
+// The runner's generated config sets WORK_LOOP=off. A Durable Object gets
+// the deployed env, not a per-call override, so the switch is flipped on the
+// instance itself.
+function switchOff(name: string) {
+	return runInDurableObject(stub(name), (instance) => {
+		const holder = instance as unknown as { env: Record<string, unknown> };
+		holder.env = { ...holder.env, WORK_LOOP: "off" };
+	});
+}
+
+describe("SchedulerDO with the work loop off", () => {
+	it("arms no alarm when work is enqueued or a pair is due", async () => {
+		const name = "loop-off-arm";
+		await reset(name);
+		await switchOff(name);
+		await seedDuePair();
+		await stub(name).enqueue([{ date: "2026-08-30", type: "compact" }]);
+		await stub(name).ensureAlarm();
+		await expect(alarmOf(name)).resolves.toBeNull();
+		await expect(stub(name).queueDepth()).resolves.toBe(1);
+	});
+
+	it("fetches nothing on an alarm left armed by an earlier cycle, and does not re-arm", async () => {
+		// The runner keeps its Durable Object storage between cycles, so an alarm
+		// armed before the switch existed is still there. On 2026-11-11 that loop
+		// made four crawls beside refresh.sh.
+		const name = "loop-off-alarm";
+		await reset(name);
+		await seedDuePair();
+		const calls = stubFetch(() => Response.json(fakeSearchResponse(3)));
+		await runInDurableObject(stub(name), async (_i, state) => {
+			await state.storage.put("queue", [
+				{
+					id: "queued-before",
+					queue: [{ chart: "free", genreId: null, storefront: "fr" }],
+					type: "chart_pull",
+				},
+			]);
+			await state.storage.setAlarm(Date.now() + 1000);
+		});
+		await switchOff(name);
+		await runDurableObjectAlarm(stub(name));
+		expect(calls).toHaveLength(0);
+		await expect(queueOf(name)).resolves.toHaveLength(1);
+		await expect(alarmOf(name)).resolves.toBeNull();
+	});
+
+	it("still runs a manual step and a manual crawl", async () => {
+		const name = "loop-off-manual";
+		await reset(name);
+		await switchOff(name);
+		await seedDuePair();
+		stubFetch((url) =>
+			url.includes("/search")
+				? Response.json(fakeSearchResponse(3))
+				: Response.json({
+						feed: { entry: [{ id: { attributes: { "im:id": "5" } } }] },
+					})
+		);
+		await stub(name).enqueue([
+			{
+				queue: [
+					{ chart: "free", genreId: null, storefront: "fr" },
+					{ chart: "paid", genreId: null, storefront: "fr" },
+				],
+				type: "chart_pull",
+			},
+		]);
+		await expect(stub(name).stepNow()).resolves.toMatchObject({
+			empty: false,
+			followUps: 1,
+			ok: true,
+		});
+		await expect(stub(name).crawlNow()).resolves.toMatchObject({
+			empty: false,
+			throttled: false,
+		});
+		// The follow-up waits for the next manual step, not for an alarm.
+		await expect(alarmOf(name)).resolves.toBeNull();
 	});
 });

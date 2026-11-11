@@ -12,6 +12,7 @@ import {
 	planCadence,
 } from "../lib/budget";
 import type { CadencePlan } from "../lib/budget";
+import { chartGenres, pullTargets, targetStorefronts } from "../lib/fanout";
 import { loadPacing } from "../lib/pacing";
 import { getStateJson, setStateJson } from "../lib/state";
 
@@ -19,7 +20,6 @@ const DEFAULT_WINDOW_HOURS = 3;
 // Must match the crawl's own default (scheduler.ts), or the two disagree on
 // when a pair is due.
 const DEFAULT_WINDOW_START_HOUR = 3;
-const DEFAULT_CHART_GENRES = 2;
 const VOLATILITY_WINDOW_DAYS = 14;
 
 /**
@@ -31,7 +31,10 @@ const VOLATILITY_WINDOW_DAYS = 14;
  * - volatility: a pair that has been flat for weeks tells us little daily.
  * - market weight: the operator's own judgement of which storefronts pay.
  * - unobserved pairs sort to the top: a new pair needs a baseline before any
- *   of the other signals mean anything.
+ *   of the other signals mean anything. The count is coalesced because a pair
+ *   with no ranking row at all has no row in the count either, and a NULL
+ *   comparison quietly took the branch meant for well-observed pairs: the
+ *   newest pair of all was the one pair that never got the boost.
  */
 const SCORE_SQL = `
   0.30 * COALESCE(pop.popularity_1_100, 20) / 100.0
@@ -44,7 +47,7 @@ const SCORE_SQL = `
     END
   + 0.20 * MIN(1.0, COALESCE(cp.volatility, 0) / 10.0)
   + 0.10 * MIN(1.0, s.weight)
-  + CASE WHEN latest.position IS NULL AND obs.n < 7 THEN 1.0 ELSE 0 END
+  + CASE WHEN latest.position IS NULL AND COALESCE(obs.n, 0) < 7 THEN 1.0 ELSE 0 END
   + CASE WHEN cp.burst_until IS NOT NULL AND cp.burst_until > ?1 THEN 1.0 ELSE 0 END
 `;
 
@@ -52,22 +55,31 @@ const SCORE_SQL = `
  * Refresh each pair's volatility: the spread of its recent ranks, computed in
  * SQL so the rows never cross into the isolate. Unranked days are ignored:
  * "not in the top 200" is not a position to take a variance over.
+ *
+ * Per tracked app first, then the largest. A pair is shared by everyone who
+ * tracks its keyword, so taking one deviation over all their apps measured the
+ * distance between two apps rather than the movement of either: one at rank 3
+ * and one at 150, neither having moved in a fortnight, read as the most
+ * volatile pair in the set.
  */
 async function refreshVolatility(env: Env, since: string): Promise<void> {
 	await env.DB.prepare(
 		`UPDATE crawl_pair SET volatility = COALESCE((
-       SELECT
-         -- population standard deviation of the observed positions
-         CASE WHEN COUNT(re.position) < 2 THEN 0 ELSE
-           SQRT(
-             AVG(re.position * re.position) - AVG(re.position) * AVG(re.position)
-           )
-         END
-       FROM ranking r
-       JOIN rank_entry re ON re.ranking_id = r.id
-       JOIN tracked_keyword tk ON tk.keyword_id = crawl_pair.keyword_id
-         AND tk.app_id = re.app_id
-       WHERE r.pair_id = crawl_pair.id AND r.valid = 1 AND r.observed_date >= ?1
+       SELECT MAX(spread) FROM (
+         SELECT
+           -- population standard deviation of one app's observed positions
+           CASE WHEN COUNT(re.position) < 2 THEN 0 ELSE
+             SQRT(MAX(0,
+               AVG(re.position * re.position) - AVG(re.position) * AVG(re.position)
+             ))
+           END AS spread
+         FROM ranking r
+         JOIN rank_entry re ON re.ranking_id = r.id
+         JOIN tracked_keyword tk ON tk.keyword_id = crawl_pair.keyword_id
+           AND tk.app_id = re.app_id
+         WHERE r.pair_id = crawl_pair.id AND r.valid = 1 AND r.observed_date >= ?1
+         GROUP BY re.app_id
+       )
      ), 0)
      WHERE ref_count > 0 AND tier = 1`
 	)
@@ -75,37 +87,18 @@ async function refreshVolatility(env: Env, since: string): Promise<void> {
 		.run();
 }
 
-/** What the non-keyword daily work costs, measured from the tracked set. */
+/**
+ * What the non-keyword daily work costs, measured from the same definition
+ * the daily job queues it from (lib/fanout), so the budget charges the pulls
+ * that will actually run.
+ */
 async function measureOverhead(env: Env): Promise<number> {
-	const row = await env.DB.prepare(
-		`SELECT
-       (SELECT COUNT(*) FROM (
-          SELECT ta.app_id, sl.storefront_code
-          FROM tracked_app ta
-          JOIN app_language al ON al.app_id = ta.app_id
-          JOIN locale l ON l.language = al.language
-          JOIN storefront_locale sl ON sl.locale_code = l.code
-          JOIN storefront s ON s.code = sl.storefront_code AND s.active = 1
-          UNION
-          SELECT tk.app_id, cp.storefront_code
-          FROM tracked_keyword tk
-          JOIN crawl_pair cp ON cp.keyword_id = tk.keyword_id AND cp.ref_count > 0
-          JOIN storefront s ON s.code = cp.storefront_code AND s.active = 1))
-         AS app_storefronts,
-       (SELECT COUNT(DISTINCT cp.storefront_code) FROM crawl_pair cp
-         WHERE cp.ref_count > 0 AND cp.tier = 1) AS storefronts`
-	).first<{ app_storefronts: number; storefronts: number }>();
-
-	const configuredGenres = await getStateJson<(number | null)[]>(
-		env.DB,
-		"chart_genres"
-	);
-	const chartGenres = configuredGenres?.length ?? DEFAULT_CHART_GENRES;
-
+	const targets = await pullTargets(env.DB);
+	const genres = await chartGenres(env.DB);
 	return measureOverheadPerDay({
-		appStorefrontPairs: row?.app_storefronts ?? 0,
-		chartGenres,
-		storefronts: row?.storefronts ?? 0,
+		appStorefrontPairs: targets.length,
+		chartGenres: genres.length,
+		storefronts: targetStorefronts(targets).length,
 	});
 }
 
@@ -121,7 +114,9 @@ async function applyIntervals(
 ): Promise<void> {
 	await env.DB.prepare(
 		`WITH latest AS (
-       SELECT r.pair_id, re.position
+       -- The best position among the apps tracking this keyword. A bare
+       -- column under the GROUP BY returned whichever app SQLite read last.
+       SELECT r.pair_id, MIN(re.position) AS position
        FROM ranking r
        JOIN crawl_pair cp ON cp.id = r.pair_id
        JOIN tracked_keyword tk ON tk.keyword_id = cp.keyword_id

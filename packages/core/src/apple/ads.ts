@@ -108,6 +108,26 @@ function readRateLimit(headers: Headers): AdsRateLimit {
 }
 
 /**
+ * `Retry-After` as a wait in whole seconds, or null when it says nothing
+ * usable. The header has two legal forms, a count of seconds and an HTTP date;
+ * read as a number alone, the date form became NaN and travelled on as the
+ * wait, which every comparison downstream treats as "no wait at all".
+ */
+function parseRetryAfter(header: string | null): number | null {
+	if (!header) {
+		return null;
+	}
+	const seconds = Number(header);
+	if (Number.isFinite(seconds)) {
+		return Math.max(0, Math.trunc(seconds));
+	}
+	const at = Date.parse(header);
+	return Number.isNaN(at)
+		? null
+		: Math.max(0, Math.ceil((at - Date.now()) / 1000));
+}
+
+/**
  * Turn a refusal into the one error the callers already know how to requeue on.
  * `Retry-After` wins over `RateLimit-Reset`: Apple documents it as the exact
  * wait for the request it just rejected.
@@ -124,9 +144,10 @@ function rateLimitGuard(
 	if (res.status !== 429) {
 		return null;
 	}
-	const retryAfter = res.headers.get("Retry-After");
 	return new AdsRateLimitedError(
-		retryAfter ? Math.trunc(Number(retryAfter)) : (rateLimit.resetSeconds ?? 60)
+		parseRetryAfter(res.headers.get("Retry-After")) ??
+			rateLimit.resetSeconds ??
+			60
 	);
 }
 
@@ -303,7 +324,10 @@ export class AdsClient {
 		const raw = (await res.json()) as {
 			result?: { rows?: SearchTermPopularityRow[] };
 		};
-		return { rateLimit, raw, rows: raw.result?.rows ?? [] };
+		// Checked rather than trusted: anything but a list here is a shape Apple
+		// changed, and iterating a non-array throws far from the cause.
+		const rows = raw.result?.rows;
+		return { rateLimit, raw, rows: Array.isArray(rows) ? rows : [] };
 	}
 
 	/**

@@ -45,8 +45,12 @@ beforeEach(async () => {
 	await seedPairs();
 });
 
+// Spies come off here and not at the end of each test: restored inline, after
+// the assertions, a failed assertion left the archive mocked for every test
+// that followed, and one failure read as twenty.
 afterEach(() => {
 	vi.unstubAllGlobals();
+	vi.restoreAllMocks();
 });
 
 async function insertPair(
@@ -137,16 +141,14 @@ describe(crawlPair, () => {
 		stubFetch(() => Response.json(fakeSearchResponse(200)));
 
 		const order: string[] = [];
-		const put = vi.spyOn(env.ARCHIVE, "put").mockImplementation(((
-			key: string
-		) => {
+		vi.spyOn(env.ARCHIVE, "put").mockImplementation(((key: string) => {
 			if (String(key).startsWith("staging/rankings/")) {
 				order.push("archive");
 			}
 			return Promise.resolve(null);
 		}) as never);
 		// The put is mocked away, so nothing is really there to read back.
-		const head = vi.spyOn(env.ARCHIVE, "head").mockResolvedValue({} as never);
+		vi.spyOn(env.ARCHIVE, "head").mockResolvedValue({} as never);
 		const batch = vi
 			.spyOn(env.DB, "batch")
 			.mockImplementation(async (stmts: unknown) => {
@@ -157,8 +159,6 @@ describe(crawlPair, () => {
 			});
 
 		await crawlPair(env, pair, 3);
-		put.mockRestore();
-		head.mockRestore();
 
 		expect(order[0]).toBe("archive");
 		expect(order).toContain("d1");
@@ -172,12 +172,10 @@ describe(crawlPair, () => {
 		await insertPair(1);
 		stubFetch(() => Response.json(fakeSearchResponse(200)));
 
-		const put = vi.spyOn(env.ARCHIVE, "put").mockResolvedValue(null as never);
-		const head = vi.spyOn(env.ARCHIVE, "head").mockResolvedValue(null);
+		vi.spyOn(env.ARCHIVE, "put").mockResolvedValue(null as never);
+		vi.spyOn(env.ARCHIVE, "head").mockResolvedValue(null);
 
 		await crawlPair(env, pair, 3);
-		put.mockRestore();
-		head.mockRestore();
 
 		const ranking = await env.DB.prepare(
 			"SELECT COUNT(*) AS n FROM ranking WHERE pair_id = 1"
@@ -337,12 +335,11 @@ describe(crawlPair, () => {
 		stubFetch(() =>
 			Response.json({ resultCount: 0, results: [] }, { status: 403 })
 		);
-		const put = vi
-			.spyOn(env.ARCHIVE, "put")
-			.mockRejectedValue(new Error("Network connection lost."));
+		vi.spyOn(env.ARCHIVE, "put").mockRejectedValue(
+			new Error("Network connection lost.")
+		);
 
 		const { throttled } = await crawlPair(env, pair, 3);
-		put.mockRestore();
 
 		expect(throttled).toBeTruthy();
 		const err = await env.DB.prepare(
@@ -360,18 +357,17 @@ describe(crawlPair, () => {
 		// failed sample must cost nothing.
 		await insertPair(1);
 		stubFetch(() => Response.json(fakeSearchResponse(12)));
-		const random = vi.spyOn(Math, "random").mockReturnValue(0);
+		vi.spyOn(Math, "random").mockReturnValue(0);
 		const realPut = env.ARCHIVE.put.bind(env.ARCHIVE);
-		const put = vi
-			.spyOn(env.ARCHIVE, "put")
-			.mockImplementation(((key: string, body: string) =>
-				String(key).startsWith("verbatim/")
-					? Promise.reject(new Error("Network connection lost."))
-					: realPut(key, body)) as never);
+		vi.spyOn(env.ARCHIVE, "put").mockImplementation(((
+			key: string,
+			body: string
+		) =>
+			String(key).startsWith("verbatim/")
+				? Promise.reject(new Error("Network connection lost."))
+				: realPut(key, body)) as never);
 
 		const { throttled } = await crawlPair(env, pair, 3);
-		put.mockRestore();
-		random.mockRestore();
 
 		expect(throttled).toBeFalsy();
 		const ranking = await env.DB.prepare(
@@ -409,6 +405,55 @@ describe(crawlPair, () => {
 		expect(err?.error_class).toBe("invalid_body");
 	});
 
+	// The other half of the 403 rule. A genuine 200 with no results is Apple
+	// saying nothing matches, which is an observation and has to be stored as
+	// one: dropping it would leave a gap where there is an answer.
+	it("stores a 200 with no results as an observation, with its provenance", async () => {
+		await insertPair(1);
+		stubFetch(() => Response.json({ resultCount: 0, results: [] }));
+		const { throttled } = await crawlPair(env, pair, 3);
+		expect(throttled).toBeFalsy();
+		const ranking = await env.DB.prepare(
+			"SELECT http_status, result_count, result_ids, valid, response_ms, collector_version FROM ranking WHERE pair_id = 1"
+		).first<{
+			http_status: number;
+			result_count: number;
+			result_ids: string;
+			valid: number;
+			response_ms: number | null;
+			collector_version: string;
+		}>();
+		expect(ranking).toMatchObject({
+			http_status: 200,
+			result_count: 0,
+			result_ids: "[]",
+			valid: 1,
+		});
+		expect(ranking?.response_ms).toBeGreaterThanOrEqual(0);
+		expect(ranking?.collector_version).toMatch(/\S/u);
+		await expect(
+			env.DB.prepare("SELECT COUNT(*) AS n FROM fetch_error").first()
+		).resolves.toStrictEqual({ n: 0 });
+	});
+
+	// An HTML error page served with a 200 is not an HTTP error. Filed as one it
+	// sat on the health page as http_error beside a status of 200.
+	it("classes a 200 that is not JSON as an invalid body", async () => {
+		await insertPair(1);
+		stubFetch(() => new Response("<html>Service Unavailable</html>"));
+		await crawlPair(env, pair, 3);
+		const err = await env.DB.prepare(
+			"SELECT error_class, http_status FROM fetch_error ORDER BY id DESC LIMIT 1"
+		).first<{ error_class: string; http_status: number }>();
+		expect(err).toStrictEqual({
+			error_class: "invalid_body",
+			http_status: 200,
+		});
+		await expect(
+			env.DB.prepare("SELECT id FROM ranking WHERE pair_id = 1").first()
+		).resolves.toBeNull();
+	});
+
 	it("samples successful responses verbatim about one time in ten", async () => {
 		await insertPair(1);
 		stubFetch(() => Response.json(fakeSearchResponse(2)));
@@ -425,7 +470,6 @@ describe(crawlPair, () => {
 			object?.body.pipeThrough(new DecompressionStream("gzip"))
 		).text();
 		expect(JSON.parse(text)).toStrictEqual(fakeSearchResponse(2));
-		vi.restoreAllMocks();
 	});
 
 	it("keeps no verbatim copy for the other nine in ten", async () => {
@@ -437,7 +481,6 @@ describe(crawlPair, () => {
 			"SELECT r2_key FROM ranking WHERE pair_id = 1"
 		).first<{ r2_key: string | null }>();
 		expect(row?.r2_key).toBeNull();
-		vi.restoreAllMocks();
 	});
 });
 

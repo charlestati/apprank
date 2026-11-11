@@ -188,6 +188,11 @@ describe("POST /admin/run", () => {
 	// synthetic Apple key here. What matters, and what is asserted, is that a
 	// credential the DO cannot use surfaces as a 502 naming the recorded error
 	// rather than a cheerful 200.
+	//
+	// For the same reason nothing here can say whether a verify pass writes
+	// rows: the step dies on the key import before it fetches, so "no rows
+	// written" holds whatever the verify flag does. That is the step's own test,
+	// in tasks-apple.test.ts, where it can be given a key that signs.
 	it("surfaces a bad credential as 502 with the error the step recorded", async () => {
 		stubFetch(() => new Response("nope", { status: 401 }));
 		const res = await worker.fetch(
@@ -201,28 +206,6 @@ describe("POST /admin/run", () => {
 		};
 		expect(body.ok).toBeFalsy();
 		expect(body.errors[0]?.endpoint).toBe("ads:popularity");
-	});
-
-	it("verifies the ads credential without writing rows", async () => {
-		// A credential check that rewrote 500 terms per unit spent a real slice of
-		// the daily write budget to learn only that Apple answered, which the R2
-		// archive already proves.
-		stubFetch((url) => {
-			if (url.includes("appleid.apple.com")) {
-				return Response.json({ access_token: "tok", expires_in: 3600 });
-			}
-			if (url.includes("/v1/acls")) {
-				return Response.json({ data: { acls: [{ adAccount: { id: 1 } }] } });
-			}
-			return Response.json({
-				result: { rows: [{ rankInGenre: 1, searchTerm: "terme un" }] },
-			});
-		});
-		await worker.fetch(post("ads"), configured({ ADS_CLIENT_ID: "client" }));
-		const seeded = await env.DB.prepare(
-			"SELECT COUNT(*) AS n FROM seed_term"
-		).first<{ n: number }>();
-		expect(seeded?.n).toBe(0);
 	});
 
 	it("advances the queue one task at a time, and says when it is empty", async () => {

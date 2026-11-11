@@ -5,6 +5,7 @@ import {
 	collectionMode,
 	collectsPublicEndpoints,
 	dropsTask,
+	runsWorkLoop,
 } from "../src/lib/mode";
 
 const asEnv = (mode?: string) => ({ COLLECTION_MODE: mode }) as Env;
@@ -47,5 +48,17 @@ describe(dropsTask, () => {
 
 	it("drops nothing where the public endpoints are reachable", () => {
 		expect(dropsTask(asEnv(), "chart_pull", "loop")).toBeFalsy();
+	});
+});
+
+describe(runsWorkLoop, () => {
+	it("runs the loop unless told otherwise, so a deployment never stops by omission", () => {
+		expect(runsWorkLoop({} as Env)).toBeTruthy();
+		expect(runsWorkLoop({ WORK_LOOP: "on" } as Env)).toBeTruthy();
+		expect(runsWorkLoop({ WORK_LOOP: "OFF" } as Env)).toBeTruthy();
+	});
+
+	it("stops it for the runner's exact value", () => {
+		expect(runsWorkLoop({ WORK_LOOP: "off" } as Env)).toBeFalsy();
 	});
 });

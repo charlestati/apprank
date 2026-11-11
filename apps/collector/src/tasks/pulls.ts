@@ -119,6 +119,26 @@ function requeueThrottled<T extends { queue: unknown[]; attempt?: number }>(
 	return { ...task, attempt, queue: next };
 }
 
+/**
+ * What a refused or broken pull leaves behind to be diagnosed with.
+ *
+ * The crawl archives its failure bodies; these paths recorded a status and
+ * nothing else, so a storefront answering an HTML page to the reviews feed was
+ * a row nobody could read. The body goes in `message`, never in the class, and
+ * is cut to what the column is meant to hold: an Apple refusal is a sentence,
+ * and an error page says what it is in its first lines.
+ */
+function failureDetail(outcome: { bodyText: string; responseMs: number }): {
+	message?: string;
+	responseMs: number;
+} {
+	const body = outcome.bodyText.trim();
+	return {
+		...(body ? { message: body.slice(0, 1200) } : {}),
+		responseMs: outcome.responseMs,
+	};
+}
+
 export async function lookupPullStep(
 	env: Env,
 	task: { queue: LookupUnit[]; attempt?: number }
@@ -140,6 +160,7 @@ export async function lookupPullStep(
 			endpoint: "itunes:lookup",
 			errorClass: "throttled",
 			httpStatus: outcome.status,
+			...failureDetail(outcome),
 			params: JSON.stringify(unit),
 		});
 		const attempt = (task.attempt ?? 0) + 1;
@@ -159,8 +180,9 @@ export async function lookupPullStep(
 	if (outcome.kind === "error") {
 		await recordFetchError(env.DB, {
 			endpoint: "itunes:lookup",
-			errorClass: "http_error",
+			errorClass: outcome.errorClass,
 			httpStatus: outcome.status,
+			...failureDetail(outcome),
 			params: JSON.stringify(unit),
 		});
 		return { followUps: rest, throttled: false };
@@ -202,10 +224,20 @@ export async function lookupPullStep(
 		env.DB.prepare(
 			`INSERT INTO app (id, bundle_id, current_name, developer_id, developer_name, primary_genre_id, first_seen_at, last_seen_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET current_name = excluded.current_name, last_seen_at = excluded.last_seen_at
-       -- Same reason as the crawl path: last_seen_at always differs, so
-       -- without this the row is rewritten daily for a column nothing reads.
-       WHERE current_name IS NOT excluded.current_name`
+       ON CONFLICT(id) DO UPDATE SET bundle_id = excluded.bundle_id, current_name = excluded.current_name,
+         developer_id = excluded.developer_id, developer_name = excluded.developer_name,
+         primary_genre_id = excluded.primary_genre_id, last_seen_at = excluded.last_seen_at
+       -- The row always exists by now: tracking an app inserts a bare one, with
+       -- a name and nothing else. Updating the name alone left the genre null
+       -- until the app turned up in one of its own crawls, and a null genre
+       -- means no genre chart and no Ads pull. Same columns as the crawl
+       -- upsert, and the same guard: last_seen_at always differs, so without it
+       -- the row is rewritten daily for a column nothing reads.
+       WHERE bundle_id IS NOT excluded.bundle_id
+          OR current_name IS NOT excluded.current_name
+          OR developer_id IS NOT excluded.developer_id
+          OR developer_name IS NOT excluded.developer_name
+          OR primary_genre_id IS NOT excluded.primary_genre_id`
 		).bind(
 			napp.id,
 			napp.bundleId,
@@ -334,6 +366,7 @@ export async function reviewPullStep(
 			endpoint: "itunes:reviews",
 			errorClass: "throttled",
 			httpStatus: outcome.status,
+			...failureDetail(outcome),
 			params: JSON.stringify(unit),
 		});
 		const attempt = (task.attempt ?? 0) + 1;
@@ -353,8 +386,9 @@ export async function reviewPullStep(
 	if (outcome.kind === "error") {
 		await recordFetchError(env.DB, {
 			endpoint: "itunes:reviews",
-			errorClass: "http_error",
+			errorClass: outcome.errorClass,
 			httpStatus: outcome.status,
+			...failureDetail(outcome),
 			params: JSON.stringify(unit),
 		});
 		return { followUps: rest, throttled: false };
@@ -418,6 +452,7 @@ export async function chartPullStep(
 			endpoint: "itunes:charts",
 			errorClass: "throttled",
 			httpStatus: outcome.status,
+			...failureDetail(outcome),
 			params: JSON.stringify(unit),
 		});
 		const attempt = (task.attempt ?? 0) + 1;
@@ -437,8 +472,9 @@ export async function chartPullStep(
 	if (outcome.kind === "error") {
 		await recordFetchError(env.DB, {
 			endpoint: "itunes:charts",
-			errorClass: "http_error",
+			errorClass: outcome.errorClass,
 			httpStatus: outcome.status,
+			...failureDetail(outcome),
 			params: JSON.stringify(unit),
 		});
 		return { followUps: rest, throttled: false };

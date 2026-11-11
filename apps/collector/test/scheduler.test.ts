@@ -1,8 +1,41 @@
 /* oxlint-disable vitest/max-expects, vitest/require-top-level-describe, typescript/no-non-null-assertion --
    integration tests assert the full persistence surface of one crawl, and the
    fetch-stub hook lives beside its helper above the describe blocks. */
-import { env, runDurableObjectAlarm } from "cloudflare:test";
-import { describe, it, expect, afterEach, vi } from "vitest";
+import {
+	env,
+	runDurableObjectAlarm,
+	runInDurableObject,
+} from "cloudflare:test";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
+
+const OBJECTS = ["test", "test-403"];
+
+function resetObjects() {
+	return Promise.all(
+		OBJECTS.map((name) =>
+			runInDurableObject(
+				env.SCHEDULER.get(env.SCHEDULER.idFromName(name)),
+				async (_instance, state) => {
+					await state.storage.deleteAlarm();
+					await state.storage.deleteAll();
+				}
+			)
+		)
+	);
+}
+
+// Storage is shared across the whole run. Without this the first test stood on
+// whatever the previous file left: a pacing pause there parks the alarm and
+// nothing is crawled.
+beforeEach(async () => {
+	await resetObjects();
+	await env.DB.batch([
+		env.DB.prepare("DELETE FROM rank_entry"),
+		env.DB.prepare("DELETE FROM ranking"),
+		env.DB.prepare("DELETE FROM fetch_error"),
+		env.DB.prepare("DELETE FROM collector_state"),
+	]);
+});
 
 // The Workers test pool runs tests in the same isolate as the Worker (and its
 // Durable Objects), so a global fetch stub intercepts the crawler's requests.
@@ -88,7 +121,12 @@ const fakeResults = {
 	],
 };
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(async () => {
+	vi.unstubAllGlobals();
+	// Both tests end with the alarm re-armed; left there it ticks into the next
+	// file.
+	await resetObjects();
+});
 
 describe("SchedulerDO crawl loop", () => {
 	it("crawls a due pair via alarm and persists an idempotent observation", async () => {

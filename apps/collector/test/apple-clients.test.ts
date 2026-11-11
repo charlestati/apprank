@@ -208,7 +208,78 @@ describe("Apple Ads client", () => {
 				end: "2026-08-15",
 				start: "2026-08-09",
 			})
-		).rejects.toBeInstanceOf(AdsRateLimitedError);
+		).rejects.toMatchObject({
+			name: "AdsRateLimitedError",
+			retryAfterSeconds: 120,
+		});
+	});
+
+	// Retry-After has two legal forms. Read as a number alone, the date form
+	// became NaN, which every comparison downstream takes for no wait at all.
+	it.each([
+		[
+			"an HTTP date",
+			{ "Retry-After": new Date(Date.now() + 90_000).toUTCString() },
+			[85, 91],
+		],
+		[
+			"a date already past",
+			{ "Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT" },
+			[0, 0],
+		],
+		[
+			"nonsense, falling back to RateLimit-Reset",
+			{ "RateLimit-Reset": "45", "Retry-After": "soon" },
+			[45, 45],
+		],
+		["nothing at all", {}, [60, 60]],
+		["a negative count", { "Retry-After": "-5" }, [0, 0]],
+	] as const)(
+		"reads a 429 whose wait is %s",
+		async (_name, headers, [low, high]) => {
+			const { pem } = await generateP8Pem();
+			stubFetch((url) =>
+				url.includes("appleid.apple.com")
+					? Response.json({ access_token: "tok", expires_in: 3600 })
+					: new Response("slow down", { headers, status: 429 })
+			);
+			const client = new AdsClient(
+				{ clientId: "c", keyId: "k", privateKeyPem: pem, teamId: "t" },
+				"acct-1"
+			);
+			const refusal = await client
+				.searchTermPopularity({
+					countryOrRegion: "FR",
+					end: "2026-08-15",
+					start: "2026-08-09",
+				})
+				.catch((error: unknown) => error);
+			expect(refusal).toBeInstanceOf(AdsRateLimitedError);
+			const wait = (refusal as AdsRateLimitedError).retryAfterSeconds;
+			expect(wait).toBeGreaterThanOrEqual(low);
+			expect(wait).toBeLessThanOrEqual(high);
+		}
+	);
+
+	it("treats a popularity answer whose rows are not a list as empty", async () => {
+		const { pem } = await generateP8Pem();
+		stubFetch((url) =>
+			url.includes("appleid.apple.com")
+				? Response.json({ access_token: "tok", expires_in: 3600 })
+				: Response.json({ result: { rows: { unexpected: true } } })
+		);
+		const client = new AdsClient(
+			{ clientId: "c", keyId: "k", privateKeyPem: pem, teamId: "t" },
+			"acct-1"
+		);
+		const { rows, raw } = await client.searchTermPopularity({
+			countryOrRegion: "FR",
+			end: "2026-08-15",
+			start: "2026-08-09",
+		});
+		expect(rows).toStrictEqual([]);
+		// The body still travels back whole, for the archive.
+		expect(raw).toStrictEqual({ result: { rows: { unexpected: true } } });
 	});
 
 	it("discovers ad accounts and their roles through the ACL endpoint", async () => {

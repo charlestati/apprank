@@ -228,20 +228,26 @@ describe(recomputeDifficulty, () => {
 	});
 
 	it("counts turnover across the recent window, not just the latest day", async () => {
-		await seedApp(100, 50_000);
-		await seedApp(101, 40_000);
-		await seedApp(102, 30_000);
-		// Three different apps have held the top slot over three days.
-		await seedRanking(1, isoDay(3), [[1, 100]]);
-		await seedRanking(2, isoDay(2), [[1, 101]]);
-		await seedRanking(3, isoDay(1), [[1, 102]]);
+		// Ten apps hold the page one day and ten entirely different ones the
+		// next: twenty for ten slots, each slot turned over once. Fewer than ten
+		// distinct apps cannot tell the two counts apart, because stability is
+		// capped at 1 either way; the latest day alone would also read as 1.
+		const yesterday: [number, number][] = [];
+		const today: [number, number][] = [];
+		for (let slot = 0; slot < 10; slot += 1) {
+			await seedApp(100 + slot, 50_000);
+			await seedApp(200 + slot, 50_000);
+			yesterday.push([slot + 1, 100 + slot]);
+			today.push([slot + 1, 200 + slot]);
+		}
+		await seedRanking(1, isoDay(2), yesterday);
+		await seedRanking(2, isoDay(1), today);
 
 		await recomputeDifficulty(env);
 		const row = await env.DB.prepare(
 			"SELECT stability FROM keyword_difficulty WHERE pair_id = 1"
 		).first<{ stability: number }>();
-		// 3 distinct apps for 10 slots reads as wide open.
-		expect(row?.stability).toBe(1);
+		expect(row?.stability).toBeCloseTo(0.5, 6);
 	});
 
 	it("re-running replaces the score rather than duplicating it", async () => {
