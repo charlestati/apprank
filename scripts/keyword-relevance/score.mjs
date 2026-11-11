@@ -22,7 +22,12 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 
-import { scoreByUser, split } from "./relevance.mjs";
+import {
+	dismissSql,
+	parseThreshold,
+	scoreByUser,
+	split,
+} from "./relevance.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
 const COLLECTOR = path.join(ROOT, "apps/collector");
@@ -54,7 +59,11 @@ if (!/^[a-z]{2}$/u.test(storefront)) {
 	console.error(`--storefront must be a two-letter code, got ${storefront}`);
 	process.exit(2);
 }
-const threshold = Number(flag("threshold", DEFAULT_THRESHOLD));
+const threshold = parseThreshold(flag("threshold", DEFAULT_THRESHOLD));
+if (threshold === null) {
+	console.error("--threshold must be a number between 0 and 1");
+	process.exit(2);
+}
 // Pinned rather than defaulted: the same text through a different model is a
 // different number, and a threshold calibrated against one says nothing about
 // the other.
@@ -164,7 +173,5 @@ if (!apply) {
 if (drop.length === 0) {
 	process.exit(0);
 }
-d1(
-	`UPDATE suggestion SET status = 'dismissed' WHERE id IN (${drop.map((d) => d.id).join(",")})`
-);
-console.log(`dismissed ${drop.length}`);
+d1(dismissSql(drop.map((d) => d.id)));
+console.log(`dismissed up to ${drop.length} (only those still pending)`);

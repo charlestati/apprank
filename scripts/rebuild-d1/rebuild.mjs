@@ -12,12 +12,21 @@
 //
 // Usage:
 //   R2_ACCOUNT_ID=… R2_ACCESS_KEY_ID=… R2_SECRET_ACCESS_KEY=… \
-//     node rebuild.mjs [--verify] [--out rebuild.sql]
+//     node rebuild.mjs [--verify] [--since YYYY-MM-DD] [--until YYYY-MM-DD]
+//                      [--out rebuild.sql]
 //
-//   --verify   don't write SQL; compare archive observation counts against the
-//              live D1 ranking table (needs wrangler auth) and report drift
-//   --out      write INSERT statements to a .sql file for
+//   --verify   write nothing; compare the archive with the live D1 ranking
+//              table on (pair, date), print every date that differs, and exit
+//              1 when any does (needs wrangler auth)
+//   --since    first observed date to read, inclusive
+//   --until    last observed date to read, inclusive
+//   --out      name the .sql files are derived from: one per month
+//              (rebuild-2026-09.sql) plus rebuild-ads.sql, each applied with
 //              `wrangler d1 execute`
+//
+// One file per month, written as it is built. Everything in one string threw
+// near 124,000 observations, and a month is also about what a day of the free
+// tier's write budget can take beside live collection: apply them a day apart.
 //
 // R2 credentials: create an R2 API token (dashboard → R2 → Manage API Tokens).
 // Zero egress: reads are free. wrangler auth is needed as well: which apps are
@@ -25,7 +34,7 @@
 // on it.
 
 import { execFileSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
 
 import { AwsClient } from "aws4fetch";
 
@@ -33,8 +42,14 @@ import {
 	adsRows,
 	buildAdsSql,
 	buildSql,
+	byMonth,
+	findDrift,
+	inRange,
+	isIsoDate,
 	parseGenreKey,
 	parseTermsKey,
+	partFile,
+	rankingKeyDate,
 } from "./sql.mjs";
 import { applyHint, d1Args, wranglerConfig } from "./wrangler.mjs";
 
@@ -113,7 +128,7 @@ async function getObjectWithTime(key) {
  * were stored under is not in the archive. Skipping is the honest move;
  * guessing would put one storefront-wide list under two labels.
  */
-async function loadAdsRows() {
+async function loadAdsRows(since, until) {
 	const genre = [];
 	const terms = [];
 	let skipped = 0;
@@ -123,6 +138,9 @@ async function loadAdsRows() {
 			skipped += 1;
 			continue;
 		}
+		if (!inRange(dims.week, since, until)) {
+			continue;
+		}
 		const { fetchedAt, text } = await getObjectWithTime(key);
 		genre.push(...adsRows(JSON.parse(text), dims, fetchedAt));
 	}
@@ -130,6 +148,9 @@ async function loadAdsRows() {
 		const dims = parseTermsKey(key);
 		if (!dims) {
 			skipped += 1;
+			continue;
+		}
+		if (!inRange(dims.week, since, until)) {
 			continue;
 		}
 		const { fetchedAt, text } = await getObjectWithTime(key);
@@ -152,44 +173,122 @@ function d1(command) {
 	return results;
 }
 
-const verify = process.argv.includes("--verify");
-const outIdx = process.argv.indexOf("--out");
-let outFile = "rebuild.sql";
-if (outIdx !== -1) {
-	[outFile] = process.argv.slice(outIdx + 1);
+function flag(name) {
+	const at = process.argv.indexOf(name);
+	return at === -1 ? null : (process.argv[at + 1] ?? "");
 }
 
-const keys = await listAll("rankings/v1/");
-console.log(`archive files: ${keys.length}`);
-
-const observations = [];
-for (const key of keys) {
-	const body = await getObject(key);
-	for (const line of body.split("\n")) {
-		if (!line.trim()) {
-			continue;
-		}
-		observations.push(JSON.parse(line));
+const verify = process.argv.includes("--verify");
+const outFile = flag("--out") ?? "rebuild.sql";
+const since = flag("--since");
+const until = flag("--until");
+for (const [name, value] of [
+	["--since", since],
+	["--until", until],
+]) {
+	if (value !== null && !isIsoDate(value)) {
+		console.error(`${name} takes a date as YYYY-MM-DD`);
+		process.exit(2);
 	}
 }
-console.log(`observations in archive: ${observations.length}`);
+if (!outFile) {
+	console.error("--out takes a file name");
+	process.exit(2);
+}
+
+const archived = await listAll("rankings/v1/");
+const months = byMonth(
+	archived.filter((key) => {
+		const date = rankingKeyDate(key);
+		return date !== null && inRange(date, since, until);
+	})
+);
+console.log(
+	`archive files: ${[...months.values()].reduce((n, keys) => n + keys.length, 0)} across ${months.size} month(s)`
+);
+
+/** One month's observations. Never more than a month is held at once. */
+async function loadMonth(keys) {
+	const observations = [];
+	for (const key of keys) {
+		const body = await getObject(key);
+		for (const line of body.split("\n")) {
+			if (line.trim()) {
+				observations.push(JSON.parse(line));
+			}
+		}
+	}
+	return observations;
+}
+
+/** Appended in slices, so no string ever holds the whole month. */
+function writeStatements(file, lines) {
+	writeFileSync(file, "");
+	for (let i = 0; i < lines.length; i += 2000) {
+		appendFileSync(file, `${lines.slice(i, i + 2000).join("\n")}\n`);
+	}
+}
 
 if (verify) {
-	const [live] = d1(
-		"SELECT COUNT(*) AS n, MIN(observed_date) AS min_d, MAX(observed_date) AS max_d FROM ranking WHERE valid = 1"
-	);
-	// The archive lags D1 by up to one day (compaction runs overnight), so
-	// compare only fully-compacted dates.
-	const dates = new Set(observations.map((o) => o.date));
+	const bounds = [
+		since ? `AND observed_date >= '${since}'` : "",
+		until ? `AND observed_date <= '${until}'` : "",
+	].join(" ");
+	const live = new Map();
+	// Counts first, for the dates the archive has no object for at all; the
+	// pair-level read below is then one query per archived month.
+	for (const row of d1(
+		`SELECT observed_date AS d FROM ranking WHERE valid = 1 ${bounds} GROUP BY observed_date`
+	)) {
+		live.set(row.d, new Set());
+	}
+	const archive = new Map();
+	let observed = 0;
+	for (const [month, keys] of months) {
+		for (const o of await loadMonth(keys)) {
+			archive.set(o.date, (archive.get(o.date) ?? new Set()).add(o.pairId));
+			observed += 1;
+		}
+		console.log(`read ${month}`);
+	}
+	const unarchived = [...live.keys()].filter((d) => !archive.has(d));
+	const monthsToRead = new Set([
+		...months.keys(),
+		...unarchived.map((d) => d.slice(0, 7)),
+	]);
+	for (const month of monthsToRead) {
+		for (const row of d1(
+			`SELECT observed_date AS d, pair_id AS p FROM ranking WHERE valid = 1 AND observed_date LIKE '${month}-%' ${bounds}`
+		)) {
+			live.set(row.d, (live.get(row.d) ?? new Set()).add(row.p));
+		}
+	}
+	// Compaction runs overnight and catches up for a few days, so the two
+	// newest dates may rightly be in D1 alone.
+	const settledBefore = new Date(Date.now() - 86_400_000)
+		.toISOString()
+		.slice(0, 10);
+	const drift = findDrift(archive, live, settledBefore);
 	console.log(
-		`D1 valid rankings: ${live.n} (${live.min_d} → ${live.max_d}); archive dates: ${dates.size}`
+		`archive: ${observed} observations on ${archive.size} date(s); D1: ${live.size} date(s) with valid rankings`
 	);
-	console.log(
-		dates.size > 0
-			? "Run drift checks per-date as needed."
-			: "Archive empty, nothing to verify yet."
+	if (drift.length === 0) {
+		console.log(
+			archive.size > 0
+				? "No drift: every archived date matches D1 pair for pair."
+				: "Archive empty in this range, nothing to verify."
+		);
+		process.exit(0);
+	}
+	for (const d of drift) {
+		console.log(
+			`${d.date}: ${d.missingFromD1} in the archive and not in D1, ${d.missingFromArchive} in D1 and not in the archive`
+		);
+	}
+	console.error(
+		`DRIFT on ${drift.length} date(s). Rows missing from D1 are what a rebuild restores; rows missing from the archive cannot be rebuilt, so do not prune D1 for those dates.`
 	);
-	process.exit(0);
+	process.exit(1);
 }
 
 // Which apps get an index row beyond the top ten is decided by the tracked set,
@@ -200,7 +299,19 @@ const trackedIds = new Set(
 );
 console.log(`tracked apps: ${trackedIds.size}`);
 
-const ads = await loadAdsRows();
+const written = [];
+for (const [month, keys] of months) {
+	const observations = await loadMonth(keys);
+	const file = partFile(outFile, month);
+	const lines = buildSql(observations, trackedIds);
+	writeStatements(file, lines);
+	written.push(file);
+	console.log(
+		`${month}: ${observations.length} observations, ${lines.length} statements (ranking, app, rank_entry) to ${file}`
+	);
+}
+
+const ads = await loadAdsRows(since, until);
 console.log(
 	`ads rows in archive: ${ads.genre.length} ranked, ${ads.terms.length} by-name${
 		ads.skipped > 0
@@ -208,13 +319,23 @@ console.log(
 			: ""
 	}`
 );
+const adsLines = buildAdsSql(ads.genre, ads.terms);
+if (adsLines.length > 0) {
+	const file = partFile(outFile, "ads");
+	writeStatements(file, adsLines);
+	written.push(file);
+	console.log(
+		`${adsLines.length} statements (seed_term, popularity) to ${file}`
+	);
+}
 
-const lines = [
-	...buildSql(observations, trackedIds),
-	...buildAdsSql(ads.genre, ads.terms),
-];
-writeFileSync(outFile, `${lines.join("\n")}\n`);
+if (written.length === 0) {
+	console.log("Nothing in the archive for this range; no file written.");
+	process.exit(0);
+}
 console.log(
-	`wrote ${lines.length} statements (ranking, app, rank_entry, seed_term, popularity) to ${outFile}`
+	"Apply in order, one file at a time. Each row written counts against the day's D1 write budget, which live collection also needs:"
 );
-console.log(`apply with: ${applyHint(config, outFile, collectorDir)}`);
+for (const file of written) {
+	console.log(`  ${applyHint(config, file, collectorDir)}`);
+}

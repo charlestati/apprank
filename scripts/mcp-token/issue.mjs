@@ -8,9 +8,11 @@
 // operator configures: they are rows, applied with wrangler.
 //
 // The token is printed once. Only its SHA-256 goes in the database, because
-// mcp_credential is an ordinary table: it is queried, dumped by
-// `wrangler d1 export`, and rebuilt by scripts/rebuild-d1. BASIC_AUTH_ACCOUNTS
-// can hold plaintext because a Worker secret is none of those things.
+// mcp_credential is an ordinary table: it is queried and dumped by
+// `wrangler d1 export`. (scripts/rebuild-d1 does not restore it: a credential
+// is not an observation and is not in the archive, so after a rebuild from
+// nothing tokens are issued again.) BASIC_AUTH_ACCOUNTS can hold plaintext
+// because a Worker secret is neither of those things.
 //
 //   node scripts/mcp-token/issue.mjs --user admin --name laptop
 //   node scripts/mcp-token/issue.mjs --user admin --name bob-ci --days 90 \

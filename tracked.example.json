@@ -6,6 +6,9 @@
 		"The top-level key is the userId. It MUST match the userId in the",
 		"BASIC_AUTH_ACCOUNTS secret, or that person signs in and sees nothing.",
 		"storefronts x keywords is your whole daily fetch and write volume.",
+		"A storefront the reference data holds inactive (us, gb, es and others as",
+		"seeded) collects ranks only. pnpm track warns about each one listed here;",
+		"pnpm track --activate --apply switches them on.",
 		"Removing a keyword retires it and keeps its history; it is never deleted."
 	],
 	"admin": {

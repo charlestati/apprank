@@ -22,7 +22,13 @@ import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-import { DEPTH_BANDS, measure, noiseFloor } from "./churn.mjs";
+import {
+	DEPTH_BANDS,
+	isStorefrontCode,
+	measure,
+	noiseFloor,
+	parseDays,
+} from "./churn.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
 const COLLECTOR = path.join(ROOT, "apps/collector");
@@ -32,8 +38,16 @@ const flag = (name, fallback) => {
 	const i = args.indexOf(`--${name}`);
 	return i === -1 ? fallback : args[i + 1];
 };
-const days = Number(flag("days", 30));
+const days = parseDays(flag("days", 30));
+if (days === null) {
+	console.error("--days must be a whole number of days, 1 or more");
+	process.exit(2);
+}
 const storefront = flag("storefront", null);
+if (storefront !== null && !isStorefrontCode(storefront)) {
+	console.error(`--storefront must be a two-letter code, got ${storefront}`);
+	process.exit(2);
+}
 const asJson = args.includes("--json");
 
 function wranglerConfig() {

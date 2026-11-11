@@ -4,7 +4,13 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 
-import { localeFor, normalize, planChanges, pullConfig } from "./plan.mjs";
+import {
+	localeFor,
+	normalize,
+	planChanges,
+	pullConfig,
+	validateConfig,
+} from "./plan.mjs";
 
 const LOCALES = [
 	{
@@ -728,4 +734,213 @@ test("tracks two languages for one app as two entries", () => {
 	assert.equal(summary.pairsActivated, 3);
 	const langs = statements.filter((s) => s.includes("app_language"));
 	assert.equal(langs.length, 2);
+});
+
+const ONE_APP = {
+	appId: 42,
+	name: "App",
+	language: "fr",
+	storefronts: ["fr"],
+	keywords: ["terme un"],
+};
+
+test("warns about a listed storefront the reference data holds inactive", () => {
+	// `active` gates lookups, reviews, charts and both Ads passes but not the
+	// crawl, so a pair created there collected ranks and silently nothing else.
+	const { statements, warnings } = planChanges(
+		{ operator: { ...ONE_APP, storefronts: ["fr", "ca"] } },
+		{
+			...EMPTY,
+			storefronts: [
+				{ code: "fr", active: 1 },
+				{ code: "ca", active: 0 },
+				{ code: "es", active: 0 },
+			],
+		}
+	);
+	assert.equal(warnings.length, 1);
+	assert.match(warnings[0], /^ca: storefront is inactive/u);
+	assert.match(
+		warnings[0],
+		/UPDATE storefront SET active = 1 WHERE code = 'ca'/u
+	);
+	// Said, not done: one seeded storefront is retired on purpose.
+	assert.ok(!statements.some((s) => s.includes("UPDATE storefront")));
+});
+
+test("activates a listed inactive storefront only when asked to", () => {
+	const { statements, summary, warnings } = planChanges(
+		{ operator: { ...ONE_APP, storefronts: ["fr", "ca"] } },
+		{
+			...EMPTY,
+			storefronts: [
+				{ code: "fr", active: 1 },
+				{ code: "ca", active: 0 },
+				{ code: "es", active: 0 },
+			],
+		},
+		{ activate: true }
+	);
+	assert.deepEqual(warnings, []);
+	assert.equal(summary.storefrontsActivated, 1);
+	assert.deepEqual(
+		statements.filter((s) => s.includes("UPDATE storefront")),
+		["UPDATE storefront SET active = 1 WHERE code = 'ca' AND active = 0;"]
+	);
+});
+
+test("an unchanged config in an inactive storefront still writes nothing", () => {
+	const state = {
+		...EMPTY,
+		appLanguages: [{ app_id: 42, language: "fr" }],
+		apps: [{ id: 42, current_name: "App" }],
+		crawlPairs: [
+			{
+				id: 1,
+				ref_count: 1,
+				storefront_code: "fr",
+				locale_code: "fr-FR",
+				normalized: "terme un",
+				language: "fr",
+			},
+		],
+		keywords: [{ id: 1, normalized: "terme un", language: "fr" }],
+		storefronts: [{ code: "fr", active: 0 }],
+		trackedApps: [{ user_id: "operator", app_id: 42 }],
+		trackedKeywords: [
+			{
+				user_id: "operator",
+				app_id: 42,
+				keyword_id: 1,
+				normalized: "terme un",
+				language: "fr",
+			},
+		],
+		trackedStorefronts: [
+			{
+				user_id: "operator",
+				app_id: 42,
+				normalized: "terme un",
+				language: "fr",
+				storefront_code: "fr",
+				locale_code: "fr-FR",
+			},
+		],
+	};
+	const { statements, warnings } = planChanges({ operator: ONE_APP }, state);
+	assert.deepEqual(statements, []);
+	assert.equal(warnings.length, 1);
+});
+
+test("prune keeps a storefront the file lists when its locale cannot be resolved", () => {
+	// Missing reference data is not a removed line. It used to be read as one:
+	// the tracking row was deleted and the pair retired, on a warning that read
+	// as "nothing was added".
+	const state = {
+		...EMPTY,
+		appLanguages: [{ app_id: 42, language: "fr" }],
+		apps: [{ id: 42, current_name: "App" }],
+		crawlPairs: [
+			{
+				id: 9,
+				ref_count: 1,
+				storefront_code: "lb",
+				locale_code: "fr-FR",
+				normalized: "terme un",
+				language: "fr",
+			},
+		],
+		keywords: [{ id: 1, normalized: "terme un", language: "fr" }],
+		trackedApps: [{ user_id: "operator", app_id: 42 }],
+		trackedKeywords: [
+			{
+				user_id: "operator",
+				app_id: 42,
+				keyword_id: 1,
+				normalized: "terme un",
+				language: "fr",
+			},
+		],
+		trackedStorefronts: [
+			{
+				user_id: "operator",
+				app_id: 42,
+				normalized: "terme un",
+				language: "fr",
+				storefront_code: "lb",
+				locale_code: "fr-FR",
+			},
+		],
+	};
+	const { statements, summary, warnings } = planChanges(
+		{ operator: { ...ONE_APP, storefronts: ["lb"] } },
+		state,
+		{ prune: true }
+	);
+	assert.deepEqual(statements, []);
+	assert.equal(summary.pairsRetired, 0);
+	assert.equal(summary.storefrontsRemoved, 0);
+	assert.deepEqual(warnings, [
+		"lb: not in the reference data; add the storefront and its locales first",
+	]);
+});
+
+test("a numeric-string appId is the same app, not a new one on every run", () => {
+	const state = {
+		...EMPTY,
+		appLanguages: [{ app_id: 42, language: "fr" }],
+		apps: [{ id: 42, current_name: "App" }],
+		trackedApps: [{ user_id: "operator", app_id: 42 }],
+	};
+	const { errors, statements } = planChanges(
+		{ operator: { ...ONE_APP, appId: "42" } },
+		state
+	);
+	assert.deepEqual(errors, []);
+	assert.ok(
+		!statements.some((s) => /INTO (?:app|tracked_app|app_language) /u.test(s))
+	);
+});
+
+test("refuses a file with a bad appId or an empty keyword, and plans nothing", () => {
+	for (const bad of [
+		{ ...ONE_APP, appId: "abc" },
+		{ ...ONE_APP, appId: 1.5 },
+		{ ...ONE_APP, keywords: ["terme un", "  "] },
+		{ ...ONE_APP, keywords: "terme un" },
+		{ ...ONE_APP, language: "" },
+	]) {
+		const { errors, statements } = planChanges({ operator: bad }, EMPTY);
+		assert.equal(errors.length, 1, JSON.stringify(bad));
+		assert.deepEqual(statements, []);
+	}
+});
+
+test("reports repeated inner spaces without rewriting the keyword", () => {
+	// The collector and the dashboard normalise to lowercase, NFC, trimmed. A
+	// planner that also collapsed spaces would mint a second keyword row.
+	const { config, warnings } = validateConfig({
+		operator: { ...ONE_APP, keywords: ["terme  un"] },
+	});
+	assert.equal(warnings.length, 1);
+	assert.deepEqual(config.operator.keywords, ["terme  un"]);
+	assert.equal(normalize("terme  un"), "terme  un");
+});
+
+test("warns when two languages send one storefront the same search", () => {
+	const { warnings } = planChanges(
+		{
+			operator: {
+				apps: [
+					{ ...ONE_APP, language: "fr", storefronts: ["es"] },
+					{ ...ONE_APP, language: "es", storefronts: ["es"] },
+				],
+			},
+		},
+		EMPTY
+	);
+	assert.equal(warnings.length, 1);
+	assert.match(warnings[0], /^es \(es-ES\): 1 keyword/u);
+	// The term itself stays out of the output.
+	assert.ok(!warnings[0].includes("terme un"));
 });

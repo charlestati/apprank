@@ -7,13 +7,14 @@
 // what the collector says.
 
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import {
 	chmodSync,
 	copyFileSync,
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
+	readdirSync,
 	readFileSync,
 	writeFileSync,
 } from "node:fs";
@@ -48,7 +49,10 @@ function bin(dir, name, body) {
 }
 
 /** A checkout-shaped tree around a copy of the script, with stubbed tools. */
-function run(responses) {
+function run(
+	responses,
+	{ portHeld = false, staleConfig = false, verifyStatus = 0 } = {}
+) {
 	const root = mkdtempSync(path.join(tmpdir(), "local-refresh-"));
 	const scripts = path.join(root, "scripts", "local-refresh");
 	const collector = path.join(root, "apps", "collector");
@@ -63,11 +67,14 @@ function run(responses) {
 		path.join(import.meta.dirname, "refresh.sh"),
 		path.join(scripts, "refresh.sh")
 	);
-	bin(scripts, "verify.sh", "#!/bin/sh\nexit 0\n");
-	writeFileSync(path.join(collector, "wrangler.localcrawl.jsonc"), "{}");
+	bin(scripts, "verify.sh", `#!/bin/sh\nexit ${verifyStatus}\n`);
+	writeFileSync(
+		path.join(collector, "wrangler.localcrawl.jsonc"),
+		staleConfig ? "{}" : '{\n  "vars": {\n    "WORK_LOOP": "off"\n  }\n}\n'
+	);
 	writeFileSync(path.join(collector, ".dev.vars"), `ADMIN_TOKEN=${TOKEN}\n`);
 	bin(tools, "npx", "#!/bin/sh\necho 'Ready on http://localhost'\n");
-	bin(tools, "lsof", "#!/bin/sh\nexit 1\n");
+	bin(tools, "lsof", `#!/bin/sh\nexit ${portHeld ? 0 : 1}\n`);
 	bin(tools, "sleep", "#!/bin/sh\nexec /bin/sleep 0.01\n");
 	bin(tools, "curl", CURL);
 	for (const [job, bodies] of Object.entries(responses)) {
@@ -76,10 +83,11 @@ function run(responses) {
 			`${bodies.map((b) => JSON.stringify(b)).join("\n")}\n`
 		);
 	}
-	execFileSync("bash", [path.join(scripts, "refresh.sh")], {
+	const logs = path.join(root, "logs");
+	const { status } = spawnSync("bash", [path.join(scripts, "refresh.sh")], {
 		env: {
 			...process.env,
-			APPRANK_LOG_DIR: path.join(root, "logs"),
+			APPRANK_LOG_DIR: logs,
 			HOME: home,
 			PATH: `${tools}:${process.env.PATH}`,
 			STUB: stub,
@@ -90,9 +98,15 @@ function run(responses) {
 		existsSync(path.join(stub, name))
 			? readFileSync(path.join(stub, name), "utf-8")
 			: "";
+	const log = readdirSync(logs)
+		.filter((name) => name.startsWith("refresh-"))
+		.map((name) => readFileSync(path.join(logs, name), "utf-8"))
+		.join("");
 	return {
 		argv: read("curl.argv"),
 		calls: read("calls").split("\n").filter(Boolean),
+		log,
+		status,
 		stdin: read("curl.stdin"),
 	};
 }
@@ -143,4 +157,91 @@ test("the admin token never appears on curl's command line", () => {
 	assert.ok(argv.length > 0);
 	assert.doesNotMatch(argv, new RegExp(TOKEN, "u"));
 	assert.match(stdin, new RegExp(`^Authorization: Bearer ${TOKEN}$`, "mu"));
+});
+
+test("a cycle that collected everything due exits 0", () => {
+	const { status } = run({ crawl: [crawled(1), crawled(2)], step: [step()] });
+	assert.equal(status, 0);
+});
+
+test("a throttled cycle is not a green run", () => {
+	// Verify passes on a day nothing was collected, because it checks only the
+	// rows that exist. On a runner with one cron a day that green was the whole
+	// report, and the day's ranks were gone.
+	const { log, status } = run({
+		crawl: [{ empty: false, pairId: 1, throttled: true }],
+	});
+	assert.equal(status, 3);
+	assert.match(log, /INCOMPLETE: throttled=1/u);
+});
+
+test("a throttled step fails the cycle the same way", () => {
+	const hit = step({
+		errors: [{ endpoint: "lookup", errorClass: "throttled" }],
+		ok: false,
+	});
+	assert.equal(run({ step: [hit] }).status, 3);
+});
+
+test("a crawl loop that gave up with pairs still due exits 3", () => {
+	const { calls, status } = run({ crawl: ["", "", ""].map(() => "boom") });
+	assert.equal(calls.filter((c) => c === "crawl").length, 3);
+	assert.equal(status, 3);
+});
+
+test("a step drain that stopped short exits 3", () => {
+	const failed = step({
+		errors: [{ endpoint: "lookup", errorClass: "http_error" }],
+		ok: false,
+	});
+	assert.equal(run({ step: [failed, failed, failed, failed] }).status, 3);
+});
+
+test("a verify failure outranks an incomplete cycle", () => {
+	const throttledCrawl = [{ empty: false, pairId: 1, throttled: true }];
+	assert.equal(run({ crawl: throttledCrawl }, { verifyStatus: 1 }).status, 1);
+	assert.equal(run({ crawl: throttledCrawl }, { verifyStatus: 2 }).status, 2);
+});
+
+test("a held port is its own failure and touches nothing", () => {
+	// It answered 0, so an orphaned workerd turned every later cycle into a
+	// successful no-op.
+	const { calls, status } = run({ crawl: [crawled(1)] }, { portHeld: true });
+	assert.equal(status, 4);
+	assert.deepEqual(calls, []);
+});
+
+test("no logged body carries a keyword or a raw exception message", () => {
+	const secret = "terme secret";
+	const { log, status } = run({
+		crawl: [
+			{ empty: false, keyword: secret, pairId: 1, throttled: false },
+			{ error: "boom", keyword: secret },
+		],
+		daily: [{ error: "boom", keyword: secret, threw: secret }],
+		step: [
+			step({ keyword: secret }),
+			step({ ok: false, threw: `no such row for ${secret}` }),
+		],
+	});
+	// Every branch that logs a body ran: a crawl, a crawl error, a failed
+	// fan-out, a clean step and a step that threw.
+	assert.equal(status, 0);
+	for (const line of [
+		"crawled pair 1",
+		"error response",
+		"daily fan-out failed",
+		"step: ",
+		"step (recorded an error)",
+	]) {
+		assert.ok(log.includes(line), line);
+	}
+	assert.match(log, /"threw":"<redacted, see fetch_error>"/u);
+	assert.doesNotMatch(log, /terme secret/u);
+});
+
+test("a config written before WORK_LOOP is refused before anything is fetched", () => {
+	const { calls, status } = run({ crawl: [crawled(1)] }, { staleConfig: true });
+	assert.equal(status, 1);
+	assert.deepEqual(calls, []);
 });

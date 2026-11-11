@@ -90,6 +90,103 @@ export function buildSql(observations, trackedIds) {
 }
 
 // ---------------------------------------------------------------------------
+// Ranges, parts and drift: what keeps a rebuild bounded and a verify honest.
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/u;
+
+/** A calendar date as the archive writes it, and a real one. */
+export function isIsoDate(value) {
+	return (
+		typeof value === "string" &&
+		ISO_DATE.test(value) &&
+		!Number.isNaN(Date.parse(`${value}T00:00:00Z`))
+	);
+}
+
+/**
+ * The observed date a compacted rankings object holds, read from its key so a
+ * ranged rebuild downloads only the objects it needs.
+ */
+export function rankingKeyDate(key) {
+	return (
+		key.match(
+			/^rankings\/v1\/\d{4}-\d{2}\/[a-z]{2}\/(?<date>\d{4}-\d{2}-\d{2})\.ndjson$/u
+		)?.groups?.date ?? null
+	);
+}
+
+/** Inclusive on both ends; an absent bound is open. ISO dates order as strings. */
+export function inRange(date, since, until) {
+	return (!since || date >= since) && (!until || date <= until);
+}
+
+/**
+ * Keys grouped by the month they hold, in order.
+ *
+ * A month is the unit of work: every statement of a year joined into one
+ * string passed V8's string limit at roughly 124,000 observations, and one
+ * month's file is also about what a day of the free tier's write budget takes.
+ */
+export function byMonth(keys) {
+	const months = new Map();
+	for (const key of keys.toSorted()) {
+		const date = rankingKeyDate(key);
+		if (!date) {
+			continue;
+		}
+		const month = date.slice(0, 7);
+		months.set(month, [...(months.get(month) ?? []), key]);
+	}
+	return months;
+}
+
+/** rebuild.sql and "2026-09" give rebuild-2026-09.sql, beside the original. */
+export function partFile(outFile, part) {
+	const dot = outFile.lastIndexOf(".");
+	const slash = Math.max(outFile.lastIndexOf("/"), outFile.lastIndexOf("\\"));
+	return dot > slash + 1
+		? `${outFile.slice(0, dot)}-${part}${outFile.slice(dot)}`
+		: `${outFile}-${part}`;
+}
+
+/**
+ * Where the archive and D1 disagree, date by date, on (pair, date).
+ *
+ * Both directions are drift. An observation the archive holds and D1 does not
+ * is what a rebuild restores. One D1 holds and the archive does not is worse:
+ * it cannot be rebuilt, so pruning D1 on the strength of a verify that missed
+ * it would lose it (invariant 2).
+ *
+ * A date the archive has no object for is judged only when it is older than
+ * `settledBefore`: compaction runs overnight and catches up for a few days, so
+ * the newest dates are legitimately in D1 alone.
+ *
+ * @param archive Map of date to the Set of pair ids archived for it
+ * @param live    Map of date to the Set of pair ids D1 holds as valid
+ */
+export function findDrift(archive, live, settledBefore) {
+	const dates = new Set(archive.keys());
+	for (const date of live.keys()) {
+		if (date < settledBefore) {
+			dates.add(date);
+		}
+	}
+	const out = [];
+	for (const date of [...dates].toSorted()) {
+		const inArchive = archive.get(date) ?? new Set();
+		const inLive = live.get(date) ?? new Set();
+		const missingFromD1 = [...inArchive].filter((p) => !inLive.has(p)).length;
+		const missingFromArchive = [...inLive].filter(
+			(p) => !inArchive.has(p)
+		).length;
+		if (missingFromD1 > 0 || missingFromArchive > 0) {
+			out.push({ date, missingFromArchive, missingFromD1 });
+		}
+	}
+	return out;
+}
+
+// ---------------------------------------------------------------------------
 // Apple Ads popularity.
 //
 // Two archive shapes, both raw `{ result: { rows: [...] } }` bodies:

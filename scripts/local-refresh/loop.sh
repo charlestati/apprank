@@ -17,6 +17,9 @@ mkdir -p "$LOG_DIR"
 echo "$(date -u +%FT%TZ) loop start (pid $$, every ${INTERVAL}s)" >>"$LOG_DIR/loop.log"
 trap 'echo "$(date -u +%FT%TZ) loop stop" >>"$LOG_DIR/loop.log"; exit 0' TERM INT
 while true; do
+  # No exit code stops the loop. 3 (throttled, or work left due) and 4 (the
+  # previous cycle still holds the port) are exactly what the next interval is
+  # for; the code is logged so a run of them is visible.
   "$ROOT/scripts/local-refresh/refresh.sh"
   echo "$(date -u +%FT%TZ) cycle exit=$?, sleeping ${INTERVAL}s" >>"$LOG_DIR/loop.log"
   # `sleep` as a foreground command defers signal handling until it returns, so

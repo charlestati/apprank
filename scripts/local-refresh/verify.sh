@@ -112,7 +112,7 @@ note "rankings today: $today / $pairs active pairs"
 [ "$noprov" -eq 0 ] || { note "FAIL $noprov ranking(s) missing provenance"; fail=1; }
 [ "$empty" -eq 0 ]  || { note "FAIL $empty ranking(s) with zero results behind a non-200, a throttle stored as an observation"; fail=1; }
 # A 200 that returns nothing is a real answer: Apple's adult-content filter
-# empties `jeu adulte` in every storefront at 200 in under 200ms. Failing on it
+# empties a filtered term in every storefront at 200 in under 200ms. Failing on it
 # made the whole check permanently red, which is how a genuine single-pair loss
 # stayed unnoticed for two days.
 [ "$empty_pages" -eq 0 ] || note "note: $empty_pages keyword(s) returned an empty page at 200"

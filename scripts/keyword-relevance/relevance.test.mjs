@@ -4,7 +4,9 @@ import { test } from "node:test";
 
 import {
 	cosine,
+	dismissSql,
 	nearest,
+	parseThreshold,
 	scoreByUser,
 	scoreCandidates,
 	split,
@@ -99,4 +101,21 @@ test("leaves a user's suggestions unscored when that user tracks nothing to comp
 	);
 	assert.deepEqual(scored, []);
 	assert.deepEqual(unscored, [{ id: 3, term: "météo", userId: "carol" }]);
+});
+
+test("a threshold is a number between 0 and 1, or it is refused", () => {
+	// 75 was a percentage typed by habit: every score is below it, so --apply
+	// dismissed the whole inbox, for good.
+	assert.equal(parseThreshold("0.75"), 0.75);
+	assert.equal(parseThreshold("0"), 0);
+	assert.equal(parseThreshold("1"), 1);
+	for (const bad of ["75", "-0.1", "abc", "", "--apply", undefined]) {
+		assert.equal(parseThreshold(bad), null, String(bad));
+	}
+});
+
+test("dismisses only suggestions that are still pending", () => {
+	// One accepted on the dashboard while the model ran keeps its status.
+	const sql = dismissSql([3, 7]);
+	assert.match(sql, /WHERE status = 'pending' AND id IN \(3,7\)$/u);
 });

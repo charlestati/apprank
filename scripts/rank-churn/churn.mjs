@@ -152,3 +152,18 @@ export function noiseFloor(rows, limit = 0.1) {
 	const hit = rows.find((r) => r.dropRate !== null && r.dropRate >= limit);
 	return hit ? Number(hit.band.split("-")[0]) : null;
 }
+
+/**
+ * `--days` as a whole number of days, or null. Anything else reached
+ * `toISOString` as an invalid date and died with a RangeError naming neither
+ * the flag nor the value.
+ */
+export function parseDays(raw) {
+	const value = Number(raw);
+	return Number.isInteger(value) && value >= 1 && value <= 3650 ? value : null;
+}
+
+/** A storefront code and nothing else: the value goes into SQL as written. */
+export function isStorefrontCode(raw) {
+	return typeof raw === "string" && /^[a-z]{2}$/u.test(raw);
+}

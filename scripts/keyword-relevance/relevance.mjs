@@ -104,3 +104,32 @@ export function split(scored, threshold) {
 		keep: scored.filter((s) => s.score >= threshold),
 	};
 }
+
+/**
+ * A cut between 0 and 1, or null when the flag does not hold one.
+ *
+ * Cosine scores live in that range. `--threshold 75`, a percentage typed by
+ * habit, put every suggestion below the cut, and a dismissed proposal is never
+ * offered again; a NaN compared false everywhere and dismissed nothing, which
+ * looked like a clean run.
+ */
+export function parseThreshold(raw) {
+	const value = Number(raw);
+	return typeof raw === "string" &&
+		raw.trim() !== "" &&
+		Number.isFinite(value) &&
+		value >= 0 &&
+		value <= 1
+		? value
+		: null;
+}
+
+/**
+ * The dismissal, limited to rows still pending. Scoring takes minutes of model
+ * time, and a suggestion accepted on the dashboard meanwhile has tracking rows
+ * behind it: flipping it to dismissed would leave those rows with no accepted
+ * suggestion to explain them.
+ */
+export function dismissSql(ids) {
+	return `UPDATE suggestion SET status = 'dismissed' WHERE status = 'pending' AND id IN (${ids.map(Number).join(",")})`;
+}
