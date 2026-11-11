@@ -5,6 +5,10 @@ gets a 401 and a browser credential prompt. Not the page, not the API. With no
 accounts configured it serves nothing at all (503), so a fresh deployment is
 never accidentally public.
 
+One route is public on purpose: `GET /api/health`, so an uptime check works
+without credentials. It names no app and no keyword. `/mcp`, when enabled, skips
+Basic for its own bearer-token gate, described in [MCP](mcp.md).
+
 Accounts live in one secret, as JSON:
 
 ```sh

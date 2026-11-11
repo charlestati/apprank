@@ -22,10 +22,11 @@
 The unit is the **crawl pair**: one keyword in one storefront. 20 keywords
 across 5 storefronts is 100 pairs.
 
-One daily Actions run fits about 100 pair crawls. Past that the collector checks
-the least informative pairs less often rather than dropping any, because a
-dropped pair loses its history for good. Cloudflare's limits are nowhere near
-binding at that size. [The numbers](docs/limits.md).
+One daily Actions run crawls up to 500 pairs as shipped, in under two hours.
+Past what fits, the collector checks the least informative pairs less often
+rather than dropping any, because a dropped pair loses its history for good.
+Cloudflare's limits are nowhere near binding at that size.
+[The numbers](docs/limits.md).
 
 ## Docs
 

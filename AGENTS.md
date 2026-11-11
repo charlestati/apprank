@@ -17,7 +17,7 @@ when you open a file it covers:
 | `web.md`       | `apps/web/src/**`                                           | The MCP transport, access control, read budget               |
 | `dashboard.md` | `apps/web/client/**`                                        | What the report is for, and what the chart must not collapse |
 | `schema.md`    | `packages/core/src/schema/**`, `migrations/**`              | The data model, the single baseline migration                |
-| `testing.md`   | `**/test/**`                                                | Workers-pool quirks                                          |
+| `testing.md`   | `**/test/**`, `**/*.test.*`                                 | Workers-pool quirks                                          |
 
 `README.md` is the pitch and quick start. `docs/` holds the operator guides:
 `deploy`, `credentials`, `access`, `mcp`, `limits`, `architecture`.
@@ -76,21 +76,23 @@ pnpm rebuild:d1    # R2 to D1 rebuild (not "rebuild": pnpm rebuild is a built-in
 pnpm deploy        # collector then web
 ```
 
-CI runs `pnpm audit`, then `pnpm run ci`, so it never calls `test`: `coverage`
-runs the same suites. `pnpm audit` must report nothing; an advisory with no
-patched release is ignored only under `audit.ignore` in `pnpm-workspace.yaml`,
-with how it is reached and a review date beside it. Two git hooks in
-`.githooks/` catch the same failures earlier: `pre-commit` runs `lint` (~1s) and
-`pre-push` runs `typecheck` and `test` (~10s together, which is why neither
-filters by changed file). The root `prepare` script points `core.hooksPath` at
-that directory, but **pnpm skips `prepare` when an install is a no-op**, so a
-clone that was already installed when this landed needs one `pnpm run prepare`.
-Both hooks are bypassable with `--no-verify`: they catch accidents, not policy.
+CI runs `pnpm audit`, then `pnpm run ci`, then `pnpm --filter web build`, so it
+never calls `test`: `coverage` runs the same suites, and the build step is there
+because nothing else bundles the client before `pnpm deploy`. `pnpm audit` must
+report nothing; an advisory with no patched release is ignored only under
+`audit.ignore` in `pnpm-workspace.yaml`, with how it is reached and a review
+date beside it. Two git hooks in `.githooks/` catch the same failures earlier:
+`pre-commit` runs `lint` (~1s) and `pre-push` runs `typecheck` and `test` (~10s
+together, which is why neither filters by changed file). The root `prepare`
+script points `core.hooksPath` at that directory, but **pnpm skips `prepare`
+when an install is a no-op**, so a clone that was already installed when this
+landed needs one `pnpm run prepare`. Both hooks are bypassable with
+`--no-verify`: they catch accidents, not policy.
 
 `wrangler.jsonc` is committed with placeholder ids. Every script prefers
-`wrangler.local.jsonc` (gitignored) when present. That is where real
-`database_id` and `APP_URL` values live. Personal seeds live in
-`packages/core/seeds/local/` (also gitignored).
+`wrangler.local.jsonc` (gitignored) when present. That is where the real
+`database_id` lives, and the deployed collector's `COLLECTION_MODE`. Personal
+seeds live in `packages/core/seeds/local/` (also gitignored).
 
 ## Conventions
 
@@ -102,8 +104,11 @@ Both hooks are bypassable with `--no-verify`: they catch accidents, not policy.
   Vitest, the Workers test plugin, Wrangler) live once in the `catalog`, which
   the packages reference as `catalog:`. Renovate proposes upgrades with the same
   seven-day age.
-- **Every strict compiler flag is on** in `tsconfig.base.json`, tests included,
-  and no workspace relaxes one. Under `exactOptionalPropertyTypes` an optional
+- **`strict` and the stricter flags listed in `tsconfig.base.json` are on**
+  (`exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`,
+  `noImplicitOverride`, `noFallthroughCasesInSwitch`, `erasableSyntaxOnly`,
+  `verbatimModuleSyntax`), tests and the Vitest and Vite configs included, and
+  no workspace relaxes one. Under `exactOptionalPropertyTypes` an optional
   property that may receive an explicit `undefined` (anything parsed by zod)
   says so: `limit?: number | undefined`.
 - **`fetch_error.error_class` is a closed vocabulary, never a message.** The

@@ -94,8 +94,10 @@ staging/rankings/{date}/{pairId}.json                pre-compaction (7-day lifec
 verbatim/{date}/…-{throttled,error}.json             failure bodies (21-day lifecycle)
 verbatim/{date}/….json.gz                            1-in-10 success sample, gzipped (21-day lifecycle)
 asc/{appId}/{report}/{granularity}/{date}-….tsv.gz   App Store Connect, as downloaded
+asc/{appId}/report-list-{requestId}.json             App Store Connect report list (diagnostic)
 ads/popularity/{week}/{storefront}/{genreId}-{CAT}.json  Apple Ads genre list
-ads/popularity-terms/{week}/{storefront}/{n}.json    Apple Ads, by tracked term
+ads/popularity-terms/{week}/{storefront}/{offset}-{hash}.json  Apple Ads, by tracked term
+ads/discover/{date}/{storefront}/{appId}/{seed}.json  Apple Ads keyword suggestions
 charts/{yyyy-mm}/{sf}/{chart}/{genre|all}/{date}.json.gz  chart feed, gzipped
 lookups/… reviews/…                                  as fetched
 ```
@@ -107,7 +109,10 @@ suffixes.
 
 D1 holds a hot window, the archive holds everything, which is what makes
 pruning, retention and schema changes performance choices rather than lossy
-ones. Rebuild with `pnpm rebuild:d1` (not `pnpm rebuild`, a pnpm built-in).
+ones. Rebuild with `pnpm rebuild:d1` (not `pnpm rebuild`, a pnpm built-in). It
+reads R2 over the S3 API, so it needs `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID` and
+`R2_SECRET_ACCESS_KEY` in the environment, listed in
+[credentials](credentials.md).
 
 It reads `rankings/v1/` and writes `ranking`, its `rank_entry` index (the
 crawler's rule: top 10 plus tracked apps, which is why it also needs wrangler

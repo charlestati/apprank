@@ -24,7 +24,16 @@ cp apps/collector/wrangler.jsonc apps/collector/wrangler.local.jsonc
 cp apps/web/wrangler.jsonc apps/web/wrangler.local.jsonc
 ```
 
-Paste your `database_id` into both, and set `APP_URL` in the web config.
+Paste your `database_id` into both. In the collector's copy, also set
+`COLLECTION_MODE` to `credentialed`:
+
+```jsonc
+"vars": { "COLLECTION_MODE": "credentialed" }
+```
+
+The committed default is `all`, which is right for the runner and wrong for a
+Worker: [collection runs in two places](#collection-runs-in-two-places) says
+why.
 
 ## Schema, reference data, tracked set
 
@@ -38,6 +47,15 @@ cp tracked.example.json tracked.local.json
 pnpm track            # shows what would change, writes nothing
 pnpm track --apply
 ```
+
+A storefront has to be **active** as well as listed. `storefront.active` gates
+everything except the rank crawl: lookups (ratings, metadata, release markers),
+reviews, charts and both Apple Ads passes skip an inactive storefront, and none
+of that history can be backfilled. The reference seed ships most storefronts
+inactive, `us` and `gb` among them, because which markets a deployment collects
+is the operator's decision. `pnpm track` warns about every listed storefront
+that is inactive and prints the statement that fixes it;
+`pnpm track --activate --apply` writes it.
 
 `tracked.local.json` is gitignored, so your app ids and keyword lists stay out
 of the repository. `pnpm track` is idempotent and diff-first: re-running it
@@ -75,10 +93,11 @@ App Store Connect and Apple Ads are optional and have their own setup in
 ## Collection runs in two places
 
 Both halves are required. The Worker takes App Store Connect and Apple Ads,
-which Apple serves it without complaint, and sets `COLLECTION_MODE=credentialed`
-so it queues only those. The workflow takes the public iTunes endpoints, which
-Apple rate-limits per IP: a Worker gets 429 on every keyword search, at one
-request per minute, while the same request from an ordinary connection succeeds.
+which Apple serves it without complaint, and runs with
+`COLLECTION_MODE=credentialed` (set above) so it queues only those. The workflow
+takes the public iTunes endpoints, which Apple rate-limits per IP: a Worker gets
+429 on every keyword search, at one request per minute, while the same request
+from an ordinary connection succeeds.
 
 Leaving the Worker in `all` mode is not free. Every 429 feeds the daily tally
 that halves the learned crawl rate, so it degrades the signal deciding how often
@@ -93,6 +112,13 @@ local to each process; only the data is shared.
 backfilling a day or verifying a credential. Either way a cycle ends at the
 first throttle, crawl or step, and leaves what is still queued for the next one,
 because every request after it would land on the same rate-limited address.
+
+GitHub disables scheduled workflows in a public repository
+[when no repository activity has occurred in 60 days](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/disable-and-enable-workflows).
+A deployment that is simply left to run stops collecting at that point, and
+ranks from the days it missed cannot be recovered. Nothing here keeps the
+schedule alive: push a commit, or re-enable the workflow from the Actions tab,
+before the sixty days are up.
 
 ## GitHub Actions secrets
 
