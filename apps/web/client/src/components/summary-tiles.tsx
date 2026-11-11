@@ -50,7 +50,10 @@ export function SummaryTiles({
 	const maxBucket = Math.max(d.top5, d.top25, d.top100, d.beyond, 1);
 	const moved = m.up + m.down + m.unchanged || 1;
 	const bucketTitle = (label: string, count: number) =>
-		fmt(t.distributionBucket, { count, label });
+		fmt(count === 1 ? t.distributionBucketOne : t.distributionBucket, {
+			count,
+			label,
+		});
 
 	return (
 		<div className="tiles">

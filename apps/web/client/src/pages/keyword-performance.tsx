@@ -7,7 +7,7 @@ import type { KeywordRow, Report, StorefrontOption, TrackedApp } from "../api";
 import { AppIcon } from "../components/app-icon";
 import { Delta } from "../components/delta";
 import { Difficulty } from "../components/difficulty";
-import { InfoTip } from "../components/info-tip";
+import { Hint, InfoTip } from "../components/info-tip";
 import { Meter } from "../components/meter";
 import { Opportunities } from "../components/opportunities";
 import { RankSeriesChart } from "../components/rank-series-chart";
@@ -18,7 +18,8 @@ import { Select } from "../components/select";
 import { SeriesGlyph } from "../components/series-glyph";
 import { SummaryTiles } from "../components/summary-tiles";
 import { useFormat } from "../format";
-import { fmt, plural, reasonText, useT } from "../i18n";
+import { changedFields, fmt, plural, reasonText, useT } from "../i18n";
+import type { Dictionary } from "../i18n";
 import {
 	cached,
 	chartKey,
@@ -69,6 +70,40 @@ function popularityBand(t: ReturnType<typeof useT>, value: number): string {
 		(b) => value >= b.min && value <= b.max
 	);
 	return band ? t[band.key] : "";
+}
+
+/**
+ * Why a row has no rank to show, when that is not itself an observation.
+ *
+ * `position: null` alone cannot say: it is what the server sends for "observed
+ * outside the top 200" and for "nothing observed in this window". The first is
+ * data and keeps its dash. The second is a hole, and printing the same dash for
+ * it made a throttled week read as a keyword that had stopped ranking.
+ */
+function unobserved(row: KeywordRow): "failed" | "pending" | null {
+	if (row.points.length > 0) {
+		return null;
+	}
+	return row.fetchErrors.length > 0 ? "failed" : "pending";
+}
+
+/** The cell for a row with no observation: a word, never the dash. */
+function NoObservation({
+	state,
+	t,
+}: {
+	state: "failed" | "pending";
+	t: Dictionary;
+}) {
+	const failed = state === "failed";
+	return (
+		<span
+			className={failed ? "rank rank-gap rank-gap-failed" : "rank rank-gap"}
+			title={failed ? t.cellFailedTitle : t.cellNoDataTitle}
+		>
+			{failed ? t.cellFailed : t.cellNoData}
+		</span>
+	);
 }
 
 function rankBand(position: number | null): string {
@@ -215,9 +250,12 @@ function useStorefront(appId: number | null): {
 	options: StorefrontOption[];
 	storefront: string;
 	setStorefront: (code: string | null) => void;
+	/** Whether the list has answered, and whether that answer was a failure. */
+	status: "loading" | "ready" | "failed";
 } {
 	const [listed, setListed] = useState<{
 		appId: number;
+		failed: boolean;
 		options: StorefrontOption[];
 	} | null>(null);
 	const [chosen, setChosen] = useState<{ appId: number; code: string } | null>(
@@ -231,15 +269,19 @@ function useStorefront(appId: number | null): {
 		let live = true;
 		(async () => {
 			let options: StorefrontOption[] = [];
+			let failed = false;
 			try {
 				options = await api.storefronts(appId);
 			} catch {
-				// No storefronts is the honest answer to a failed list.
+				// Kept apart from an empty list: with no storefront there is no
+				// report to ask for, and the page has to say which of the two it is
+				// rather than wait for a report that will never be requested.
+				failed = true;
 			}
 			if (!live) {
 				return;
 			}
-			setListed({ appId, options });
+			setListed({ appId, failed, options });
 			// The previous choice survives only where the new app is tracked too.
 			setChosen((held) => ({
 				appId,
@@ -265,9 +307,15 @@ function useStorefront(appId: number | null): {
 		[appId]
 	);
 
+	const answered = listed?.appId === appId ? listed : null;
+	let status: "loading" | "ready" | "failed" = "loading";
+	if (answered) {
+		status = answered.failed ? "failed" : "ready";
+	}
 	return {
-		options: listed?.appId === appId ? listed.options : [],
+		options: answered?.options ?? [],
 		setStorefront,
+		status,
 		storefront: chosen?.appId === appId ? chosen.code : "",
 	};
 }
@@ -322,6 +370,39 @@ function useReport(
 	};
 }
 
+/**
+ * What stands in for the report while there is none, and why.
+ *
+ * No storefront means no report was ever asked for, so "loaded" can never come
+ * true: an empty or failed storefront list has to be said here, or the page
+ * says "Loading…" for ever.
+ */
+function ReportStatus({
+	storefronts,
+	storefrontCount,
+	loaded,
+	hasReport,
+}: {
+	storefronts: "loading" | "ready" | "failed";
+	storefrontCount: number;
+	loaded: boolean;
+	hasReport: boolean;
+}) {
+	const t = useT();
+	if (hasReport) {
+		return null;
+	}
+	let message = t.loading;
+	if (storefronts === "failed") {
+		message = t.storefrontsFailed;
+	} else if (storefronts === "ready" && storefrontCount === 0) {
+		message = t.storefrontsEmpty;
+	} else if (loaded) {
+		message = t.reportFailed;
+	}
+	return <p className="empty">{message}</p>;
+}
+
 export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 	const f = useFormat();
 	const t = useT();
@@ -333,8 +414,8 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 	// Everything else greys out: contrast is what carries the story, not eight
 	// equally loud lines.
 	const [focused, setFocused] = useState<number | null>(null);
-	/** The release the reader is pointing at, by date; the other pins grey out. */
-	const [focusedMarker, setFocusedMarker] = useState<string | null>(null);
+	/** The release the reader is pointing at, by index; the other pins grey out. */
+	const [focusedMarker, setFocusedMarker] = useState<number | null>(null);
 	const navigate = useNavigate();
 
 	const appId = app?.id ?? null;
@@ -342,6 +423,7 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 		options: storefrontOptions,
 		storefront,
 		setStorefront,
+		status: storefrontStatus,
 	} = useStorefront(appId);
 	const { report, loaded, reportKey } = useReport(appId, storefront, days);
 	// Legend visibility, kept apart from membership below. A new report is a
@@ -440,10 +522,17 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 		});
 	}, [report, filter, band]);
 
+	// Two different empty charts, and neither is the collector's doing: every
+	// line hidden from the legend, or every keyword unticked in the table. The
+	// chart's own empty state would blame both on collection.
+	let emptyChart: string | null = null;
+	if (chartSeries.length === 0 && (report?.rows.length ?? 0) > 0) {
+		emptyChart = members.length > 0 ? t.allSeriesHidden : t.noKeywordSelected;
+	}
+
 	if (!app) {
 		return <p className="empty">{t.noAppTracked}</p>;
 	}
-
 	return (
 		<>
 			<header className="page-header">
@@ -482,8 +571,12 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 				</div>
 			</div>
 
-			{loaded || report ? null : <p className="empty">{t.loading}</p>}
-			{loaded && !report ? <p className="empty">{t.reportFailed}</p> : null}
+			<ReportStatus
+				hasReport={report !== null}
+				loaded={loaded}
+				storefronts={storefrontStatus}
+				storefrontCount={storefrontOptions.length}
+			/>
 
 			{report ? (
 				<>
@@ -496,8 +589,8 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 							{/* Distinguished from "nothing was collected": the chart's own
                   empty state would tell a reader who just hid four lines
                   that the collector had not run. */}
-							{members.length > 0 && chartSeries.length === 0 ? (
-								<p className="empty">{t.allSeriesHidden}</p>
+							{emptyChart ? (
+								<p className="empty">{emptyChart}</p>
 							) : (
 								<RankSeriesChart
 									describedBy="chart-caption"
@@ -520,9 +613,14 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 							<figcaption className="sr-only" id="chart-caption">
 								{fmt(t.chartCaption, {
 									app: app.current_name ?? "",
-									from: report.window.from,
-									n: chartSeries.length,
-									to: report.window.to,
+									from: f.day(report.window.from),
+									keywords: plural(
+										t,
+										chartSeries.length,
+										"nKeyword",
+										"nKeywords"
+									),
+									to: f.day(report.window.to),
 								})}
 							</figcaption>
 						</figure>
@@ -535,11 +633,9 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
                       drawn. A hidden series that took its own control away
                       with it could only be recovered from the table. */}
 										<button
-											aria-label={
-												shown
-													? fmt(t.hideFromChart, { keyword: row.keyword })
-													: fmt(t.showOnChart, { keyword: row.keyword })
-											}
+											// One name, with the state in aria-pressed. A name that
+											// flipped with it announced "Hide X, pressed".
+											aria-label={fmt(t.showOnChart, { keyword: row.keyword })}
 											aria-pressed={shown}
 											className={
 												(focused !== null && focused !== row.pairId) || !shown
@@ -578,7 +674,7 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 						{report.metadataChanges.length > 0 ? (
 							<ol className="marker-key">
 								{report.metadataChanges.map((change, i) => (
-									<li key={change.date}>
+									<li key={`${change.date}-${i}`}>
 										{/* A button, like the series legend, so pointing at a
                         release greys the other pins and works from the keyboard
                         as well as the mouse. The same glyph and numeral as the
@@ -586,13 +682,13 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
                         releases fall close together. */}
 										<button
 											className={
-												focusedMarker !== null && focusedMarker !== change.date
+												focusedMarker !== null && focusedMarker !== i
 													? "marker-key-item marker-key-muted"
 													: "marker-key-item"
 											}
 											onBlur={() => setFocusedMarker(null)}
-											onFocus={() => setFocusedMarker(change.date)}
-											onMouseEnter={() => setFocusedMarker(change.date)}
+											onFocus={() => setFocusedMarker(i)}
+											onMouseEnter={() => setFocusedMarker(i)}
 											onMouseLeave={() => setFocusedMarker(null)}
 											type="button"
 										>
@@ -602,7 +698,7 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 												{f.day(change.date)}
 												{change.version ? ` · ${change.version}` : ""}
 												{change.changed.length > 0
-													? ` · ${change.changed.join(", ")}`
+													? ` · ${changedFields(t, change.changed)}`
 													: ""}
 											</span>
 										</button>
@@ -618,7 +714,12 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 								aria-label={t.filterKeywords}
 								className="search"
 								onChange={(e) => setFilter(e.target.value)}
-								placeholder={fmt(t.filterNKeywords, { n: report.rows.length })}
+								placeholder={plural(
+									t,
+									report.rows.length,
+									"filterOneKeyword",
+									"filterNKeywords"
+								)}
 								type="search"
 								value={filter}
 							/>
@@ -708,160 +809,182 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 									</tr>
 								</thead>
 								<tbody>
-									{rows.map((row: KeywordRow) => (
-										<tr
-											className={
-												focused === row.pairId ? "row-focused" : undefined
-											}
-											key={row.pairId}
-											onFocus={() => setFocused(row.pairId)}
-											onMouseEnter={() => setFocused(row.pairId)}
-											onMouseLeave={() => setFocused(null)}
-										>
-											<td className="kw">
-												{/* A tick box, not a bare swatch: the row has to say
+									{rows.map((row: KeywordRow) => {
+										const gap = unobserved(row);
+										return (
+											<tr
+												className={
+													focused === row.pairId ? "row-focused" : undefined
+												}
+												key={row.pairId}
+												// Focus events bubble, so this fires as focus leaves any
+												// control in the row. Without it, tabbing out of the
+												// table left the chart dimmed until a mouse moved.
+												onBlur={() => setFocused(null)}
+												onFocus={() => setFocused(row.pairId)}
+												onMouseEnter={() => setFocused(row.pairId)}
+												onMouseLeave={() => setFocused(null)}
+											>
+												<td className="kw">
+													{/* A tick box, not a bare swatch: the row has to say
                             whether the keyword is on the chart before it is
                             clicked, and say so when the chart is full. The
                             title sits on the wrapper because a disabled
                             control explains nothing on hover. */}
-												<span
-													title={
-														atCapacity && !styleIndex.has(row.pairId)
-															? fmt(t.chartFull, { max: CHART_SERIES })
-															: undefined
-													}
-												>
-													<button
-														aria-label={
-															styleIndex.has(row.pairId)
-																? fmt(t.removeFromChart, {
-																		keyword: row.keyword,
-																	})
-																: fmt(t.addToChart, { keyword: row.keyword })
-														}
-														aria-pressed={styleIndex.has(row.pairId)}
-														className="swatch-button"
-														disabled={atCapacity && !styleIndex.has(row.pairId)}
-														onClick={() => toggleMember(row.pairId)}
-														type="button"
-													>
-														<span aria-hidden="true" className="tick" />
-														<SeriesGlyph
-															style={styleIndex.get(row.pairId) ?? null}
-														/>
-													</button>
-												</span>
-												<button
-													className="link"
-													onClick={() =>
-														navigate(`/pairs/${row.pairId}`, {
-															state: {
-																keyword: row.keyword,
-																storefront: report.storefront,
-															},
-														})
-													}
-													type="button"
-												>
-													{row.keyword}
-												</button>
-											</td>
-											<td className="num">
-												<span className="rank-cell">
 													<span
-														className={rankBand(row.position)}
 														title={
-															row.verdict
-																? reasonText(
-																		t,
-																		row.verdict.reasonKey,
-																		row.verdict.reason
-																	)
+															atCapacity && !styleIndex.has(row.pairId)
+																? fmt(t.chartFull, { max: CHART_SERIES })
 																: undefined
 														}
 													>
-														{row.position ?? "—"}
-													</span>
-													{row.verdict?.unproven ? (
-														<sup className="unproven" title={t.unprovenTitle}>
-															~
-														</sup>
-													) : null}
-												</span>
-											</td>
-											<td className="num">
-												<Delta
-													change={row.change}
-													daysAgo={row.changeDaysAgo}
-												/>
-											</td>
-											<td>
-												<Meter
-													label={t.popularity}
-													title={
-														row.popularity === null
-															? t.popularityNone
-															: fmt(t.popularityTitle, {
-																	band: popularityBand(t, row.popularity),
-																	n: row.popularity,
-																})
-													}
-													value={row.popularity}
-												/>
-											</td>
-											<td>
-												<Difficulty value={row.difficulty} />
-											</td>
-											<td className="num subtle">
-												{row.best ?? "—"} / {row.worst ?? "—"}
-											</td>
-											<td>
-												<div className="results">
-													{row.topResults.length === 0 ? (
-														<span className="subtle">—</span>
-													) : (
-														row.topResults
-															.slice(0, TOP_RESULTS_SHOWN)
-															.map((r) => (
-																<span
-																	className="result-app"
-																	key={r.appId}
-																	title={`${r.position}. ${r.name}`}
-																>
-																	<AppIcon
-																		iconUrl={r.iconUrl}
-																		label={`${r.position}. ${r.name}`}
-																		name={r.name}
-																	/>
-																</span>
-															))
-													)}
-													{row.resultCount ? (
 														<button
-															className="link results-link"
-															onClick={() => setResultsFor(row)}
+															aria-label={fmt(t.chartMember, {
+																keyword: row.keyword,
+															})}
+															aria-pressed={styleIndex.has(row.pairId)}
+															className="swatch-button"
+															disabled={
+																atCapacity && !styleIndex.has(row.pairId)
+															}
+															onClick={() => toggleMember(row.pairId)}
 															type="button"
 														>
-															{t.view}
+															<span aria-hidden="true" className="tick" />
+															<SeriesGlyph
+																style={styleIndex.get(row.pairId) ?? null}
+															/>
 														</button>
-													) : null}
-												</div>
-											</td>
-											<td className="num subtle">
-												{row.resultCount ?? "—"}
-												{row.resultCountChange && row.resultCountChange > 20 ? (
-													<span
-														className="contested"
-														title={fmt(t.contestedTitle, {
-															n: row.resultCountChange,
-														})}
-													>
-														<ArrowUp aria-hidden="true" size={12} />
 													</span>
-												) : null}
-											</td>
-										</tr>
-									))}
+													<button
+														className="link"
+														onClick={() =>
+															navigate(`/pairs/${row.pairId}`, {
+																state: {
+																	keyword: row.keyword,
+																	storefront: report.storefront,
+																},
+															})
+														}
+														type="button"
+													>
+														{row.keyword}
+													</button>
+												</td>
+												<td className="num">
+													<span className="rank-cell">
+														{gap ? (
+															<NoObservation state={gap} t={t} />
+														) : (
+															<span
+																className={rankBand(row.position)}
+																title={
+																	row.verdict
+																		? reasonText(
+																				t,
+																				row.verdict.reasonKey,
+																				row.verdict.reason
+																			)
+																		: undefined
+																}
+															>
+																{row.position ?? "—"}
+															</span>
+														)}
+														{/* Behind a trigger like every other explanation: a
+													    bare "~" with a title was a footnote neither touch
+													    nor the keyboard could open. */}
+														{row.verdict?.unproven ? (
+															<Hint
+																className="footnote-mark unproven"
+																label={t.unproven}
+																mark="~"
+															>
+																{t.unprovenTitle}
+															</Hint>
+														) : null}
+													</span>
+												</td>
+												<td className="num">
+													<Delta
+														change={row.change}
+														daysAgo={row.changeDaysAgo}
+													/>
+												</td>
+												<td>
+													<Meter
+														label={t.popularity}
+														title={
+															row.popularity === null
+																? t.popularityNone
+																: fmt(t.popularityTitle, {
+																		band: popularityBand(t, row.popularity),
+																		n: row.popularity,
+																	})
+														}
+														value={row.popularity}
+													/>
+												</td>
+												<td>
+													<Difficulty value={row.difficulty} />
+												</td>
+												<td className="num subtle">
+													{gap ? (
+														<NoObservation state={gap} t={t} />
+													) : (
+														`${row.best ?? "—"} / ${row.worst ?? "—"}`
+													)}
+												</td>
+												<td>
+													<div className="results">
+														{row.topResults.length === 0 ? (
+															<span className="subtle">—</span>
+														) : (
+															row.topResults
+																.slice(0, TOP_RESULTS_SHOWN)
+																.map((r) => (
+																	<span
+																		className="result-app"
+																		key={r.appId}
+																		title={`${r.position}. ${r.name}`}
+																	>
+																		<AppIcon
+																			iconUrl={r.iconUrl}
+																			label={`${r.position}. ${r.name}`}
+																			name={r.name}
+																		/>
+																	</span>
+																))
+														)}
+														{row.resultCount ? (
+															<button
+																className="link results-link"
+																onClick={() => setResultsFor(row)}
+																type="button"
+															>
+																{t.view}
+															</button>
+														) : null}
+													</div>
+												</td>
+												<td className="num subtle">
+													{row.resultCount ?? "—"}
+													{row.resultCountChange &&
+													row.resultCountChange > 20 ? (
+														<Hint
+															className="footnote-mark contested"
+															label={t.contested}
+															mark={<ArrowUp size={12} />}
+														>
+															{fmt(t.contestedTitle, {
+																n: row.resultCountChange,
+															})}
+														</Hint>
+													) : null}
+												</td>
+											</tr>
+										);
+									})}
 									{rows.length === 0 ? (
 										<tr>
 											<td className="empty" colSpan={8}>

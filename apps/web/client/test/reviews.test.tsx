@@ -30,12 +30,13 @@ describe("Reviews page", () => {
 		).resolves.toBeDefined();
 	});
 
-	it("treats a failed request as an empty list", async () => {
+	it("says a failed request failed, not that nothing was collected", async () => {
 		stubFetch({ reviews: new Response("", { status: 500 }) });
 		render(<Reviews app={trackedApp} />);
 		await expect(
-			screen.findByText(/Nothing collected yet/u)
+			screen.findByText(/could not be loaded/u)
 		).resolves.toBeDefined();
+		expect(screen.queryByText(/Nothing collected yet/u)).toBeNull();
 	});
 
 	it("renders the star rating, tags and body", async () => {
@@ -71,9 +72,15 @@ describe("Reviews page", () => {
 			reviews: [review({ id: "review-2", rating: null, title: "No rating" })],
 		});
 		render(<Reviews app={trackedApp} />);
-		const unrated = await screen.findByLabelText("? stars");
+		const unrated = await screen.findByLabelText("Not rated");
 		expect(unrated.querySelectorAll("svg")).toHaveLength(5);
 		expect(unrated.querySelectorAll(".star-on")).toHaveLength(0);
+	});
+
+	it("counts one star in the singular", async () => {
+		stubFetch({ reviews: [review({ rating: 1 })] });
+		render(<Reviews app={trackedApp} />);
+		await expect(screen.findByLabelText("1 star")).resolves.toBeDefined();
 	});
 
 	it("splits author, storefront and version into their own tags", async () => {

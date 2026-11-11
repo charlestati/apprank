@@ -12,7 +12,7 @@ import { dataHealth, stubFetch } from "./harness";
 const HOUR_MS = 3_600_000;
 
 function errorRow(
-	errorClass: string,
+	errorClass: string | null,
 	endpoint: string,
 	n = 1
 ): DataHealth["errorsLast24h"][number] {
@@ -23,6 +23,16 @@ function errorRow(
 		loss: false,
 		message: null,
 		n,
+	};
+}
+
+function dailyRun(startedAt: number): DataHealth["lastDailyRun"] {
+	return {
+		finishedAt: startedAt + 60_000,
+		ok: true,
+		queued: 4,
+		startedAt,
+		trigger: "cron",
 	};
 }
 
@@ -54,11 +64,16 @@ describe("Health page", () => {
 		expect(screen.getByText("Loading…")).toBeDefined();
 	});
 
-	it("stays on the placeholder when the request fails", async () => {
+	it("says the request failed instead of loading for ever", async () => {
 		stubFetch({ "health/data": new Response("", { status: 500 }) });
 		render(<Health onAcknowledge={() => {}} unread={0} />);
-		await Promise.resolve();
-		expect(screen.getByText("Loading…")).toBeDefined();
+		// Awaited through the finder: a single microtask turn is over before the
+		// stubbed response has been read, so an assertion made there only ever
+		// saw the first render.
+		await expect(
+			screen.findByText(/could not be loaded/u)
+		).resolves.toBeDefined();
+		expect(screen.queryByText("Loading…")).toBeNull();
 		expect(screen.queryByText("Data health")).toBeNull();
 	});
 
@@ -250,6 +265,53 @@ describe("Health page", () => {
 		expect(statValue("Crawl rate")?.textContent).toBe("–");
 		expect(statDetail("Crawl rate")).toBe("fetches/min, learned");
 	});
+
+	it("names a row with no class, rather than leaving the cell empty", async () => {
+		stubFetch({
+			"health/data": dataHealth({
+				errorsLast24h: [errorRow(null, "itunes:search")],
+			}),
+		});
+		render(<Health onAcknowledge={() => {}} unread={0} />);
+		await expect(
+			screen.findByText("Unclassified error")
+		).resolves.toBeDefined();
+		expect(document.querySelector(".error-class-raw")).toBeNull();
+	});
+
+	describe("last daily job", () => {
+		it("shows the time alone for a run that started today", async () => {
+			stubFetch({
+				"health/data": dataHealth({ lastDailyRun: dailyRun(Date.now()) }),
+			});
+			render(<Health onAcknowledge={() => {}} unread={0} />);
+			await expect(screen.findByText("Data health")).resolves.toBeDefined();
+			expect(statValue("Last daily job")?.textContent).toMatch(
+				/^\d{2}:\d{2}$/u
+			);
+			expect(statValue("Last daily job")?.className).not.toContain("stat-bad");
+			expect(statDetail("Last daily job")).toBe("completed · cron · queued 4");
+		});
+
+		it("dates and flags a run from three days ago", async () => {
+			// A completed run of any age is what the server sends. Shown as a bare
+			// clock time it read as this morning's, in the neutral colour.
+			const started = Date.now() - 72 * HOUR_MS;
+			stubFetch({
+				"health/data": dataHealth({ lastDailyRun: dailyRun(started) }),
+			});
+			render(<Health onAcknowledge={() => {}} unread={0} />);
+			await expect(screen.findByText("Data health")).resolves.toBeDefined();
+			const value = statValue("Last daily job");
+			expect(value?.textContent).toContain(String(new Date(started).getDate()));
+			expect(value?.textContent).toMatch(/[a-z]{3}/iu);
+			expect(value?.className).toContain("stat-bad");
+			expect(statDetail("Last daily job")).toBe(
+				"no run in the last 26 hours · completed · cron · queued 4"
+			);
+		});
+	});
+
 	describe("work loop", () => {
 		const MIN_MS = 60_000;
 		const daily = (startedAt: number, queued: number | null) => ({

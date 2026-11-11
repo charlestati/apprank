@@ -8,6 +8,8 @@
 
 import { Meter as BaseMeter } from "@base-ui/react/meter";
 
+import { fmt, useT } from "../i18n";
+
 interface Props {
 	value: number | null;
 	max?: number;
@@ -18,6 +20,7 @@ interface Props {
 }
 
 export function Meter({ value, max = 100, label, title }: Props) {
+	const t = useT();
 	// A keyword Apple publishes no volume for has no measurement to render, and
 	// a meter pinned at zero would claim one.
 	if (value === null) {
@@ -28,7 +31,7 @@ export function Meter({ value, max = 100, label, title }: Props) {
 				<span aria-hidden="true" className="meter-value">
 					—
 				</span>
-				<span className="sr-only">{`${label}: no data`}</span>
+				<span className="sr-only">{fmt(t.meterNoData, { label })}</span>
 			</span>
 		);
 	}

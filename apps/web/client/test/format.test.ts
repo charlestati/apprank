@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
 	formatDay,
@@ -59,16 +59,28 @@ describe(formatDecimal, () => {
 });
 
 describe(formatDay, () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
 	it("names the month, so the day is never ambiguous", () => {
 		// 09/02 and 02/09 are the same date written two ways; "2 Sep" is not.
 		expect(formatDay("2026-08-30", "en")).toBe("30 Aug 2026");
 		expect(formatDay("2026-08-30", "fr")).toContain("août");
 	});
 
-	it("reads the day in UTC, like every observed_date", () => {
+	it("reads the day in UTC, like every observed_date", async () => {
 		// Parsed as local time this lands on the 29th west of Greenwich, which
-		// would print a rank on the wrong day for half the world.
-		expect(formatDay("2026-08-30", "en")).toContain("30");
+		// would print a rank on the wrong day for half the world. Run west of
+		// Greenwich on purpose, with a fresh module so no formatter built under
+		// the runner's own zone is reused: on a UTC runner the assertion could
+		// not fail otherwise.
+		vi.stubEnv("TZ", "America/Los_Angeles");
+		vi.resetModules();
+		const fresh = await import("../src/format");
+		expect(new Date("2026-08-30T00:00:00Z").getDate()).toBe(29);
+		expect(fresh.formatDay("2026-08-30", "en")).toBe("30 Aug 2026");
+		expect(fresh.formatDayShort("2026-08-30", "en")).toBe("30 Aug");
 	});
 
 	it("passes through anything that is not a date", () => {

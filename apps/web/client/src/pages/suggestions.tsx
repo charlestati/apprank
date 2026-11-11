@@ -17,8 +17,15 @@ function promotion(s: Suggestion): PromoteKeyword | null {
 		return null;
 	}
 	try {
-		const p = JSON.parse(s.payload) as Partial<PromoteKeyword>;
-		return typeof p.term === "string" ? (p as PromoteKeyword) : null;
+		const p = JSON.parse(s.payload) as Partial<PromoteKeyword> | null;
+		// Every field the card prints, not the term alone: a payload missing its
+		// storefront threw in render, and with no error boundary that blanked
+		// the whole dashboard.
+		return typeof p?.term === "string" &&
+			typeof p.seed === "string" &&
+			typeof p.storefront === "string"
+			? (p as PromoteKeyword)
+			: null;
 	} catch {
 		return null;
 	}
@@ -26,15 +33,21 @@ function promotion(s: Suggestion): PromoteKeyword | null {
 
 export function Suggestions() {
 	const t = useT();
-	const [rows, setRows] = useState<Suggestion[] | null>(null);
-	const [busy, setBusy] = useState<number | null>(null);
+	const [rows, setRows] = useState<Suggestion[] | "failed" | null>(null);
+	// A set: two answers can be in flight at once, and a single id let the
+	// first one to settle re-enable the other row's buttons mid-request.
+	const [busy, setBusy] = useState<ReadonlySet<number>>(new Set());
+	const release = (id: number) =>
+		setBusy((current) => new Set([...current].filter((held) => held !== id)));
 
 	useEffect(() => {
 		(async () => {
 			try {
 				setRows(await api.suggestions());
 			} catch {
-				setRows([]);
+				// Not an empty queue: "nothing pending" would hide decisions that
+				// are still waiting.
+				setRows("failed");
 			}
 		})();
 	}, []);
@@ -44,20 +57,25 @@ export function Suggestions() {
 	// No `finally`: the React compiler cannot lower one, and the two paths want
 	// different things anyway. A row that left the list has no button to re-enable.
 	const answer = async (id: number, status: "accepted" | "dismissed") => {
-		setBusy(id);
+		setBusy((current) => new Set([...current, id]));
 		try {
 			await api.answerSuggestion(id, status);
-			setRows((current) => (current ?? []).filter((s) => s.id !== id));
-			setBusy(null);
+			setRows((current) =>
+				Array.isArray(current) ? current.filter((s) => s.id !== id) : current
+			);
+			release(id);
 		} catch {
 			// Leave the row in place: an answer that did not reach the server must
 			// not look like one that did.
-			setBusy(null);
+			release(id);
 		}
 	};
 
 	if (rows === null) {
 		return <p className="empty">{t.loading}</p>;
+	}
+	if (rows === "failed") {
+		return <p className="empty">{t.loadFailed}</p>;
 	}
 	return (
 		<>
@@ -86,7 +104,7 @@ export function Suggestions() {
 								<div className="suggestion-actions">
 									<button
 										className="button"
-										disabled={busy === s.id}
+										disabled={busy.has(s.id)}
 										onClick={() => answer(s.id, "dismissed")}
 										type="button"
 									>
@@ -96,7 +114,7 @@ export function Suggestions() {
                       what it does rather than just "OK". */}
 									<button
 										className="button button-primary"
-										disabled={busy === s.id}
+										disabled={busy.has(s.id)}
 										onClick={() => answer(s.id, "accepted")}
 										type="button"
 									>

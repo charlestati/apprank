@@ -2,7 +2,30 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { App } from "../src/app";
-import { dataHealth, stubFetch, trackedApp } from "./harness";
+import {
+	chooseOption,
+	dataHealth,
+	deferred,
+	settle,
+	stubFetch,
+	trackedApp,
+} from "./harness";
+
+const lossAt5000 = dataHealth({
+	collectedToday: 10,
+	errorsLast24h: [
+		{
+			endpoint: "itunes:charts",
+			errorClass: "pull_abandoned",
+			lastAt: 5000,
+			loss: true,
+			message: null,
+			n: 3,
+		},
+	],
+	lostLast24h: 3,
+	tier1Pairs: 10,
+});
 
 function status(): HTMLElement | null {
 	return document.querySelector<HTMLElement>(".status-link");
@@ -193,6 +216,97 @@ describe("App shell", () => {
 		render(<App />);
 		await expect(screen.findByText("Collecting")).resolves.toBeDefined();
 		expect(status()?.textContent).toContain("0 of 0 searches today");
+	});
+
+	it("starts its four requests together, not one after another", () => {
+		const calls = stubFetch({ "/api/apps": [], "health/data": dataHealth() });
+		render(<App />);
+		// Read before anything has answered: awaited in sequence, only the first
+		// would have left yet, and the report waited on three round trips.
+		expect(calls.toSorted()).toStrictEqual([
+			"/api/apps",
+			"/api/health/data",
+			"/api/me",
+			"/api/preferences",
+		]);
+	});
+
+	it("does not claim nothing is tracked while the app list is in flight", async () => {
+		const apps = deferred<unknown>();
+		stubFetch({ "/api/apps": apps.promise, "health/data": dataHealth() });
+		render(<App />);
+		await settle();
+		// An empty list and an unanswered one were the same [] and printed the
+		// same sentence, on every load.
+		expect(screen.queryByText("No app is being tracked yet.")).toBeNull();
+		expect(screen.getByText("Loading…")).toBeDefined();
+
+		apps.resolve([]);
+		await expect(
+			screen.findByText("No app is being tracked yet.")
+		).resolves.toBeDefined();
+	});
+
+	it("says the app list failed, not that nothing is tracked", async () => {
+		stubFetch({
+			"/api/apps": new Response("", { status: 500 }),
+			"health/data": dataHealth(),
+		});
+		render(<App />);
+		await expect(
+			screen.findByText(/app list could not be loaded/u)
+		).resolves.toBeDefined();
+		expect(screen.queryByText("No app is being tracked yet.")).toBeNull();
+	});
+
+	it("keeps the badge cleared when it was acknowledged on another machine", async () => {
+		// Nothing in this browser's cache: only the stored row knows.
+		stubFetch({
+			"/api/apps": [],
+			"/api/preferences": { "health:ack": "5000" },
+			"health/data": lossAt5000,
+		});
+		render(<App />);
+		await expect(screen.findByText("Complete")).resolves.toBeDefined();
+		await settle();
+		expect(document.querySelector(".nav-badge")).toBeNull();
+		expect(localStorage.getItem("apprank.health:ack")).toBe("5000");
+	});
+
+	it("badges again for a loss newer than the stored acknowledgement", async () => {
+		stubFetch({
+			"/api/apps": [],
+			"/api/preferences": { "health:ack": "4000" },
+			"health/data": lossAt5000,
+		});
+		render(<App />);
+		await expect(screen.findByText("Complete")).resolves.toBeDefined();
+		await settle();
+		expect(document.querySelector(".nav-badge")?.textContent).toBe("3");
+	});
+
+	it("does not let a late preferences answer undo a choice just made", async () => {
+		const second = { ...trackedApp, current_name: "Second App", id: 777 };
+		const prefs = deferred<unknown>();
+		stubFetch({
+			"/api/apps": [trackedApp, second],
+			"/api/preferences": prefs.promise,
+			// The write the choice makes; listed so it does not fall to a 404.
+			"preferences/app": {},
+			"health/data": dataHealth(),
+			storefronts: [],
+		});
+		render(<App />);
+		await expect(screen.findByLabelText("Application")).resolves.toBeDefined();
+		chooseOption("Application", "Second App");
+
+		// The read left before the click and still names the first app.
+		prefs.resolve({ app: String(trackedApp.id) });
+		await settle();
+		expect(localStorage.getItem("apprank.app")).toBe("777");
+		expect(screen.getByLabelText("Application").textContent).toContain(
+			"Second App"
+		);
 	});
 
 	it("routes to the reviews page", async () => {

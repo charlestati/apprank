@@ -13,9 +13,10 @@ import type {
 	Suggestion,
 	TrackedApp,
 } from "../src/api";
+import { forgetPreferences } from "../src/preferences";
 
 export const APP_ID = 424_242;
-export const RIVAL_ID = 515_151;
+const RIVAL_ID = 515_151;
 
 export const trackedApp: TrackedApp = {
 	current_name: "Tracked App",
@@ -47,6 +48,9 @@ export function stubFetch(routes: Routes): string[] {
 	} catch {
 		// No storage in this environment; nothing to reset.
 	}
+	// The stored preferences are read once per page load and shared, and a test
+	// is a page load: without this the next test adopts the last one's language.
+	forgetPreferences();
 	const calls: string[] = [];
 	const impl = (input: RequestInfo | URL) => {
 		const url = String(input);

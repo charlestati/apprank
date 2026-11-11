@@ -54,15 +54,52 @@ export function setCached(key: string, value: string | null): void {
 	}
 }
 
-/** Every stored preference, in one request, for the shell's first effect. */
-export async function loadPreferences(): Promise<Record<string, string>> {
+// One read per page load, shared by every caller. The shell and the chart
+// selection both need the stored row, and the chart asked again on every app or
+// storefront change for a document that had not moved.
+let loaded: Promise<Record<string, string> | null> | null = null;
+// What the reader chose in this session, laid over every answer. A read that
+// left before a write landed comes back holding the old value, and applying it
+// undid a choice the reader had just watched take effect.
+const written = new Map<string, string | null>();
+
+async function fetchPreferences(): Promise<Record<string, string> | null> {
 	try {
 		const res = await fetch("/api/preferences");
-		return res.ok ? ((await res.json()) as Record<string, string>) : {};
+		return res.ok ? ((await res.json()) as Record<string, string>) : null;
 	} catch {
 		// Offline or refused: the cache is still a usable answer.
-		return {};
+		return null;
 	}
+}
+
+/**
+ * Every stored preference, with this session's own writes on top. A failed
+ * read answers with those writes alone and is not kept, so the next caller
+ * asks again.
+ */
+export async function loadPreferences(): Promise<Record<string, string>> {
+	loaded ??= fetchPreferences();
+	const pending = loaded;
+	const stored = await pending;
+	if (stored === null && loaded === pending) {
+		loaded = null;
+	}
+	const merged = new Map(Object.entries(stored ?? {}));
+	for (const [key, value] of written) {
+		if (value === null) {
+			merged.delete(key);
+		} else {
+			merged.set(key, value);
+		}
+	}
+	return Object.fromEntries(merged);
+}
+
+/** Drop the shared read and the session's writes. For tests: a page load does this by itself. */
+export function forgetPreferences(): void {
+	loaded = null;
+	written.clear();
 }
 
 /**
@@ -75,6 +112,7 @@ export async function loadPreferences(): Promise<Record<string, string>> {
  */
 export function savePreference(key: string, value: string | null): void {
 	setCached(key, value);
+	written.set(key, value);
 	(async () => {
 		try {
 			await fetch(`/api/preferences/${encodeURIComponent(key)}`, {

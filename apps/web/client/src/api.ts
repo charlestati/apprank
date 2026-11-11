@@ -18,7 +18,7 @@ export interface KeywordCell {
 
 export interface HistoryPoint {
 	observed_date: string;
-	result_count: number;
+	result_count: number | null;
 	position: number | null;
 	app_id: number | null;
 }
@@ -66,7 +66,8 @@ export interface DataHealth {
 	collectedToday: number;
 	lostLast24h: number;
 	errorsLast24h: {
-		errorClass: string;
+		/** Null on rows written before the class was a closed vocabulary. */
+		errorClass: string | null;
 		endpoint: string;
 		loss: boolean;
 		n: number;
@@ -135,6 +136,8 @@ interface SeriesPoint {
 /** One release and the fields it touched: what a chart marker actually marks. */
 export interface MetadataMarker {
 	date: string;
+	/** When the version was captured; two on one day differ only here. */
+	capturedAt?: number;
 	version: string | null;
 	changed: string[];
 }
@@ -173,7 +176,8 @@ interface SearchResultRow {
 
 export interface ResultPage {
 	date: string | null;
-	resultCount: number;
+	/** Null on an observation stored before the count was recorded. */
+	resultCount: number | null;
 	results: SearchResultRow[];
 }
 

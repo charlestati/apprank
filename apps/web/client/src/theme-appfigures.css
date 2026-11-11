@@ -12,6 +12,10 @@
 
 :root[data-skin="appfigures"] {
 	--af-accent: #f2551d;
+	/* The accent as text. The brand orange is 3.1:1 on its own soft tint, which
+	   is the active navigation label at 16px; this one is 5.08:1 there and
+	   4.76:1 on the page surface. The orange itself stays for marks and fills. */
+	--af-accent-text: #b93c0a;
 	--af-accent-soft: #ff69331a;
 	--af-meter: #1a7ee6;
 	--af-segment-track: #eef0f2;
@@ -25,16 +29,23 @@
 
 	--ds-border: #0c0d0e1f;
 	--ds-border-bold: #0c0d0e52;
-	--ds-border-input: #0c0d0e29;
+	/* The only boundary a search box, a select and the chart tick box have, so
+	   it is held to the 3:1 a control's edge needs (WCAG 1.4.11): 3.40:1 on
+	   white, 3.35:1 on the page. At the former 16% alpha it was 1.42:1. */
+	--ds-border-input: #0c0d0e7a;
 	--ds-border-focused: #1a7ee6;
 	--ds-border-selected: #1a7ee6;
 
 	--ds-text: #0c0d0e;
 	--ds-text-subtle: #0c0d0eb8;
-	--ds-text-subtlest: #0c0d0e8f;
+	/* 5.49:1 on white and 5.36:1 on the page; one alpha step lower it missed
+	   4.5:1 on both. */
+	--ds-text-subtlest: #0c0d0e9e;
 	--ds-text-inverse: #ffffff;
-	--ds-link: #1a7ee6;
-	--ds-link-pressed: #1466bd;
+	/* Same hue as the meter blue, darkened until 14px link text reads: 5.29:1
+	   on white, 4.94:1 on the page, 4.81:1 on a selected row. */
+	--ds-link: #146bc8;
+	--ds-link-pressed: #0f549e;
 
 	--ds-neutral-subtle-hovered: #0c0d0e0a;
 	--ds-neutral-subtle-pressed: #0c0d0e14;
@@ -62,7 +73,10 @@
 	--ds-chart-8: #c2410c;
 	--ds-chart-success: #13a36e;
 	--ds-chart-danger: #c0283a;
-	--ds-chart-neutral: #0c0d0e1f;
+	/* Opaque. A muted series is drawn in this at 40% opacity, and a 12% alpha
+	   under that left 1.1:1, which is a line that has gone rather than one that
+	   has receded. */
+	--ds-chart-neutral: #85888f;
 
 	/* Rank distribution: a lavender ramp, deepest for the best bucket. */
 	--af-dist-1: #5856c4;
@@ -94,6 +108,7 @@
 @media (prefers-color-scheme: dark) {
 	:root[data-skin="appfigures"]:not([data-theme="light"]) {
 		--af-accent: #ff6933;
+		--af-accent-text: #ff6933;
 		--af-accent-soft: #ff69331f;
 		--af-meter: #2a8cf0;
 		--af-segment-track: #151719;
@@ -109,7 +124,7 @@
 
 		--ds-border: #ffffff29;
 		--ds-border-bold: #ffffff52;
-		--ds-border-input: #ffffff29;
+		--ds-border-input: #ffffff5c;
 		--ds-border-focused: #50a3f6;
 		--ds-border-selected: #50a3f6;
 
@@ -146,7 +161,7 @@
 		--ds-chart-8: #ff6933;
 		--ds-chart-success: #13a36e;
 		--ds-chart-danger: #c0283a;
-		--ds-chart-neutral: #ffffff29;
+		--ds-chart-neutral: #7e8188;
 
 		--af-dist-1: #6b69c9;
 		--af-dist-2: #8583d3;
@@ -217,7 +232,7 @@
 }
 [data-skin="appfigures"] .sidebar a.active {
 	background: var(--af-accent-soft);
-	color: var(--af-accent);
+	color: var(--af-accent-text);
 	font-weight: 500;
 }
 
@@ -345,7 +360,11 @@
 	color: var(--ds-text);
 	font-weight: 400;
 }
-[data-skin="appfigures"] .meter-fill {
+/* Popularity only. Difficulty's bands carry their own hue and texture, and a
+   blanket override here outranked them and drew every difficulty in the
+   popularity blue. */
+[data-skin="appfigures"]
+	.meter-fill:not(.meter-hard, .meter-moderate, .meter-easy) {
 	background: var(--af-meter);
 }
 [data-skin="appfigures"] .meter-value {
@@ -353,6 +372,12 @@
 }
 
 @media (max-width: 900px) {
+	/* The skin's own two-column shell outranks theme.css's single-column rule
+	   (two selectors against one), so without this the 245px sidebar stayed at
+	   phone width and left the report some 130px. */
+	[data-skin="appfigures"] .shell {
+		grid-template-columns: minmax(0, 1fr);
+	}
 	[data-skin="appfigures"] .topbar,
 	[data-skin="appfigures"] .sidebar {
 		grid-column: 1;

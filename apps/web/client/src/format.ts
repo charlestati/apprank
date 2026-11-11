@@ -144,6 +144,26 @@ export function formatDay(iso: string, lang: Lang): string {
 }
 
 /**
+ * Day and month only, for an axis whose year is already on the page: a full
+ * date on every tick is three ticks' worth of width.
+ */
+export function formatDayShort(iso: string, lang: Lang): string {
+	const at = Date.parse(`${iso}T00:00:00Z`);
+	return Number.isNaN(at)
+		? iso
+		: cached(
+				dates,
+				`${lang}:dayShort`,
+				() =>
+					new Intl.DateTimeFormat(LOCALES[lang], {
+						day: "numeric",
+						month: "short",
+						timeZone: "UTC",
+					})
+			).format(at);
+}
+
+/**
  * The same calendar day, from the millisecond timestamps Apple's feeds carry.
  * Read in UTC like every observed_date, so a review and a rank collected in
  * the same hour never land on different days.
@@ -165,6 +185,25 @@ function formatTime(at: number, lang: Lang): string {
 	).format(new Date(at));
 }
 
+/**
+ * Day and clock time together, in the operator's own zone like `formatTime`.
+ * For an event that may not be today's: a bare "06:00" reads as this morning
+ * whether the run was today or three days ago.
+ */
+function formatDayTime(at: number, lang: Lang): string {
+	return cached(
+		dates,
+		`${lang}:dayTime`,
+		() =>
+			new Intl.DateTimeFormat(LOCALES[lang], {
+				day: "numeric",
+				hour: "2-digit",
+				minute: "2-digit",
+				month: "short",
+			})
+	).format(new Date(at));
+}
+
 /** The same helpers bound to the chosen language, so views never pass it. */
 export function useFormat() {
 	const { lang } = useI18n();
@@ -172,6 +211,8 @@ export function useFormat() {
 		() => ({
 			day: (iso: string) => formatDay(iso, lang),
 			dayAt: (at: number) => formatDayAt(at, lang),
+			dayShort: (iso: string) => formatDayShort(iso, lang),
+			dayTime: (at: number) => formatDayTime(at, lang),
 			decimal: (value: number, digits: number) =>
 				formatDecimal(value, lang, digits),
 			flag: (code: string) => regionFlag(code),

@@ -39,6 +39,29 @@ export function ResultsDrawer({
 		})();
 	}, [row.pairId]);
 
+	// Three answers, not two: still loading, loaded (with or without an
+	// observation behind the pair), and failed. Keying on the date alone left
+	// "Loading…" beside the failure message for good. A failure says so once, in
+	// the body, so the subtitle then carries the storefront alone.
+	let subtitle: string | null = t.loading;
+	if (failed) {
+		subtitle = null;
+	} else if (page) {
+		const observed = page.date
+			? fmt(t.drawerObserved, { date: f.day(page.date) })
+			: t.drawerNoObservation;
+		const count =
+			page.resultCount === null
+				? ""
+				: ` · ${fmt(
+						page.resultCount === 1
+							? t.drawerResultCountOne
+							: t.drawerResultCount,
+						{ n: f.number(page.resultCount) }
+					)}`;
+		subtitle = `${observed}${count}`;
+	}
+
 	// Escape, the outside press, the focus trap and the scroll lock all come
 	// from the component now. The hand-rolled version had only the first, and
 	// left focus behind in the table it covered.
@@ -63,13 +86,8 @@ export function ResultsDrawer({
 								“{row.keyword}”
 							</Drawer.Title>
 							<p className="drawer-sub">
-								{f.region(storefront)} ·{" "}
-								{page?.date
-									? fmt(t.drawerObserved, { date: f.day(page.date) })
-									: t.loading}
-								{page
-									? ` · ${fmt(t.drawerResultCount, { n: f.number(page.resultCount) })}`
-									: ""}
+								{f.region(storefront)}
+								{subtitle === null ? "" : ` · ${subtitle}`}
 							</p>
 						</div>
 						<Drawer.Close className="link">{t.close}</Drawer.Close>
