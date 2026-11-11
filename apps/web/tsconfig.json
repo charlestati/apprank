@@ -5,5 +5,11 @@
 		"types": ["@cloudflare/vitest-plugin/types", "node"],
 		"strictNullChecks": true
 	},
-	"include": ["worker-configuration.d.ts", "src/**/*.ts", "test/**/*.ts"]
+	"include": [
+		"worker-configuration.d.ts",
+		"src/**/*.ts",
+		"test/**/*.ts",
+		"vite.config.ts",
+		"vitest.config.ts"
+	]
 }

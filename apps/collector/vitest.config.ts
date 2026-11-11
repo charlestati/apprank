@@ -1,9 +1,10 @@
 import path from "node:path";
 
 import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
+import type { ViteUserConfig } from "vitest/config";
 import { defineConfig } from "vitest/config";
 
-export default defineConfig(async () => {
+export default defineConfig(async (): Promise<ViteUserConfig> => {
 	const migrations = await readD1Migrations(
 		path.join(import.meta.dirname, "../../packages/core/migrations")
 	);
@@ -40,6 +41,11 @@ export default defineConfig(async () => {
 				// v8 coverage is unavailable inside workerd; istanbul instruments the
 				// source at transform time and works in the Workers pool.
 				provider: "istanbul",
+				// packages/core has no suite of its own: the collector's tests are what
+				// exercise the Apple clients and the normaliser, so it is measured
+				// here. Without allowExternal the pattern below matched nothing, since
+				// it points outside this root, and core sat outside the gate.
+				allowExternal: true,
 				include: ["src/**/*.ts", "../../packages/core/src/**/*.ts"],
 				exclude: ["src/env.ts", "**/*.d.ts"],
 				reporter: ["text-summary", "json-summary"],
