@@ -15,13 +15,22 @@ import type {
 } from "./insights";
 import { TRACKED_PAIRS } from "./queries/apps";
 import { metadataChanges } from "./queries/metadata";
-import { sinceDate } from "./queries/rankings";
+import { appPositionSql, sinceDate } from "./queries/rankings";
 
 export interface ReportQuery {
 	appId: number;
 	userId: string;
 	storefront: string;
 	days: number;
+	/**
+	 * First day of the window, inclusive. Defaults to `days` ago.
+	 *
+	 * A caller that was given dates passes them: turning a start date into a day
+	 * count and back went through two roundings against the current instant, so
+	 * the window opened a day or two early, and one that ended long ago started
+	 * after it ended and came back empty.
+	 */
+	from?: string | undefined;
 	/** Last day of the window, inclusive. Defaults to today. */
 	to?: string | undefined;
 }
@@ -78,9 +87,22 @@ export interface KeywordRow {
 	points: SeriesPoint[];
 	/** Days the fetch failed, so a throttled window is not read as a rank loss. */
 	fetchErrors: SeriesError[];
-	/** Change against the previous *different* rank, and how long ago that was. */
+	/**
+	 * Change against the previous *different* rank, and the days between that
+	 * observation and the newest one.
+	 */
 	change: number | null;
 	changeDaysAgo: number | null;
+	/**
+	 * Days the current rank has been held, counted from the first observation of
+	 * its unbroken run to the end of the window. Null when the newest observation
+	 * is unranked or there is none.
+	 *
+	 * This, not `changeDaysAgo`, is what "has it settled?" asks. The distance to
+	 * the previous different rank is at least the crawl interval, so on a pair
+	 * checked weekly a rank seen exactly once always looked a week old.
+	 */
+	heldDays: number | null;
 	best: number | null;
 	worst: number | null;
 	popularity: number | null;
@@ -163,7 +185,8 @@ function fetchObservations(
 ) {
 	return env.DB.prepare(
 		`SELECT cp.id AS pair_id, k.id AS keyword_id, k.text AS keyword,
-            r.observed_date, re.position, r.result_count
+            r.observed_date, ${appPositionSql("tk.app_id")} AS position,
+            r.result_count
      FROM tracked_keyword tk
      JOIN keyword k ON k.id = tk.keyword_id
      ${TRACKED_PAIRS}
@@ -338,6 +361,7 @@ function groupObservations(rows: ObservationRow[]): Map<number, KeywordRow> {
 				best: null,
 				change: null,
 				changeDaysAgo: null,
+				heldDays: null,
 				keyword: r.keyword,
 				fetchErrors: [],
 				keywordId: r.keyword_id,
@@ -376,7 +400,7 @@ const MARKER_LIMIT = 50;
  * showing a rank the app had already lost, and fed it to the verdict lanes,
  * the average and the CSV. Best and worst stay over ranked days only.
  */
-function summarisePoints(row: KeywordRow): void {
+function summarisePoints(row: KeywordRow, until: string): void {
 	const ranked = row.points.filter(
 		(p): p is { date: string; position: number } => p.position !== null
 	);
@@ -391,6 +415,22 @@ function summarisePoints(row: KeywordRow): void {
 		return;
 	}
 	row.position = latest.position;
+
+	// The run is over every observation, not only the ranked ones: a day outside
+	// the top 200 in between means the rank was lost and regained, so it has
+	// been held only since it came back.
+	let heldSince = latest.date;
+	for (let i = row.points.length - 2; i >= 0; i -= 1) {
+		const earlier = row.points[i];
+		if (!earlier || earlier.position !== latest.position) {
+			break;
+		}
+		heldSince = earlier.date;
+	}
+	row.heldDays = Math.max(
+		0,
+		Math.round((Date.parse(until) - Date.parse(heldSince)) / 86_400_000)
+	);
 
 	for (let i = ranked.length - 2; i >= 0; i -= 1) {
 		const earlier = ranked[i];
@@ -450,7 +490,7 @@ function computeStats(rows: KeywordRow[]): ReportStats {
 }
 
 export async function buildReport(env: Env, q: ReportQuery): Promise<Report> {
-	const since = sinceDate(q.days);
+	const since = q.from ?? sinceDate(q.days);
 	const until = q.to ?? isoToday();
 	const [
 		observations,
@@ -521,7 +561,7 @@ export async function buildReport(env: Env, q: ReportQuery): Promise<Report> {
 
 	const rows = [...byPair.values()];
 	for (const row of rows) {
-		summarisePoints(row);
+		summarisePoints(row, until);
 		const pop = popByKeyword.get(row.keywordId);
 		row.popularity = pop?.popularity ?? null;
 		row.popularityStatus = pop?.status ?? "unqueried";

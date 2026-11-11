@@ -76,11 +76,16 @@ Two behaviours matter more than the list.
 counts, date coverage, gap ranges and the errors behind them. Without that a
 throttled week reads as a ranking collapse. Coverage is measured against each
 pair's own cadence, so a keyword on a seven-day rung is not reported as missing
-six days out of seven.
+six days out of seven. A window is `degraded` when it is short of that cadence
+or when a fetch was actually lost; a throttle that was retried is named in the
+note and does not degrade it. A keyword with no observation at all in the window
+carries `observations: 0` and no verdict, never "not ranking".
 
 **Aggregates by default.** Series come back summarised (min, max, mean, median,
 inflection points, an evenly-sampled curve), with `detail` for raw observations.
 Every tool caps its rows and says when it truncated.
 
 Per credential, 30 calls a minute and 2,000 a day: a runaway agent exhausts its
-own allowance rather than the database's.
+own allowance rather than the database's. The per-minute brake also applies per
+client address before the credential is checked, so callers behind one address
+share 30 requests a minute between them.

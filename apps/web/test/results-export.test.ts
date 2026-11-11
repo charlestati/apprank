@@ -8,6 +8,7 @@ import worker from "../src/index";
 import {
 	APP_ID,
 	KEYWORD_A,
+	KEYWORD_B,
 	RIVAL_ID,
 	apiRequest,
 	isoDay,
@@ -116,10 +117,22 @@ describe("GET /apps/:appId/report.csv", () => {
 		const body = await res.text();
 		const lines = body.trim().split("\n");
 		expect(lines[0]).toBe(
-			"keyword,storefront,position,change,change_days_ago,best,worst,popularity,difficulty,difficulty_sample_size,results_total,top_results"
+			"keyword,storefront,position,change,change_days_ago,best,worst,popularity,difficulty,difficulty_sample_size,results_total,top_results,observations,last_observed"
 		);
 		const ranked = lines.find((l) => l.startsWith(KEYWORD_A));
-		expect(ranked).toContain(",fr,4,");
+		// Keyword B was never observed: its blank position must not read as
+		// "observed outside the top 200", so the last two columns say whether
+		// anybody looked.
+		const unobserved = lines.find((l) => l.startsWith(KEYWORD_B));
+		expect([
+			ranked?.split(",").slice(1, 3),
+			ranked?.split(",").slice(-2),
+			unobserved?.split(",").slice(-2),
+		]).toStrictEqual([
+			["fr", "4"],
+			["1", isoDay(0)],
+			["0", ""],
+		]);
 		// Every tracked keyword is present, ranked or not.
 		expect(lines).toHaveLength(3);
 	});

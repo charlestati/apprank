@@ -20,12 +20,16 @@ the bearer gate, so leaving it in place with the route switched off would turn
 the one path that skips Basic into a path that skips authentication entirely.
 `test/mcp-auth.test.ts` asserts both halves.
 
-Four things hold it together, and none of them is optional once it is on:
+Five things hold it together, and none of them is optional once it is on:
 
 - **The gate runs before the handler is built.** `handleMcp` authenticates, then
   constructs the server with the resolved principal closed over. Tool code is
   unreachable without a principal, so a misregistered tool is still not callable
   by a stranger, and no tool has to handle "who is this?" returning nothing.
+- **The burst brake is keyed by what the caller cannot choose.** Before the gate
+  that is the client address; the per-credential bucket is charged only after
+  the secret matches. Keyed on the token's id first, anyone who had seen an id
+  (the revoke command prints it) could spend its holder's bucket.
 - **MCP credentials are a separate table and a separate gate.** `mcp_credential`
   holds only the SHA-256 of the secret, unlike `BASIC_AUTH_ACCOUNTS`, which is a
   Worker secret and may hold plaintext; this is an ordinary D1 table that gets
@@ -44,13 +48,28 @@ Four things hold it together, and none of them is optional once it is on:
   analysis layer and a throttled week reads as a ranking collapse. Coverage is
   measured against each pair's `interval_hours`, never the calendar: a pair on a
   stretched rung is _supposed_ to have gaps, and counting those as missing days
-  makes the whole signal useless.
+  makes the whole signal useless. `degraded` means short of that cadence or a
+  class `isLoss()` counts; an absorbed throttle on a fully observed pair is
+  named in the note and degrades nothing, or the flag is on every pair in
+  ordinary weather.
 
-`test/mcp-auth.test.ts` walks every scoped tool in a `SCOPED_TOOLS` list and
-fails if one is added without a guard, the way `test/access.test.ts` does for
-routes. `test/worker-config.test.ts` asserts `run_worker_first: true`, which is
-the only reason `not_found_handling: single-page-application` cannot claim
-`/mcp` or `/api`.
+**A null position has two causes and every read keeps them apart.** Observed and
+outside the top 200 is Apple's answer. No observation in the window is no
+answer: such a row keeps `points: []` and gets the `noObservation` verdict, in
+no lane, because the unranked lane turned a throttled week into advice to drop
+the keyword. And an app's position is read from `ranking.result_ids` when
+`rank_entry` holds no row for it (`appPositionSql` in `queries/rankings.ts`),
+since the index covers only the top ten and what was tracked at crawl time. That
+read uses string functions on purpose: D1 bills each element `json_each` yields
+as a row read.
+
+`test/mcp-auth.test.ts` reads the scoped tools off `tools/list` and
+`test/access.test.ts` reads the scoped routes off the router, so a tool or route
+added without a guard fails without anyone having to list it. The scope each
+tool is registered under is a table in that test, checked for completeness
+against the same list. `test/worker-config.test.ts` asserts
+`run_worker_first: true`, which is the only reason
+`not_found_handling: single-page-application` cannot claim `/mcp` or `/api`.
 
 ## Access control
 

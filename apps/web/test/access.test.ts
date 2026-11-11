@@ -37,19 +37,58 @@ beforeEach(async () => {
 	await seedKeywords();
 });
 
-/** Every route that answers about a specific app or pair. */
-const SCOPED_ROUTES = [
-	`/apps/${APP_ID}/storefronts`,
-	`/apps/${APP_ID}/report?storefront=fr`,
-	`/apps/${APP_ID}/report.csv?storefront=fr`,
-	`/apps/${APP_ID}/keywords`,
-	`/apps/${APP_ID}/reviews`,
-	`/apps/${APP_ID}/ratings`,
-	`/apps/${APP_ID}/localizations`,
-	"/pairs/1/history",
-	"/pairs/1/competitors",
-	"/pairs/1/results",
-];
+/**
+ * Every route that answers about a specific app or pair, read off the router
+ * itself and addressed at the ids given.
+ *
+ * Derived, not listed: a hand-kept table passes vacuously for the route
+ * somebody adds next, and that route is the one these tests exist for.
+ */
+function scopedRoutes(ids: { appId: number; pairId: number }): string[] {
+	const paths = new Set<string>();
+	for (const route of worker.routes) {
+		if (!/:(?:appId|pairId)\b/u.test(route.path)) {
+			continue;
+		}
+		// Reads only: a scoped route that writes needs a body this walk cannot
+		// guess, so it must fail here by name rather than be skipped.
+		if (route.method !== "GET") {
+			throw new Error(
+				`${route.method} ${route.path} is scoped and not a read: teach this walk its body`
+			);
+		}
+		paths.add(
+			`${route.path
+				.replace(/^\/api/u, "")
+				.replace(":appId", String(ids.appId))
+				.replace(":pairId", String(ids.pairId))}?storefront=fr`
+		);
+	}
+	return [...paths];
+}
+
+const SCOPED_ROUTES = scopedRoutes({ appId: APP_ID, pairId: 1 });
+
+describe("the routes this file walks", () => {
+	it("are the ones the router registers, so no walk below is vacuous", () => {
+		expect(SCOPED_ROUTES.toSorted()).toStrictEqual(
+			[
+				`/apps/${APP_ID}/keywords`,
+				`/apps/${APP_ID}/localizations`,
+				`/apps/${APP_ID}/ratings`,
+				`/apps/${APP_ID}/report`,
+				`/apps/${APP_ID}/report.csv`,
+				`/apps/${APP_ID}/reviews`,
+				`/apps/${APP_ID}/storefronts`,
+				"/pairs/1/competitors",
+				"/pairs/1/history",
+				"/pairs/1/results",
+			]
+				.map((path) => `${path}?storefront=fr`)
+				.toSorted()
+		);
+	});
+});
 
 describe("the session gate", () => {
 	it("serves nothing at all when no auth secret is configured", async () => {
@@ -131,15 +170,9 @@ describe("ownership", () => {
 	it("hides another operator's app behind a 404, not a 403", async () => {
 		await seedOtherOperator();
 		// 403 would confirm the id exists, which is itself information.
-		for (const path of [
-			`/apps/${OTHER_APP}/report?storefront=fr`,
-			`/apps/${OTHER_APP}/keywords`,
-			`/apps/${OTHER_APP}/reviews`,
-			`/apps/${OTHER_APP}/ratings`,
-			`/apps/${OTHER_APP}/localizations`,
-			`/apps/${OTHER_APP}/storefronts`,
-			`/apps/${OTHER_APP}/report.csv`,
-		]) {
+		for (const path of scopedRoutes({ appId: OTHER_APP, pairId: 9 }).filter(
+			(p) => p.startsWith("/apps/")
+		)) {
 			const res = await worker.fetch(apiRequest(path), env);
 			expect([path, res.status]).toStrictEqual([path, 404]);
 		}
@@ -153,11 +186,9 @@ describe("ownership", () => {
 			id: 5,
 			pairId: 9,
 		});
-		for (const path of [
-			"/pairs/9/history",
-			"/pairs/9/competitors",
-			"/pairs/9/results",
-		]) {
+		for (const path of scopedRoutes({ appId: OTHER_APP, pairId: 9 }).filter(
+			(p) => p.startsWith("/pairs/")
+		)) {
 			const res = await worker.fetch(apiRequest(path), env);
 			expect([path, res.status]).toStrictEqual([path, 404]);
 		}
@@ -233,11 +264,9 @@ describe("a keyword two operators share in different storefronts", () => {
 	beforeEach(seedSharedKeywordElsewhere);
 
 	it("hides the other operator's storefront pair behind a 404", async () => {
-		for (const path of [
-			"/pairs/10/history",
-			"/pairs/10/competitors",
-			"/pairs/10/results",
-		]) {
+		for (const path of scopedRoutes({ appId: OTHER_APP, pairId: 10 }).filter(
+			(p) => p.startsWith("/pairs/")
+		)) {
 			const res = await worker.fetch(apiRequest(path), env);
 			expect([path, res.status]).toStrictEqual([path, 404]);
 		}

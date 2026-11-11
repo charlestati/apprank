@@ -45,7 +45,8 @@ type ReasonKey =
 	| "blocked"
 	| "close"
 	| "dormantUnranked"
-	| "dormantDeep";
+	| "dormantDeep"
+	| "noObservation";
 
 export interface KeywordVerdict {
 	opportunity: Opportunity;
@@ -146,7 +147,28 @@ function deepRankVerdict(
 	return dormantVerdict(rank);
 }
 
+/**
+ * Nothing was observed in the window, so there is nothing to judge.
+ *
+ * A row with no points and a row whose newest point was outside the top 200
+ * both carry a null position, and they are opposite facts: one is Apple's
+ * answer, the other is the absence of any answer. Sent down the unranked lane,
+ * a keyword accepted this morning, or a week in which every crawl was
+ * throttled, came back as "not ranking at all", which is advice to drop it.
+ */
+const NO_OBSERVATION: KeywordVerdict = {
+	opportunity: "unknown",
+	reason:
+		"No observation in this window, so there is no verdict: the keyword has not been crawled yet, or every crawl in the window failed.",
+	reasonKey: "noObservation",
+	unproven: false,
+};
+
 export function classify(row: KeywordRow): KeywordVerdict {
+	if (row.points.length === 0) {
+		return { ...NO_OBSERVATION };
+	}
+
 	// Never coerce a missing measurement to zero. Apple lists only the top ~500
 	// terms per country × top-level genre, so a real term routinely has no
 	// published volume, and treating that as "nobody searches this" invents the
@@ -155,10 +177,14 @@ export function classify(row: KeywordRow): KeywordVerdict {
 		row.popularityStatus === "measured" ? (row.popularity ?? 0) : null;
 	const difficulty = row.difficulty?.score ?? null;
 	const rank = row.position;
+	// How long the rank has been held, not how far back the previous one was
+	// seen: that distance is at least the crawl interval, so a pair checked every
+	// three days or more could never be unproven, which is exactly where a rank
+	// seen once is weakest.
 	const unproven =
 		row.change !== null &&
-		row.changeDaysAgo !== null &&
-		row.changeDaysAgo <= UNPROVEN_DAYS;
+		row.heldDays !== null &&
+		row.heldDays <= UNPROVEN_DAYS;
 
 	if (rank !== null && rank <= TAP_ZONE) {
 		return { ...tapZoneVerdict(popularity), unproven };
@@ -197,6 +223,11 @@ export interface OpportunitySummary {
 	dormant: number;
 	/** Ranked, but with no published volume to judge the rank against. */
 	unknown: number;
+	/**
+	 * Keywords with no observation in the window, brand terms included. They sit
+	 * in no lane: a lane is a judgement on a rank, and these have none.
+	 */
+	unobserved: number;
 	/** Ranked inside the zone that earns taps at all. */
 	inTapZone: number;
 	brandKeywords: number;
@@ -228,7 +259,10 @@ export function summarise(
 	// them in put all nine variants of the app's own name into "no volume data" and printed
 	// three of them as its examples, directly under the sentence excluding them.
 	const count = (o: Opportunity) =>
-		generic.filter((r) => r.verdict.opportunity === o).length;
+		generic.filter(
+			(r) =>
+				r.verdict.opportunity === o && r.verdict.reasonKey !== "noObservation"
+		).length;
 	const inTapZone = (list: typeof rows) =>
 		list.filter((r) => r.position !== null && r.position <= TAP_ZONE).length;
 
@@ -241,6 +275,8 @@ export function summarise(
 		genericKeywords: generic.length,
 		inTapZone: inTapZone(rows),
 		unknown: count("unknown"),
+		unobserved: rows.filter((r) => r.verdict.reasonKey === "noObservation")
+			.length,
 		unmeasuredKeywords: rows.filter((r) => r.popularityStatus === "absent")
 			.length,
 		unqueriedKeywords: rows.filter((r) => r.popularityStatus === "unqueried")

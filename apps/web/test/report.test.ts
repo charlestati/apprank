@@ -76,7 +76,10 @@ async function getReport(query = "?storefront=fr&days=30") {
 			difficulty: { score: number; sampleSize: number } | null;
 			points: { date: string; position: number | null }[];
 			fetchErrors: { date: string; errorClass: string; count: number }[];
+			heldDays: number | null;
+			verdict: { opportunity: string; reasonKey: string; unproven: boolean };
 		}[];
+		insights: { dormant: number; unknown: number; unobserved: number };
 	}>;
 }
 
@@ -129,6 +132,115 @@ describe("GET /apps/:appId/report", () => {
 			resultCount: 180,
 			worst: 12,
 		});
+	});
+
+	it("gives a keyword with no observation in the window no verdict", async () => {
+		// Keyword B was never crawled, and its only trace is a throttle. Null
+		// position used to send it down the unranked lane: "not ranking at all".
+		await seedRanking({
+			date: isoDay(1),
+			entries: [[1, RIVAL_ID]],
+			id: 1,
+			pairId: 1,
+		});
+		await env.DB.prepare(
+			`INSERT INTO fetch_error (fetched_at, endpoint, params, http_status, error_class)
+       VALUES (?1, 'itunes:search', ?2, 403, 'throttled')`
+		)
+			.bind(capturedAt(1), `${KEYWORD_B}|fr|fr-FR`)
+			.run();
+
+		const report = await getReport();
+		const unobserved = report.rows.find((r) => r.keyword === KEYWORD_B);
+		expect(unobserved).toMatchObject({
+			fetchErrors: [{ count: 1, date: isoDay(1), errorClass: "throttled" }],
+			points: [],
+			position: null,
+			verdict: {
+				opportunity: "unknown",
+				reasonKey: "noObservation",
+				unproven: false,
+			},
+		});
+		// Keyword A *was* observed and the app was not on the page: that one is
+		// still a verdict on a rank.
+		expect(
+			report.rows.find((r) => r.keyword === KEYWORD_A)?.verdict.reasonKey
+		).toBe("dormantUnranked");
+		expect(report.insights).toMatchObject({
+			dormant: 1,
+			unknown: 0,
+			unobserved: 1,
+		});
+	});
+
+	it("reads an app's rank off the stored page when the index has no row for it", async () => {
+		// The index holds the top ten plus what was tracked when the crawl ran, so
+		// an app tracked later has no row on earlier days. Its position is still
+		// in the page the observation kept.
+		const page = [RIVAL_ID, ...Array.from({ length: 35 }, (_, i) => 900 + i)];
+		await seedRanking({
+			date: isoDay(2),
+			entries: [[1, RIVAL_ID]],
+			id: 1,
+			pairId: 1,
+			resultIds: [...page, APP_ID],
+		});
+		// A longer id that merely contains ours is not us.
+		await seedRanking({
+			date: isoDay(1),
+			entries: [[1, RIVAL_ID]],
+			id: 2,
+			pairId: 1,
+			resultIds: [RIVAL_ID, Number(`9${APP_ID}`)],
+		});
+
+		const report = await getReport();
+		const row = report.rows.find((r) => r.keyword === KEYWORD_A);
+		expect(row?.points).toStrictEqual([
+			{ date: isoDay(2), position: 37 },
+			{ date: isoDay(1), position: null },
+		]);
+		expect(row?.best).toBe(37);
+	});
+
+	it("calls a rank unproven until it has been held past 48h, whatever the cadence", async () => {
+		// A pair checked weekly: one sighting of the new rank, today. The
+		// distance to the previous rank is seven days, which says nothing about
+		// how settled the new one is.
+		await seedRanking({
+			date: isoDay(7),
+			entries: [[5, APP_ID]],
+			id: 1,
+			pairId: 1,
+		});
+		await seedRanking({
+			date: isoDay(0),
+			entries: [[9, APP_ID]],
+			id: 2,
+			pairId: 1,
+		});
+		// Keyword B has held its new rank for four days.
+		for (const [id, day, position] of [
+			[3, 6, 20],
+			[4, 4, 8],
+			[5, 0, 8],
+		] as const) {
+			await seedRanking({
+				date: isoDay(day),
+				entries: [[position, APP_ID]],
+				id,
+				pairId: 3,
+			});
+		}
+
+		const report = await getReport();
+		const fresh = report.rows.find((r) => r.keyword === KEYWORD_A);
+		expect(fresh).toMatchObject({ change: -4, changeDaysAgo: 7, heldDays: 0 });
+		expect(fresh?.verdict.unproven).toBeTruthy();
+		const settled = report.rows.find((r) => r.keyword === KEYWORD_B);
+		expect(settled).toMatchObject({ change: 12, heldDays: 4 });
+		expect(settled?.verdict.unproven).toBeFalsy();
 	});
 
 	it("reports a drop as a negative change", async () => {

@@ -39,10 +39,15 @@ function moveWeight(move: ChartMove): number {
 	return move.delta === null ? Number.MAX_SAFE_INTEGER : Math.abs(move.delta);
 }
 
-function positions(row: ChartRow, limit: number): Map<number, number> {
+/**
+ * Every position on the board. Never the caller's row limit: comparing two
+ * boards cut to the top ten reported an app that slipped from #8 to #12 as
+ * having left the chart, and one that climbed from #60 to #3 as new to it.
+ */
+function positions(row: ChartRow): Map<number, number> {
 	const ids = JSON.parse(row.result_ids) as number[];
 	const map = new Map<number, number>();
-	for (const [i, id] of ids.slice(0, limit).entries()) {
+	for (const [i, id] of ids.entries()) {
 		map.set(id, i + 1);
 	}
 	return map;
@@ -56,10 +61,9 @@ export async function chartMovement(
 		genreId: number | null;
 		from: string;
 		to: string;
-		limit: number;
 	}
 ): Promise<ChartWindow> {
-	const { storefront, chart, genreId, from, to, limit } = params;
+	const { storefront, chart, genreId, from, to } = params;
 	const rows = await db
 		.prepare(
 			`SELECT observed_date, result_ids, source
@@ -90,12 +94,13 @@ export async function chartMovement(
 		return empty;
 	}
 
-	const before = positions(first, limit);
-	const after = positions(last, limit);
+	const before = positions(first);
+	const after = positions(last);
 	const appIds = [...new Set([...before.keys(), ...after.keys()])];
 	// One JSON parameter rather than one per id: two boards of up to 200 apps
 	// each would pass D1's ceiling of 100 bound parameters, and D1 rejects the
-	// whole statement.
+	// whole statement. Every app on either board is named, not only the rows the
+	// caller will keep: which ones those are is decided by the sort below.
 	const named = await db
 		.prepare(
 			`SELECT id, current_name, developer_name FROM app

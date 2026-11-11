@@ -35,7 +35,7 @@ indexes only the top 10 and any tracked app, because a row per position would be
   `TS2304: Cannot find name 'D1Database'` roughly two hundred times. Generation
   needs no auth and no network, and it reads the committed `wrangler.jsonc`, so
   CI types match the deployed config rather than a local override; run
-  `wrangler types -c wrangler.local.jsonc` when you want the local `APP_URL` in
+  `wrangler types -c wrangler.local.jsonc` when you want the local values in
   your editor. Cloudflare's other pattern, committing the file and gating it
   with `wrangler types --check`, trades a generated artefact in review diffs for
   the same guarantee, and was not taken.

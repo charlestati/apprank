@@ -43,7 +43,7 @@ import {
 } from "../queries/rankings";
 import { buildReport } from "../report";
 import type { KeywordRow } from "../report";
-import { NotFoundError } from "./logging";
+import { InvalidArgumentsError, NotFoundError } from "./logging";
 import type { ToolContext, ToolOutcome } from "./logging";
 
 /** Hard ceilings. A tool clamps to these; it never takes the caller's word. */
@@ -245,12 +245,34 @@ interface ReportArgs {
 	limit?: number;
 }
 
-/** buildReport takes a day count; the tools take explicit dates. */
-function daysIn(w: Window): number {
-	return Math.min(
-		400,
-		Math.max(1, Math.round((Date.now() - Date.parse(w.from)) / 86_400_000) + 1)
-	);
+/** The widest window the report reads, in days, both ends included. */
+const REPORT_MAX_DAYS = 400;
+
+/**
+ * Days in a window, both ends included, or a refusal the caller can act on.
+ *
+ * A window the report cannot serve is said to be one. Clamping it silently
+ * answered a different question under the dates that were asked, and every
+ * keyword in the unread stretch came back as never observed.
+ */
+function reportDays(w: Window): number {
+	const days = Math.round((Date.parse(w.to) - Date.parse(w.from)) / 86_400_000);
+	if (!Number.isFinite(days)) {
+		throw new InvalidArgumentsError(
+			`"${w.from}" to "${w.to}" is not a pair of calendar dates.`
+		);
+	}
+	if (days < 0) {
+		throw new InvalidArgumentsError(
+			`The window ends (${w.to}) before it starts (${w.from}).`
+		);
+	}
+	if (days + 1 > REPORT_MAX_DAYS) {
+		throw new InvalidArgumentsError(
+			`The window spans ${days + 1} days; the report reads at most ${REPORT_MAX_DAYS}. Narrow it, or call get_rank_history per keyword.`
+		);
+	}
+	return days + 1;
 }
 
 /**
@@ -283,13 +305,19 @@ function rowSummary(r: KeywordRow) {
 		change: r.change,
 		changeDaysAgo: r.changeDaysAgo,
 		difficulty: r.difficulty?.score ?? null,
+		heldDays: r.heldDays,
 		isBrand: r.brand ?? false,
 		keyword: r.keyword,
+		lastObserved: r.points.at(-1)?.date ?? null,
+		// Zero is its own answer: a null position on a row with no observation
+		// is not "outside the top 200", it is "nobody looked".
+		observations: r.points.length,
 		pairId: r.pairId,
 		popularity: r.popularity,
 		popularityStatus: r.popularityStatus,
 		position: r.position,
 		reason: r.verdict?.reason ?? null,
+		reasonKey: r.verdict?.reasonKey ?? null,
 		resultCount: r.resultCount,
 		unproven: r.verdict?.unproven ?? false,
 		verdict: r.verdict?.opportunity ?? null,
@@ -306,7 +334,8 @@ export async function getKeywordReport(
 	const w = window(args.from, args.to);
 	const report = await buildReport(env, {
 		appId: args.appId,
-		days: daysIn(w),
+		days: reportDays(w),
+		from: w.from,
 		storefront: args.storefront,
 		to: w.to,
 		userId: ctx.principal.userId,
@@ -335,6 +364,7 @@ export async function getKeywordReport(
 				observedDates: report.dates.length,
 				requested: w,
 				truncated,
+				unobservedKeywords: report.insights.unobserved,
 			},
 			rows: rows.map((r) =>
 				args.detail === "rows"
@@ -453,7 +483,7 @@ export async function getCurrentRankings(
 	return {
 		data: {
 			provenance: {
-				note: "position null means the app was observed outside Apple's top 200 on that date, not that the fetch failed. staleDays counts days since the last valid observation; a pair on a stretched cadence is expected to be several days old.",
+				note: "position null with an observedDate means the app was observed outside Apple's top 200 on that date, not that the fetch failed. position null with a null observedDate means no valid observation in the last 90 days, which says nothing about the rank. staleDays counts days since the last valid observation; a pair on a stretched cadence is expected to be several days old.",
 				truncated,
 			},
 			rankings: rows.map((r) => ({
@@ -569,7 +599,6 @@ export async function getChartMovement(
 		chart: args.chart,
 		from: w.from,
 		genreId: args.genreId ?? null,
-		limit,
 		storefront: args.storefront,
 		to: w.to,
 	});
@@ -685,6 +714,12 @@ export async function findKeywordOpportunities(
 
 	const matching = report.rows.filter((r) => {
 		if (args.lane && r.verdict?.opportunity !== args.lane) {
+			return false;
+		}
+		// A lane is a judgement on a rank. A keyword nobody observed has none, so
+		// it answers no lane filter, the "unknown" one included: that lane means
+		// ranked with no published volume.
+		if (args.lane && r.verdict?.reasonKey === "noObservation") {
 			return false;
 		}
 		if (!(args.includeBrand ?? false) && r.brand) {

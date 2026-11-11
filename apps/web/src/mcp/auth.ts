@@ -61,7 +61,7 @@ interface CredentialRow {
 }
 
 /** "Bearer apprank_mcp_<id>_<secret>" → its two halves. */
-export function parseToken(
+function parseToken(
 	header: string | null
 ): { id: string; secret: string } | null {
 	if (!header?.startsWith("Bearer ")) {
@@ -135,11 +135,18 @@ async function chargeCall(
  *
  * An unknown id still pays for a digest, so "no such credential" and "wrong
  * secret" cost the same and the id space cannot be probed by timing.
+ *
+ * `burst` is the per-credential brake, asked only once the secret has matched
+ * and before the call is charged. Asked earlier it was keyed on the id alone,
+ * which is the public half of the token: anybody who had seen one in a revoke
+ * command or an audit row could spend its holder's bucket with wrong secrets
+ * and keep them locked out. Asked here, a refusal still costs no write.
  */
 export async function authenticateMcp(
 	db: D1Database,
 	header: string | null,
-	now: number = Date.now()
+	now: number = Date.now(),
+	burst?: (credentialId: string) => Promise<boolean>
 ): Promise<AuthResult> {
 	const parsed = parseToken(header);
 	if (!parsed) {
@@ -173,6 +180,10 @@ export async function authenticateMcp(
 	}
 	if (row.expires_at !== null && row.expires_at <= now) {
 		return { ok: false, reason: "expired" };
+	}
+
+	if (burst && !(await burst(row.id))) {
+		return { ok: false, reason: "rate_limited" };
 	}
 
 	const used = await chargeCall(db, row.id, now);

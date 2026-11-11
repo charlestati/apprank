@@ -14,6 +14,8 @@ import { appKeywords, currentRankings } from "../src/queries/apps";
 import { chartMovement } from "../src/queries/charts";
 import { pairCoverage } from "../src/queries/coverage";
 import type { Coverage } from "../src/queries/coverage";
+import { pairHistory } from "../src/queries/rankings";
+import { buildReport } from "../src/report";
 import {
 	APP_ID,
 	USER_ID,
@@ -138,6 +140,44 @@ describe("latest rank per pair", () => {
 	});
 });
 
+describe("an app's rank read off the stored page", () => {
+	it("costs no more rows than reading the index did", async () => {
+		// The position of an app the index never held comes from the page the
+		// observation kept. Unpacked with json_each, D1 billed every element as a
+		// row: 35,910 for these ninety observations, against ninety.
+		const page = Array.from({ length: 199 }, (_, i) => 7_000_000 + i);
+		await env.DB.prepare(
+			`INSERT INTO ranking (pair_id, observed_date, fetched_at, http_status, result_count, result_ids, collector_version, valid)
+       WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM n WHERE i < 89)
+       SELECT 1, date('now', '-' || i || ' day'), 0, 200, 200, ?1, 'test', 1 FROM n`
+		)
+			.bind(JSON.stringify([...page, APP_ID]))
+			.run();
+
+		const history = await pairHistory(env.DB, 1, isoDay(120), APP_ID);
+		expect([history.results.length, history.results[0]]).toMatchObject([
+			90,
+			{ app_id: APP_ID, position: 200 },
+		]);
+		expect(history.meta.rows_read).toBeLessThan(2 * 90 + 20);
+
+		const grid = await appKeywords(env.DB, USER_ID, APP_ID);
+		expect(grid.results.find((r) => r.pair_id === 1)).toMatchObject({
+			rank: 200,
+		});
+		expect(grid.meta.rows_read).toBeLessThan(3 * 91 + 50);
+
+		const report = await buildReport(env as never, {
+			appId: APP_ID,
+			days: 100,
+			storefront: "fr",
+			userId: USER_ID,
+		});
+		const row = report.rows.find((r) => r.pairId === 1);
+		expect([row?.points.length, row?.position]).toStrictEqual([90, 200]);
+	});
+});
+
 describe("chart movement", () => {
 	it("names every app across two full boards in one bounded statement", async () => {
 		// Two disjoint boards of 150, so the union is 300 apps.
@@ -163,7 +203,6 @@ describe("chart movement", () => {
 			chart: "free",
 			from: isoDay(5),
 			genreId: null,
-			limit: 200,
 			storefront: "fr",
 			to: isoDay(0),
 		});

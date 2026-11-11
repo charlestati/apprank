@@ -16,6 +16,7 @@ import {
 import { dataHealth } from "./queries/health";
 import {
 	deletePreference,
+	isPreferenceKey,
 	listPreferences,
 	putPreference,
 } from "./queries/preferences";
@@ -43,7 +44,9 @@ const api = new Hono<{ Bindings: Env; Variables: Vars }>();
  * default and serve the page.
  */
 function bounded(raw: string | undefined, fallback: number, max: number) {
-	const n = Number(raw ?? fallback);
+	// An empty value is absent, not zero: `Number("")` is 0, which clamped to a
+	// one-day window instead of the default.
+	const n = Number(raw?.trim() ? raw : fallback);
 	return Number.isFinite(n) ? Math.min(Math.max(n, 1), max) : fallback;
 }
 
@@ -87,6 +90,11 @@ api.get("/preferences", async (c) => {
 
 api.put("/preferences/:key", async (c) => {
 	const key = c.req.param("key");
+	// The key is as much a place to park text as the value is, and it arrives
+	// in the path: only the keys the interface writes are stored.
+	if (!isPreferenceKey(key)) {
+		return c.json({ error: "unknown preference" }, 400);
+	}
 	const body = await c.req
 		.json<{ value?: unknown }>()
 		.catch((): { value?: unknown } => ({}));
@@ -100,11 +108,14 @@ api.put("/preferences/:key", async (c) => {
 	if (body.value.length > PREFERENCE_MAX) {
 		return c.json({ error: "value too long" }, 400);
 	}
-	await putPreference(c.env.DB, {
+	const stored = await putPreference(c.env.DB, {
 		key,
 		userId: c.get("userId"),
 		value: body.value,
 	});
+	if (!stored) {
+		return c.json({ error: "too many preferences" }, 400);
+	}
 	return c.body(null, 204);
 });
 
@@ -205,6 +216,10 @@ api.get("/apps/:appId/report.csv", async (c) => {
 		"difficulty_sample_size",
 		"results_total",
 		"top_results",
+		// A blank position has two causes, and only these two columns tell them
+		// apart: observed and outside the top 200, or not observed at all.
+		"observations",
+		"last_observed",
 	];
 	const lines = [header.join(",")];
 	for (const row of report.rows) {
@@ -222,6 +237,8 @@ api.get("/apps/:appId/report.csv", async (c) => {
 				row.difficulty?.sampleSize ?? null,
 				row.resultCount,
 				row.topResults.map((r) => r.name).join(" | "),
+				row.points.length,
+				row.points.at(-1)?.date ?? null,
 			]
 				.map((v) => csvEscape(v as string | number | null))
 				.join(",")
@@ -258,7 +275,13 @@ api.get("/pairs/:pairId/history", async (c) => {
 		return notFound(c);
 	}
 	const days = bounded(c.req.query("days"), 90, 400);
-	let appId = c.req.query("appId") ? Number(c.req.query("appId")) : null;
+	const rawAppId = c.req.query("appId");
+	let appId = rawAppId === undefined ? null : Number(rawAppId);
+	// A junk id is the caller's mistake. Passed on, NaN and 0 both read as "no
+	// app named" further down, and the answer was every app's rows at once.
+	if (appId !== null && !(Number.isInteger(appId) && appId > 0)) {
+		return c.json({ error: "appId must be a positive integer" }, 400);
+	}
 	if (appId === null) {
 		const apps = await trackedAppsForPair(c.env.DB, c.get("userId"), pairId);
 		const [only, ...others] = apps;

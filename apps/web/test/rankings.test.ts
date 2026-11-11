@@ -171,6 +171,49 @@ describe("GET /api/apps/:appId/keywords", () => {
 		expect(rows[0]?.observed_date).toBeNull();
 	});
 
+	it("prefers the term's own popularity over a genre's absence in the same week", async () => {
+		// The genre pull writes "outside this genre's top 500" for every tracked
+		// keyword; the by-name pass writes the term's own number storefront-wide.
+		// Taking the newest row alone returned whichever SQLite reached first.
+		await seedCatalog();
+		await seedTrackedApp();
+		await seedKeywords();
+		await env.DB.batch([
+			env.DB.prepare(
+				`INSERT INTO popularity (keyword_id, storefront_code, genre_id, week_start, present, popularity_1_100, fetched_at)
+         VALUES (1, 'fr', 6002, '2026-01-12', 0, NULL, 0)`
+			),
+			env.DB.prepare(
+				`INSERT INTO popularity (keyword_id, storefront_code, genre_id, week_start, present, popularity_1_100, fetched_at)
+         VALUES (1, 'fr', 0, '2026-01-12', 1, 40, 0)`
+			),
+			// A newer genre absence must not hide last week's real measurement.
+			env.DB.prepare(
+				`INSERT INTO popularity (keyword_id, storefront_code, genre_id, week_start, present, popularity_1_100, fetched_at)
+         VALUES (1, 'fr', 6002, '2026-01-19', 0, NULL, 0)`
+			),
+		]);
+		const res = await app.fetch(apiRequest(`/apps/${APP_ID}/keywords`), env);
+		const rows = (await res.json()) as KeywordRow[];
+		expect(rows.find((r) => r.pair_id === 1)?.popularity).toBe(40);
+	});
+
+	it("reads the rank off the stored page when the index has no row for the app", async () => {
+		await seedCatalog();
+		await seedTrackedApp();
+		await seedKeywords();
+		await seedRanking({
+			date: isoDay(),
+			entries: [[1, RIVAL_ID]],
+			id: 1,
+			pairId: 1,
+			resultIds: [RIVAL_ID, 801, 802, APP_ID],
+		});
+		const res = await app.fetch(apiRequest(`/apps/${APP_ID}/keywords`), env);
+		const rows = (await res.json()) as KeywordRow[];
+		expect(rows.find((r) => r.pair_id === 1)?.rank).toBe(4);
+	});
+
 	it("ignores invalidated rankings", async () => {
 		await seedCatalog();
 		await seedTrackedApp();
@@ -340,6 +383,51 @@ describe("GET /api/pairs/:pairId/history", () => {
 		]);
 	});
 
+	it("answers 400 for an appId that is not a positive integer", async () => {
+		// NaN and 0 are falsy, so the app filter was dropped and every indexed
+		// app's rows came back as the tracked app's history.
+		await seedCatalog();
+		await seedKeywords();
+		await seedRanking({
+			date: isoDay(1),
+			entries: [
+				[1, RIVAL_ID],
+				[5, APP_ID],
+			],
+			id: 1,
+			pairId: 1,
+		});
+		for (const raw of ["abc", "0", "-3", "1.5", ""]) {
+			const res = await app.fetch(
+				apiRequest(`/pairs/1/history?appId=${raw}`),
+				env
+			);
+			expect([raw, res.status]).toStrictEqual([raw, 400]);
+		}
+	});
+
+	it("reads the position off the stored page for an app the index never held", async () => {
+		await seedCatalog();
+		await seedKeywords();
+		const tail = Array.from({ length: 20 }, (_, i) => 800 + i);
+		await seedRanking({
+			date: isoDay(1),
+			entries: [[1, RIVAL_ID]],
+			id: 1,
+			pairId: 1,
+			resultIds: [RIVAL_ID, ...tail, APP_ID],
+		});
+		const { points } = await history(`/pairs/1/history?appId=${APP_ID}`);
+		expect(points).toStrictEqual([
+			{
+				app_id: APP_ID,
+				observed_date: isoDay(1),
+				position: 22,
+				result_count: 200,
+			},
+		]);
+	});
+
 	it("clips the window with the days query param", async () => {
 		await seedCatalog();
 		await seedKeywords();
@@ -357,10 +445,29 @@ describe("GET /api/pairs/:pairId/history", () => {
 		await seedCatalog();
 		await seedKeywords();
 		await seedRanking({ date: isoDay(1), id: 1, pairId: 1 });
-		for (const q of ["?days=abc", "?days=", "?days=NaN", "?days=Infinity"]) {
+		for (const q of ["?days=abc", "?days=", "?days=NaN"]) {
 			const res = await app.fetch(apiRequest(`/pairs/1/history${q}`), env);
 			expect(res.status).toBe(200);
+			// The default window, not merely a 200: a junk value must not widen or
+			// empty the answer.
+			const body = (await res.json()) as {
+				points: HistoryRow[];
+				window: { from: string; to: string };
+			};
+			expect([q, body.window]).toStrictEqual([
+				q,
+				{ from: isoDay(90), to: isoDay() },
+			]);
+			expect(body.points.map((p) => p.observed_date)).toStrictEqual([
+				isoDay(1),
+			]);
 		}
+		// Infinity is finite to nobody: it falls back like the rest.
+		const res = await app.fetch(
+			apiRequest("/pairs/1/history?days=Infinity"),
+			env
+		);
+		expect(res.status).toBe(200);
 	});
 
 	it("refuses a negative window instead of dating the future", async () => {

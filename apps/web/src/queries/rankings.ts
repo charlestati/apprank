@@ -11,6 +11,41 @@ export function sinceDate(days: number): string {
 	return new Date(Date.now() - days * DAY_MS).toISOString().slice(0, 10);
 }
 
+/**
+ * One app's position on an observation, as a SQL expression.
+ *
+ * The index holds only the top ten plus whatever was tracked when the crawl
+ * ran, so an app tracked later has no index row on any earlier day. Reading
+ * that absence as "outside the top 200" rewrote its history: sixty days at
+ * #37 came back as sixty days unranked. The observation itself still carries
+ * the whole ordered page, so the position is read from there when the index
+ * has nothing.
+ *
+ * It is read with string functions, not by unpacking the array. D1 bills every
+ * element an unpacked array yields as a row read: ninety observations of a
+ * two-hundred-app page cost 35,910 rows where the index cost ninety, and reads
+ * are the resource this Worker runs out of. So the page is wrapped in commas,
+ * the id is looked for between two of them (which is what stops a longer id
+ * that merely contains this one from matching), and the position is the number
+ * of commas up to the match.
+ *
+ * The id is cast to an integer before it becomes text because D1 binds a
+ * JavaScript number as a real, whose text form carries a decimal point no
+ * stored page contains.
+ *
+ * Expects the observation and its index row to be in scope under the aliases
+ * given, and takes the app as a column or a numbered parameter.
+ */
+export function appPositionSql(app: string, r = "r", re = "re"): string {
+	const page = `(',' || trim(replace(${r}.result_ids, ' ', ''), '[]') || ',')`;
+	const at = `instr(${page}, ',' || CAST(CAST(${app} AS INTEGER) AS TEXT) || ',')`;
+	return `CASE
+       WHEN ${re}.position IS NOT NULL THEN ${re}.position
+       WHEN ${at} = 0 THEN NULL
+       ELSE ${at} - length(replace(substr(${page}, 1, ${at}), ',', ''))
+     END`;
+}
+
 /** Rank history for one pair, optionally narrowed to one app's position. */
 export function pairHistory(
 	db: D1Database,
@@ -18,15 +53,35 @@ export function pairHistory(
 	since: string,
 	appId: number | null
 ) {
-	return db
-		.prepare(
-			`SELECT r.observed_date, r.result_count, re.position, re.app_id
+	// Compared against null, not for truthiness: an id of 0 or NaN is falsy,
+	// and dropping the filter for it returned every indexed app's rows as one
+	// app's history.
+	if (appId === null) {
+		return db
+			.prepare(
+				`SELECT r.observed_date, r.result_count, re.position, re.app_id
      FROM ranking r
-     LEFT JOIN rank_entry re ON re.ranking_id = r.id ${appId ? "AND re.app_id = ?3" : ""}
+     LEFT JOIN rank_entry re ON re.ranking_id = r.id
      WHERE r.pair_id = ?1 AND r.valid = 1 AND r.observed_date >= ?2
      ORDER BY r.observed_date`
+			)
+			.bind(pairId, since)
+			.all();
+	}
+	return db
+		.prepare(
+			`SELECT observed_date, result_count, position,
+            CASE WHEN position IS NOT NULL THEN ?3 END AS app_id
+     FROM (
+       SELECT r.observed_date, r.result_count,
+              ${appPositionSql("?3")} AS position
+       FROM ranking r
+       LEFT JOIN rank_entry re ON re.ranking_id = r.id AND re.app_id = ?3
+       WHERE r.pair_id = ?1 AND r.valid = 1 AND r.observed_date >= ?2
+     )
+     ORDER BY observed_date`
 		)
-		.bind(...(appId ? [pairId, since, appId] : [pairId, since]))
+		.bind(pairId, since, appId)
 		.all();
 }
 

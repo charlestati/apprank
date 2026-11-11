@@ -42,6 +42,45 @@ function walled(extra: Record<string, unknown> = {}) {
 	} as never;
 }
 
+interface ListedTool {
+	name: string;
+	inputSchema: {
+		properties?: Record<string, unknown>;
+		required?: string[];
+	};
+}
+
+/** The tools the server itself registers, with their argument schemas. */
+async function listTools(token: string): Promise<ListedTool[]> {
+	const res = await fetchMcp(mcpRequest(rpc("tools/list"), token), walled());
+	const body = await jsonRpcBody<{ result: { tools: ListedTool[] } }>(res);
+	return body.result.tools;
+}
+
+/** A value for each argument some tool requires beside its id. */
+const REQUIRED_ARGUMENTS: Record<string, unknown> = {
+	chart: "free",
+	storefront: "fr",
+};
+
+/** Arguments that address the caller's own data, enough for a tool to run. */
+function argumentsFor(name: string): Record<string, unknown> {
+	const own: Record<string, Record<string, unknown>> = {
+		find_keyword_opportunities: { appId: APP_ID, storefront: "fr" },
+		get_chart_movement: { chart: "free", storefront: "fr" },
+		get_competitors: { pairId: 1 },
+		get_current_rankings: { appId: APP_ID },
+		get_keyword_popularity: { appId: APP_ID, storefront: "fr" },
+		get_keyword_report: { appId: APP_ID, storefront: "fr" },
+		get_metadata_changes: { appId: APP_ID },
+		get_rank_history: { pairId: 1 },
+		get_ratings_history: { appId: APP_ID },
+		get_reviews: { appId: APP_ID },
+		get_search_results: { pairId: 1 },
+	};
+	return own[name] ?? {};
+}
+
 beforeEach(async () => {
 	await resetDb();
 	await env.DB.batch([
@@ -245,47 +284,186 @@ describe("the MCP transport boundary", () => {
 	});
 });
 
-describe("MCP ownership", () => {
-	async function seedOtherOperator() {
-		await env.DB.batch([
-			env.DB.prepare(
-				"INSERT INTO app (id, current_name, first_seen_at, last_seen_at) VALUES (?1, 'Their App', 0, 0)"
-			).bind(OTHER_APP),
-			env.DB.prepare(
-				"INSERT INTO tracked_app (user_id, app_id, created_at) VALUES (?1, ?2, 0)"
-			).bind(OTHER_USER, OTHER_APP),
-			env.DB.prepare(
-				"INSERT INTO keyword (id, text, normalized, language) VALUES (9, 'their keyword', 'their keyword', 'fr')"
-			),
-			env.DB.prepare(
-				`INSERT INTO crawl_pair (id, keyword_id, storefront_code, locale_code, tier, ref_count, next_due_at)
-         VALUES (9, 9, 'fr', 'fr-FR', 1, 1, 0)`
-			),
-			env.DB.prepare(
-				"INSERT INTO tracked_keyword (user_id, app_id, keyword_id, created_at) VALUES (?1, ?2, 9, 0)"
-			).bind(OTHER_USER, OTHER_APP),
-		]);
-	}
+/** A stand-in for the rate-limit binding that refuses the keys it is told to. */
+function limiter(refuse: (key: string) => boolean) {
+	const keys: string[] = [];
+	return {
+		binding: {
+			limit: ({ key }: { key: string }) => {
+				keys.push(key);
+				return Promise.resolve({ success: !refuse(key) });
+			},
+		},
+		keys,
+	};
+}
 
-	/** Every tool that takes an appId or a pairId. */
-	const SCOPED_TOOLS: [string, Record<string, unknown>][] = [
-		["get_keyword_report", { appId: OTHER_APP, storefront: "fr" }],
-		["get_current_rankings", { appId: OTHER_APP }],
-		["get_keyword_popularity", { appId: OTHER_APP, storefront: "fr" }],
-		["get_metadata_changes", { appId: OTHER_APP }],
-		["find_keyword_opportunities", { appId: OTHER_APP, storefront: "fr" }],
-		["get_reviews", { appId: OTHER_APP }],
-		["get_ratings_history", { appId: OTHER_APP }],
-		["get_collection_health", { appId: OTHER_APP }],
-		["get_rank_history", { pairId: 9 }],
-		["get_competitors", { pairId: 9 }],
-		["get_search_results", { pairId: 9 }],
-	];
+describe("the MCP burst brake", () => {
+	const ADDRESS = "203.0.113.7";
+
+	it("does not charge a credential's bucket for a wrong secret", async () => {
+		// The id is the public half of the token: it is printed in the revoke
+		// command and stored in the audit log. Keyed on it before the secret was
+		// checked, the brake let anyone who had seen an id spend its holder's
+		// bucket and keep them at 429.
+		const { id } = await issueCredential({ userId: USER_ID });
+		const brake = limiter(() => false);
+		const res = await fetchMcp(
+			mcpRequest(rpc("tools/list"), undefined, {
+				Authorization: `Bearer apprank_mcp_${id}_wrong-secret`,
+				"CF-Connecting-IP": ADDRESS,
+			}),
+			walled({ MCP_RATE_LIMIT: brake.binding })
+		);
+		expect(res.status).toBe(401);
+		expect(brake.keys).toStrictEqual([`ip:${ADDRESS}`]);
+	});
+
+	it("charges the credential once its secret has matched, before the daily count", async () => {
+		const { id, token } = await issueCredential({ userId: USER_ID });
+		const brake = limiter((key) => key === `credential:${id}`);
+		const res = await fetchMcp(
+			mcpRequest(callTool("whoami"), token, { "CF-Connecting-IP": ADDRESS }),
+			walled({ MCP_RATE_LIMIT: brake.binding })
+		);
+		expect(res.status).toBe(429);
+		expect(brake.keys).toStrictEqual([`ip:${ADDRESS}`, `credential:${id}`]);
+		// Refused before the write it exists to save.
+		const row = await env.DB.prepare(
+			"SELECT call_count FROM mcp_credential WHERE id = ?1"
+		)
+			.bind(id)
+			.first<{ call_count: number }>();
+		expect(row?.call_count).toBe(0);
+	});
+
+	it("stops a loop of rotating ids at the address, before it reaches D1", async () => {
+		// A fresh id per request got a fresh bucket each time, so the brake never
+		// engaged and every request cost a read.
+		const brake = limiter((key) => key === `ip:${ADDRESS}`);
+		let prepared = 0;
+		const counted = new Proxy(env.DB, {
+			get(target, prop) {
+				if (prop === "prepare") {
+					return (sql: string) => {
+						prepared += 1;
+						return target.prepare(sql);
+					};
+				}
+				const value: unknown = Reflect.get(target, prop);
+				return typeof value === "function" ? value.bind(target) : value;
+			},
+		});
+		for (const id of ["aaaaaaaaaaaa", "bbbbbbbbbbbb"]) {
+			const res = await fetchMcp(
+				mcpRequest(rpc("tools/list"), undefined, {
+					Authorization: `Bearer apprank_mcp_${id}_x`,
+					"CF-Connecting-IP": ADDRESS,
+				}),
+				walled({ DB: counted, MCP_RATE_LIMIT: brake.binding })
+			);
+			expect(res.status).toBe(429);
+		}
+		expect(prepared).toBe(0);
+	});
+
+	it("lets a served call through both brakes", async () => {
+		const { id, token } = await issueCredential({ userId: USER_ID });
+		const brake = limiter(() => false);
+		const res = await fetchMcp(
+			mcpRequest(callTool("whoami"), token, { "CF-Connecting-IP": ADDRESS }),
+			walled({ MCP_RATE_LIMIT: brake.binding })
+		);
+		expect(res.status).toBe(200);
+		expect(brake.keys).toStrictEqual([`ip:${ADDRESS}`, `credential:${id}`]);
+	});
+});
+
+async function seedOtherOperator() {
+	await env.DB.batch([
+		env.DB.prepare(
+			"INSERT INTO app (id, current_name, first_seen_at, last_seen_at) VALUES (?1, 'Their App', 0, 0)"
+		).bind(OTHER_APP),
+		env.DB.prepare(
+			"INSERT INTO tracked_app (user_id, app_id, created_at) VALUES (?1, ?2, 0)"
+		).bind(OTHER_USER, OTHER_APP),
+		env.DB.prepare(
+			"INSERT INTO keyword (id, text, normalized, language) VALUES (9, 'their keyword', 'their keyword', 'fr')"
+		),
+		env.DB.prepare(
+			`INSERT INTO crawl_pair (id, keyword_id, storefront_code, locale_code, tier, ref_count, next_due_at)
+         VALUES (9, 9, 'fr', 'fr-FR', 1, 1, 0)`
+		),
+		env.DB.prepare(
+			"INSERT INTO tracked_keyword (user_id, app_id, keyword_id, created_at) VALUES (?1, ?2, 9, 0)"
+		).bind(OTHER_USER, OTHER_APP),
+	]);
+}
+
+/**
+ * Every tool that takes an appId or a pairId, read off the server's own
+ * tool list, each addressed at the other operator's data.
+ *
+ * Derived, not listed: a hand-kept table passes vacuously for the tool
+ * somebody adds next, which is the one this test exists for. A pair id wins
+ * over an app id where a tool takes both, because the pair is what the tool
+ * is about and the app only narrows it.
+ */
+async function scopedTools(
+	token: string
+): Promise<[string, Record<string, unknown>][]> {
+	const scoped: [string, Record<string, unknown>][] = [];
+	for (const tool of await listTools(token)) {
+		const properties = tool.inputSchema.properties ?? {};
+		let args: Record<string, unknown> | null = null;
+		if ("pairId" in properties) {
+			args = { pairId: 9 };
+		} else if ("appId" in properties) {
+			args = { appId: OTHER_APP };
+		}
+		if (args === null) {
+			continue;
+		}
+		for (const required of tool.inputSchema.required ?? []) {
+			if (!(required in args)) {
+				// A required argument this table cannot fill fails the test below
+				// by name, so a new tool has to be taught here rather than skipped.
+				args[required] = REQUIRED_ARGUMENTS[required];
+			}
+		}
+		scoped.push([tool.name, args]);
+	}
+	return scoped;
+}
+
+describe("MCP ownership", () => {
+	it("finds the scoped tools it expects, so the walk below is not vacuous", async () => {
+		const { token } = await issueCredential({ userId: USER_ID });
+		const scoped = await scopedTools(token);
+		expect(scoped.map(([name]) => name).toSorted()).toStrictEqual([
+			"find_keyword_opportunities",
+			"get_collection_health",
+			"get_competitors",
+			"get_current_rankings",
+			"get_keyword_popularity",
+			"get_keyword_report",
+			"get_metadata_changes",
+			"get_rank_history",
+			"get_ratings_history",
+			"get_reviews",
+			"get_search_results",
+		]);
+		// Every required argument was filled: an undefined here is a new tool
+		// whose arguments this file does not know yet.
+		expect(
+			scoped.filter(([, args]) => Object.values(args).includes(undefined))
+		).toStrictEqual([]);
+	});
 
 	it("refuses every app- and pair-scoped tool for another operator's data", async () => {
 		await seedOtherOperator();
 		const { token } = await issueCredential({ userId: USER_ID });
-		for (const [name, args] of SCOPED_TOOLS) {
+		for (const [name, args] of await scopedTools(token)) {
 			const res = await fetchMcp(
 				mcpRequest(callTool(name, args), token),
 				walled()
@@ -340,6 +518,84 @@ describe("MCP ownership", () => {
 		expect(
 			(data.apps as { appId: number }[]).map((a) => a.appId)
 		).toStrictEqual([OTHER_APP]);
+	});
+});
+
+/**
+ * The scope each tool is registered under. Hand-kept, because the scope is not
+ * in the tool list, and checked for completeness against that list below.
+ */
+const TOOL_SCOPES: Record<string, string | null> = {
+	find_keyword_opportunities: "read:rankings",
+	get_chart_movement: "read:charts",
+	get_collection_health: "read:health",
+	get_competitors: "read:rankings",
+	get_current_rankings: "read:rankings",
+	get_keyword_popularity: "read:popularity",
+	get_keyword_report: "read:rankings",
+	get_metadata_changes: "read:metadata",
+	get_rank_history: "read:rankings",
+	get_ratings_history: "read:ratings",
+	get_reviews: "read:reviews",
+	get_search_results: "read:rankings",
+	list_tracked_apps: "read:rankings",
+	whoami: null,
+};
+
+describe("MCP scopes, tool by tool", () => {
+	it("knows the scope of every registered tool", async () => {
+		const { token } = await issueCredential({ userId: USER_ID });
+		const tools = await listTools(token);
+		const names = tools.map((t) => t.name);
+		expect(names.toSorted()).toStrictEqual(Object.keys(TOOL_SCOPES).toSorted());
+	});
+
+	it("refuses each tool to a credential holding every scope but its own", async () => {
+		// One tool under the wrong scope is a whole table readable by a
+		// credential that was issued for something else.
+		const everyScope = [
+			...new Set(Object.values(TOOL_SCOPES).filter((s) => s !== null)),
+		];
+		for (const [name, scope] of Object.entries(TOOL_SCOPES)) {
+			if (scope === null) {
+				continue;
+			}
+			const { token } = await issueCredential({
+				scopes: everyScope.filter((s) => s !== scope),
+				userId: USER_ID,
+			});
+			const { data, isError } = await toolPayload(
+				await fetchMcp(
+					mcpRequest(callTool(name, argumentsFor(name)), token),
+					walled()
+				)
+			);
+			expect([name, isError, String(data.error)]).toStrictEqual([
+				name,
+				true,
+				expect.stringContaining(`the ${scope} scope`),
+			]);
+		}
+	});
+
+	it("serves each tool to a credential holding only its own scope", async () => {
+		for (const [name, scope] of Object.entries(TOOL_SCOPES)) {
+			const { token } = await issueCredential({
+				scopes: scope === null ? [] : [scope],
+				userId: USER_ID,
+			});
+			const { data, isError } = await toolPayload(
+				await fetchMcp(
+					mcpRequest(callTool(name, argumentsFor(name)), token),
+					walled()
+				)
+			);
+			expect([name, isError, data.error]).toStrictEqual([
+				name,
+				false,
+				undefined,
+			]);
+		}
 	});
 });
 

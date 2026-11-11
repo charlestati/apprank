@@ -13,6 +13,8 @@
 // gaps by design. Counting those as missing days would report the whole tail
 // of the tracked set as degraded and make the signal useless.
 
+import { isLoss } from "./fetch-error-classes";
+
 const DAY_MS = 86_400_000;
 
 interface ErrorWindow {
@@ -20,6 +22,12 @@ interface ErrorWindow {
 	to: string;
 	errorClass: string;
 	count: number;
+	/**
+	 * Whether these fetches cost an observation. A throttle is requeued and the
+	 * pair runs late, and a finding about Apple's own data failed nothing, so
+	 * neither is a reason to distrust the window.
+	 */
+	loss: boolean;
 }
 
 export interface Gap {
@@ -146,7 +154,7 @@ async function pairsObservations(
 		.bind(JSON.stringify([...byKey.keys()]), from, to)
 		.all<{
 			params: string;
-			error_class: string;
+			error_class: string | null;
 			first_date: string;
 			last_date: string;
 			n: number;
@@ -155,8 +163,10 @@ async function pairsObservations(
 		for (const id of byKey.get(e.params) ?? []) {
 			out.get(id)?.errors.push({
 				count: e.n,
-				errorClass: e.error_class,
+				// A null class predates the closed vocabulary; it is still a loss.
+				errorClass: e.error_class ?? "unknown",
 				from: e.first_date,
+				loss: isLoss(e.error_class),
 				to: e.last_date,
 			});
 		}
@@ -164,8 +174,8 @@ async function pairsObservations(
 	return out;
 }
 
-/** Runs of consecutive calendar days with no observation. */
-export function findGaps(dates: string[], from: string, to: string): Gap[] {
+/** Every run of consecutive calendar days with no observation. */
+function calendarGaps(dates: string[], from: string, to: string): Gap[] {
 	const seen = new Set(dates);
 	const gaps: Gap[] = [];
 	const start = Date.parse(from);
@@ -199,29 +209,65 @@ export function findGaps(dates: string[], from: string, to: string): Gap[] {
 	return gaps;
 }
 
+/**
+ * Runs of consecutive calendar days with no observation, longer than the
+ * pair's cadence explains.
+ *
+ * A pair checked every `intervalDays` has that many days less one between two
+ * observations by design. Reporting those made every pair on a stretched rung
+ * a list of gaps, the same mistake as counting them against coverage.
+ */
+export function findGaps(
+	dates: string[],
+	from: string,
+	to: string,
+	intervalDays = 1
+): Gap[] {
+	return calendarGaps(dates, from, to).filter((g) => g.days >= intervalDays);
+}
+
+function fetches(e: ErrorWindow): string {
+	return `${e.count} ${e.errorClass} ${e.count === 1 ? "fetch" : "fetches"} between ${e.from} and ${e.to}`;
+}
+
+/**
+ * The window's holes in prose, in two voices.
+ *
+ * What cost observations comes with the warning not to read movement into the
+ * window. What was absorbed is still named, because the provenance is the
+ * point, but without that warning: a throttle that was retried the same day on
+ * a fully observed pair says nothing against the ranks, and attaching the
+ * warning to it put the warning on every pair in ordinary weather.
+ */
 function describe(
-	coverage: number,
-	gaps: Gap[],
-	errors: ErrorWindow[],
-	windowDays: number
+	degraded: boolean,
+	observed: number,
+	expected: number,
+	intervalHours: number,
+	errors: ErrorWindow[]
 ): string | null {
-	if (coverage >= DEGRADED_BELOW && errors.length === 0) {
-		return null;
-	}
-	const parts: string[] = [];
-	const missing = gaps.reduce((n, g) => n + g.days, 0);
-	if (missing > 0) {
-		parts.push(`${missing} of ${windowDays} days have no observation`);
-	}
-	for (const e of errors) {
-		parts.push(
-			`${e.count} ${e.errorClass} ${e.count === 1 ? "fetch" : "fetches"} between ${e.from} and ${e.to}`
+	const sentences: string[] = [];
+	if (degraded) {
+		const parts: string[] = [];
+		if (observed < expected) {
+			// Counted against the cadence, never the calendar: a pair checked weekly
+			// is not missing six days out of seven.
+			parts.push(
+				`${expected - observed} of ${expected} expected observations are missing (one expected every ${intervalHours} hours)`
+			);
+		}
+		parts.push(...errors.filter((e) => e.loss).map(fetches));
+		sentences.push(
+			`${parts.join("; ")}. Rank movement across this window is not evidence of a rank change.`
 		);
 	}
-	if (parts.length === 0) {
-		return null;
+	const absorbed = errors.filter((e) => !e.loss);
+	if (absorbed.length > 0) {
+		sentences.push(
+			`Also recorded: ${absorbed.map(fetches).join("; ")}. These are retried or are findings about Apple's own data, and are not themselves a lost observation.`
+		);
 	}
-	return `${parts.join("; ")}. Rank movement across this window is not evidence of a rank change.`;
+	return sentences.length > 0 ? sentences.join(" ") : null;
 }
 
 function summariseCoverage(
@@ -236,15 +282,24 @@ function summariseCoverage(
 	// its cadence so that flexed frequency does not read as lost coverage.
 	const expected = Math.max(1, Math.round(windowDays / (intervalHours / 24)));
 	const coverage = Math.min(1, dates.length / expected);
-	const gaps = findGaps(dates, from, to);
+	const gaps = findGaps(
+		dates,
+		from,
+		to,
+		Math.max(1, Math.round(intervalHours / 24))
+	);
+	// Only a class that cost an observation degrades the window. Counting every
+	// recorded class flagged a fully observed pair for one requeued throttle,
+	// and a signal that is always on is the one nobody reads.
+	const degraded = coverage < DEGRADED_BELOW || errors.some((e) => e.loss);
 
 	return {
 		coverage: Number(coverage.toFixed(3)),
-		degraded: coverage < DEGRADED_BELOW || errors.length > 0,
+		degraded,
 		errors,
 		gaps,
 		intervalHours,
-		note: describe(coverage, gaps, errors, windowDays),
+		note: describe(degraded, dates.length, expected, intervalHours, errors),
 		observed: {
 			expectedObservations: expected,
 			firstDate: dates[0] ?? null,

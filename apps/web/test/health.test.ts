@@ -267,6 +267,9 @@ describe("error classes that cost an observation", () => {
 		expect(isLoss("pull_abandoned")).toBeTruthy();
 		expect(isLoss("throttled")).toBeFalsy();
 		expect(isLoss("rate_limited")).toBeFalsy();
+		// A deploy drops whatever task was in flight and the task is requeued.
+		// Counted as a loss, the badge turned red on every release.
+		expect(isLoss("do_restarted")).toBeFalsy();
 		expect(isLoss("skipped_processing_date")).toBeFalsy();
 		expect(isLoss("app_not_in_storefront")).toBeFalsy();
 	});

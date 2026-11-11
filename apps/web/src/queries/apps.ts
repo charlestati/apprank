@@ -8,6 +8,10 @@
 //
 // Column names are returned raw, as the existing clients expect.
 
+import { STOREFRONT_WIDE_GENRE_ID } from "@apprank/core/apple/ads";
+
+import { appPositionSql } from "./rankings";
+
 export interface AppRow {
 	id: number;
 	current_name: string | null;
@@ -133,17 +137,23 @@ export function appKeywords(db: D1Database, userId: string, appId: number) {
 			`WITH ${LATEST_FOR_APP}
      SELECT m.keyword_id, m.keyword, m.pair_id,
             m.storefront_code, m.locale_code, l.d AS observed_date,
-            re.position AS rank,
+            ${appPositionSql("m.app_id")} AS rank,
+            -- The same preference as the report's popularity read: a keyword
+            -- holds a row per genre walked plus a storefront-wide one, and the
+            -- newest row alone could be a genre's "outside its top 500" hiding
+            -- the term's own measurement for that very week.
             (SELECT p.popularity_1_100 FROM popularity p
              WHERE p.keyword_id = m.keyword_id AND p.storefront_code = m.storefront_code
-             ORDER BY p.week_start DESC LIMIT 1) AS popularity
+             ORDER BY (p.present = 0 AND p.genre_id <> ?3) ASC,
+                      p.week_start DESC, p.genre_id <> ?3 ASC
+             LIMIT 1) AS popularity
      FROM mine m
      LEFT JOIN latest l ON l.pair_id = m.pair_id
      LEFT JOIN ranking r ON r.pair_id = m.pair_id AND r.observed_date = l.d AND r.valid = 1
      LEFT JOIN rank_entry re ON re.ranking_id = r.id AND re.app_id = m.app_id
      ORDER BY m.keyword, m.storefront_code`
 		)
-		.bind(appId, userId)
+		.bind(appId, userId, STOREFRONT_WIDE_GENRE_ID)
 		.all();
 }
 
@@ -164,14 +174,19 @@ export function currentRankings(
 	return db
 		.prepare(
 			`WITH ${LATEST_FOR_APP}
-       SELECT m.keyword, m.pair_id, m.storefront_code, m.locale_code,
-              m.interval_hours, l.d AS observed_date, re.position
-       FROM mine m
-       LEFT JOIN latest l ON l.pair_id = m.pair_id
-       LEFT JOIN ranking r ON r.pair_id = m.pair_id AND r.observed_date = l.d AND r.valid = 1
-       LEFT JOIN rank_entry re ON re.ranking_id = r.id AND re.app_id = m.app_id
-       WHERE (?3 IS NULL OR m.storefront_code = ?3)
-       ORDER BY re.position IS NULL, re.position, m.keyword
+       SELECT keyword, pair_id, storefront_code, locale_code,
+              interval_hours, observed_date, position
+       FROM (
+         SELECT m.keyword, m.pair_id, m.storefront_code, m.locale_code,
+                m.interval_hours, l.d AS observed_date,
+                ${appPositionSql("m.app_id")} AS position
+         FROM mine m
+         LEFT JOIN latest l ON l.pair_id = m.pair_id
+         LEFT JOIN ranking r ON r.pair_id = m.pair_id AND r.observed_date = l.d AND r.valid = 1
+         LEFT JOIN rank_entry re ON re.ranking_id = r.id AND re.app_id = m.app_id
+         WHERE (?3 IS NULL OR m.storefront_code = ?3)
+       )
+       ORDER BY position IS NULL, position, keyword
        LIMIT ?4`
 		)
 		.bind(params.appId, params.userId, params.storefront, params.limit + 1)

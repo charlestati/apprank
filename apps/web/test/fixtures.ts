@@ -154,19 +154,22 @@ interface RankingSeed {
 	resultCount?: number;
 	/** position -> app id */
 	entries?: [number, number][];
+	/** The whole ordered page Apple returned. Empty unless a test needs it. */
+	resultIds?: number[];
 }
 
 export async function seedRanking(seed: RankingSeed): Promise<void> {
 	await env.DB.prepare(
 		`INSERT INTO ranking (id, pair_id, observed_date, fetched_at, http_status, result_count, result_ids, collector_version, valid)
-     VALUES (?1, ?2, ?3, 0, 200, ?4, '[]', 'test', ?5)`
+     VALUES (?1, ?2, ?3, 0, 200, ?4, ?6, 'test', ?5)`
 	)
 		.bind(
 			seed.id,
 			seed.pairId,
 			seed.date,
 			seed.resultCount ?? 200,
-			seed.valid ?? 1
+			seed.valid ?? 1,
+			JSON.stringify(seed.resultIds ?? [])
 		)
 		.run();
 	for (const [position, appId] of seed.entries ?? []) {

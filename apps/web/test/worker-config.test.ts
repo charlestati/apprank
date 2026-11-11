@@ -29,11 +29,24 @@ describe("the assets configuration", () => {
 		// cannot reach /mcp or /api. Turn it off and the SPA fallback answers them
 		// with index.html, the API and the MCP endpoint both break, and the wall
 		// that gates the HTML disappears with them.
-		expect(assets.run_worker_first).toBeTruthy();
+		// Exactly true: Wrangler also takes a list of path patterns here, which is
+		// truthy and would leave every path outside it, the HTML included, to the
+		// assets binding and outside the wall.
+		// (Compared inside an array because the lint preset rewrites a bare
+		// comparison with `true` into the truthiness check this replaces.)
+		expect([assets.run_worker_first]).toStrictEqual([true]);
 	});
 
 	it("keeps the SPA fallback, which is safe only because of the above", () => {
 		expect(assets.not_found_handling).toBe("single-page-application");
+	});
+});
+
+describe("the bindings", () => {
+	it("gives the public-facing Worker no handle on the archive", () => {
+		// This Worker reads D1 only. The archive is the source of truth, so the
+		// half that faces the internet does not hold a binding it never uses.
+		expect(readWranglerConfig().r2_buckets).toBeUndefined();
 	});
 });
 
