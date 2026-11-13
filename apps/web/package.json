@@ -20,7 +20,7 @@
 		"@modelcontextprotocol/sdk": "1.32.1",
 		"@modelcontextprotocol/server": "2.3.1",
 		"agents": "0.28.1",
-		"hono": "4.13.13",
+		"hono": "4.13.16",
 		"lucide-react": "1.56.0",
 		"react": "19.3.0",
 		"react-dom": "19.3.0",
