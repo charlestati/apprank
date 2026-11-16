@@ -5,6 +5,16 @@ export interface Env {
 
 	// Vars
 	/**
+	 * Cloudflare Access, described in `src/cf-access.ts`. Set all three and
+	 * Access replaces Basic; set some and the Worker answers 503 until the rest
+	 * arrive. ACCESS_USERS is a secret: it names people, and this repository is
+	 * public.
+	 */
+	ACCESS_TEAM_DOMAIN?: string;
+	ACCESS_AUD?: string;
+	ACCESS_USERS?: string;
+
+	/**
 	 * Local development only. With no accounts configured the Worker fails
 	 * closed; setting this to "true" serves the data to anyone, so it must never
 	 * be set on a deployed Worker.

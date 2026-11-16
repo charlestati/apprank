@@ -34,7 +34,7 @@ Cloudflare's limits are nowhere near binding at that size.
 | ------------------------------------ | ------------------------------------------------- |
 | [Deploying](docs/deploy.md)          | Cloudflare resources, tracked set, GitHub Actions |
 | [Credentials](docs/credentials.md)   | Every secret, rotation, generating the Apple keys |
-| [Access control](docs/access.md)     | Basic auth, accounts, why 404 and not 403         |
+| [Access control](docs/access.md)     | Cloudflare Access or Basic, why 404 and not 403   |
 | [MCP](docs/mcp.md)                   | Issuing tokens, scopes, what each tool answers    |
 | [Limits](docs/limits.md)             | What actually runs out, and when                  |
 | [Architecture](docs/architecture.md) | Work loop, cadence, data model, R2 layout         |
