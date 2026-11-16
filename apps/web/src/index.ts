@@ -3,6 +3,8 @@ import { Hono } from "hono";
 import { callerOwnsApp, callerOwnsPair, notFound } from "./access";
 import type { Vars } from "./access";
 import { authenticate, challenge, parseAccounts } from "./basic-auth";
+import { accessConfig, authenticateAccess } from "./cf-access";
+import type { AccessOutcome } from "./cf-access";
 import type { Env } from "./env";
 import { MCP_ROUTE, handleMcp, mcpEnabled } from "./mcp/server";
 import {
@@ -400,15 +402,53 @@ app.use("*", async (c, next) => {
 	}
 
 	// The MCP endpoint carries its own credential type and its own gate, and it
-	// deliberately does not accept Basic. Falling through to the wall here would
-	// do the opposite of what it looks like: it would let a browser account drive
-	// the MCP tools, which is exactly the scope crossing the two credential types
-	// exist to prevent. The bearer gate runs in the route handler below and
+	// deliberately accepts neither Basic nor an Access session. Falling through
+	// to the wall here would do the opposite of what it looks like: it would let
+	// a browser account drive the MCP tools, which is exactly the scope crossing
+	// the two credential types exist to prevent. The bearer gate runs in the route handler below and
 	// rejects an anonymous request before any tool code is constructed.
 	//
 	// Withdrawn when the transport is switched off: with no bearer gate waiting
 	// downstream, an exemption would be a hole rather than a handover.
 	if (pathname === MCP_ROUTE && mcpEnabled(c.env)) {
+		return next();
+	}
+
+	// Cloudflare Access, when configured, is the only browser credential: Basic
+	// is not consulted at all, so switching over cannot leave a forgotten
+	// password still opening the door. A half-set Access configuration fails
+	// closed rather than guessing which scheme the operator meant.
+	const access = accessConfig(c.env);
+	if (access === "incomplete") {
+		return c.json(
+			{
+				error: "auth misconfigured",
+				hint: "set all of ACCESS_TEAM_DOMAIN, ACCESS_AUD and ACCESS_USERS",
+			},
+			503
+		);
+	}
+	if (access !== "absent") {
+		let result: AccessOutcome;
+		try {
+			result = await authenticateAccess(
+				c.req.header("Cf-Access-Jwt-Assertion"),
+				access
+			);
+		} catch {
+			// The team's signing keys could not be fetched. Nothing the caller did,
+			// and nothing a retry of the same token would not fix.
+			return c.json({ error: "access keys unavailable" }, 503);
+		}
+		if (!result.ok) {
+			return c.json(
+				{
+					error: result.status === 403 ? "not an AppRank user" : "unauthorized",
+				},
+				result.status
+			);
+		}
+		c.set("userId", result.userId);
 		return next();
 	}
 
@@ -426,7 +466,10 @@ app.use("*", async (c, next) => {
 			return next();
 		}
 		return c.json(
-			{ error: "auth not configured", hint: "set BASIC_AUTH_ACCOUNTS" },
+			{
+				error: "auth not configured",
+				hint: "set ACCESS_TEAM_DOMAIN, ACCESS_AUD and ACCESS_USERS, or BASIC_AUTH_ACCOUNTS",
+			},
 			503
 		);
 	}

@@ -77,8 +77,10 @@ different `language` values.
 
 ## Secrets, then deploy
 
-Both are required. Without the first the site answers 503 to everything; without
-the second nothing can drive collection, including the workflow.
+Both are required. Without a sign-in the site answers 503 to everything; without
+`ADMIN_TOKEN` nothing can drive collection, including the workflow. The sign-in
+is either Cloudflare Access (three secrets, set up in
+[access control](access.md)) or, simplest to start with, Basic:
 
 ```sh
 (cd apps/web       && npx wrangler secret put BASIC_AUTH_ACCOUNTS -c wrangler.local.jsonc)

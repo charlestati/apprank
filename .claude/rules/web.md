@@ -73,11 +73,26 @@ against the same list. `test/worker-config.test.ts` asserts
 
 ## Access control
 
-HTTP Basic against a fixed set of accounts held in the `BASIC_AUTH_ACCOUNTS`
-secret, a JSON array of `{ username, password, userId? }`. `userId` is the
-durable identity: it is what `tracked_app.user_id` and the ownership checks
-compare against, so passwords can rotate freely but changing a `userId`
-re-points that person at a different set of apps. It defaults to the username.
+Two browser credentials, never both at once. **Cloudflare Access** wins when
+`ACCESS_TEAM_DOMAIN`, `ACCESS_AUD` and `ACCESS_USERS` are all set
+(`src/cf-access.ts`); Basic is then not consulted, so a forgotten password
+cannot keep opening the door. Some but not all of the three is a 503, not a
+fallback. The Worker verifies the `Cf-Access-Jwt-Assertion` JWT itself (RS256
+over WebCrypto, algorithm pinned, `aud`, `iss`, `exp` checked, keys fetched from
+the team's certs endpoint and cached per isolate) rather than trusting that
+Access was in front: a preview URL or a later hostname may not be. The email
+maps to a `userId` through `ACCESS_USERS`; an email Access admits but the list
+does not name gets 403. A certs fetch that fails is a 503, not a 401. On
+`workers.dev`, Access covers the whole hostname, so `/mcp` and `/api/health`
+need a second deployment without Access, a custom domain with path-scoped Bypass
+apps, or a service token; `docs/access.md` has all three.
+
+Otherwise HTTP Basic against a fixed set of accounts held in the
+`BASIC_AUTH_ACCOUNTS` secret, a JSON array of `{ username, password, userId? }`.
+`userId` is the durable identity: it is what `tracked_app.user_id` and the
+ownership checks compare against, so passwords can rotate freely but changing a
+`userId` re-points that person at a different set of apps. It defaults to the
+username.
 
 Passwords are compared as SHA-256 digests in constant time. **Do not "improve"
 this into bcrypt or scrypt**: a KDF would be the most expensive thing in the
@@ -123,9 +138,10 @@ When adding a route that takes an `:appId` or `:pairId`, add the `ownsApp` /
 one is missed.
 
 Basic auth has no sign-out: the browser holds the credentials until it is
-closed. That is the trade for having no session tables and no auth dependency. A
-session library costs roughly 1.9 MB of Worker bundle to serve a handful of
-accounts that never change.
+closed. That is the trade for having no session tables and no auth dependency,
+and the reason Access exists here: it keeps the session at Cloudflare, so the
+Worker still has neither. A session library costs roughly 1.9 MB of Worker
+bundle to serve a handful of accounts that never change.
 
 ## Traps
 
