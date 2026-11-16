@@ -84,8 +84,8 @@ Access was in front: a preview URL or a later hostname may not be. The email
 maps to a `userId` through `ACCESS_USERS`; an email Access admits but the list
 does not name gets 403. A certs fetch that fails is a 503, not a 401. On
 `workers.dev`, Access covers the whole hostname, so `/mcp` and `/api/health`
-need a service token or a custom domain with path-scoped Bypass apps;
-`docs/access.md` has both.
+need a second deployment without Access, a custom domain with path-scoped Bypass
+apps, or a service token; `docs/access.md` has all three.
 
 Otherwise HTTP Basic against a fixed set of accounts held in the
 `BASIC_AUTH_ACCOUNTS` secret, a JSON array of `{ username, password, userId? }`.

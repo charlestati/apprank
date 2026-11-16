@@ -79,18 +79,24 @@ Visit `/cdn-cgi/access/logout` on the Worker's hostname.
 Access protects the whole `workers.dev` hostname, so it also stands in front of
 `/mcp` and `/api/health`, and redirects any client that is not a signed-in
 browser to its login page. The Worker's own rules for those two paths do not
-change, but the request has to get past Access first. Two ways round it:
+change, but the request has to get past Access first. If you do not use MCP,
+leave `MCP_ENABLED` unset and there is nothing to do. Otherwise, one of:
 
+- **A second deployment without Access.** Deploy the same Worker under another
+  name (its own `wrangler.*.jsonc` with a different `name`, the same D1 database
+  and the same `ACCESS_*` secrets) and leave Access off its `workers.dev` route.
+  No request there carries an Access token, so the Worker itself refuses
+  everything except `/mcp`, which keeps its bearer gate, and `/api/health`.
+  Point MCP clients and uptime checks at that hostname.
 - **A custom domain.** Access applications on a hostname in one of your zones
   can be scoped to a path. Add one for `/mcp` and one for `/api/health`, each
   with a _Bypass_ policy, and the bearer gate and the public probe work as
-  before.
+  before on the one hostname.
 - **A service token.** Create one under **Zero Trust → Access → Service
   credentials**, add a _Service Auth_ policy that includes it to the
   application, and have the client send `CF-Access-Client-Id` and
-  `CF-Access-Client-Secret` alongside its own credentials. This works for MCP
-  clients that let you set request headers (Claude Code does, in its MCP server
-  configuration) and for most uptime monitors.
+  `CF-Access-Client-Secret` alongside its own credentials. This works only for
+  clients that let you set request headers.
 
 ## HTTP Basic
 
