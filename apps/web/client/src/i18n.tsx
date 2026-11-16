@@ -211,7 +211,7 @@ const en = {
 	dailyUnfinished: "started and never finished",
 	errorsLast24h: "Errors, last 24h",
 	errorsWhere: "Where",
-	errorsCostNote: "cost data",
+	errorsCostNote: "data lost",
 	// The closed vocabulary from fetch_error.error_class, in words. The raw
 	// values are precise and mean nothing to a reader.
 	errThrottled: "Rate-limited by Apple",
