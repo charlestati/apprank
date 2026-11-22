@@ -33,7 +33,11 @@ const FALLBACK_W = 960;
 const H = 360;
 // The right pad holds the direct labels: a reader should not have to travel to
 // a legend to name a line.
-const PAD = { bottom: 26, left: 46, right: 132, top: 32 };
+const PAD = { bottom: 26, left: 56, right: 132, top: 32 };
+// The rail labels sit further from the plot than the rank labels: the first
+// day's mark is centred on the plot's edge, and with three keywords outside
+// the top 200 that day its outer frame reached into ">200".
+const RAIL_LABEL_GAP = 16;
 // Release pins live above the plot, not on it: at the old top pad the pin for a
 // keyword sitting at rank 1 was drawn straight through its own line.
 const MARKER_ROW = 13;
@@ -601,7 +605,7 @@ export function RankSeriesChart({
 				<text
 					className="axis-label"
 					textAnchor="end"
-					x={PAD.left - 8}
+					x={PAD.left - RAIL_LABEL_GAP}
 					y={unrankedRailY + 4}
 				>
 					{t.railUnranked}
@@ -609,7 +613,7 @@ export function RankSeriesChart({
 				<text
 					className="axis-label"
 					textAnchor="end"
-					x={PAD.left - 8}
+					x={PAD.left - RAIL_LABEL_GAP}
 					y={errorRailY + 4}
 				>
 					{t.railError}
