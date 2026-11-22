@@ -659,7 +659,7 @@ describe("Chart series selection", () => {
 		expect(fifth.hasAttribute("disabled")).toBeTruthy();
 		fireEvent.click(fifth);
 		expect(document.querySelectorAll(".series")).toHaveLength(4);
-		expect(screen.getByText(/4 of 4 keywords on the chart/u)).toBeDefined();
+		expect(screen.getByText(/Chart full: 4 keywords max/u)).toBeDefined();
 
 		// Freeing a slot re-opens the one that was refused.
 		fireEvent.click(
@@ -673,6 +673,8 @@ describe("Chart series selection", () => {
 				.getByRole("button", { name: "keyword 5 on the chart", pressed: false })
 				.hasAttribute("disabled")
 		).toBeFalsy();
+		// Below the cap there is nothing to explain.
+		expect(screen.queryByText(/Chart full/u)).toBeNull();
 	});
 
 	it("keeps a hidden series in the legend, so it can be shown again", async () => {
@@ -1114,7 +1116,7 @@ describe("Keyword performance chart selection", () => {
 		await screen.findAllByText("keyword 1");
 
 		expect(document.querySelectorAll(".legend li")).toHaveLength(4);
-		expect(screen.getByText(/4 of 4 keywords on the chart/u)).toBeDefined();
+		expect(screen.getByText(/Chart full: 4 keywords max/u)).toBeDefined();
 		expect(
 			screen
 				.getByRole("button", { name: "keyword 5 on the chart", pressed: false })

@@ -347,9 +347,7 @@ const en = {
 		"How many keywords rose, fell, or held still in this period, each measured against its own previous different rank.",
 	rankedOf: "{n} of {total}",
 	movementPeriod: "Against each keyword's previous rank, over {n} days.",
-	chartCapacity: "{n} of {max} keywords on the chart",
-	chartFull:
-		"The chart holds {max} keywords at once. Uncheck one to add another.",
+	chartFull: "Chart full: {max} keywords max. Uncheck one first.",
 	popularityTitle: "Search popularity {n} of 100 — {band}.",
 	popularityNone: "Apple publishes no search popularity for this keyword.",
 	difficultyTitle: "Difficulty {n} of 100 — {band}.",
@@ -676,9 +674,7 @@ const fr: Dictionary = {
 	rankedOf: "{n} sur {total}",
 	movementPeriod:
 		"Par rapport au rang précédent de chaque mot-clé, sur {n} jours.",
-	chartCapacity: "{n} sur {max} mots-clés affichés",
-	chartFull:
-		"Le graphique affiche {max} mots-clés à la fois. Décochez-en un pour en ajouter un autre.",
+	chartFull: "Graphique plein : {max} mots-clés max. Décochez-en un d'abord.",
 	popularityTitle: "Popularité de recherche {n} sur 100 — {band}.",
 	popularityNone:
 		"Apple ne publie aucune popularité de recherche pour ce mot-clé.",

@@ -667,15 +667,14 @@ export function KeywordPerformance({ app }: { app: TrackedApp | null }) {
 								);
 							})}
 						</ul>
-						<p className="legend-note">
-							{fmt(t.chartCapacity, {
-								max: CHART_SERIES,
-								n: members.length,
-							})}
-							{members.length >= CHART_SERIES
-								? ` · ${fmt(t.chartFull, { max: CHART_SERIES })}`
-								: ""}
-						</p>
+						{/* Only at the cap: below it the legend already shows how many
+                are on, and the note is the one visible reason a tick box is
+                disabled (its title reaches neither touch nor the keyboard). */}
+						{members.length >= CHART_SERIES ? (
+							<p className="legend-note">
+								{fmt(t.chartFull, { max: CHART_SERIES })}
+							</p>
+						) : null}
 						{report.metadataChanges.length > 0 ? (
 							<ol className="marker-key">
 								{report.metadataChanges.map((change, i) => (
