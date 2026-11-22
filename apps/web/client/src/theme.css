@@ -1590,7 +1590,11 @@ table.grid .col-actions {
 .table-scroll {
 	overflow: auto;
 	max-height: calc(100dvh - 13rem);
-	overscroll-behavior: contain;
+	/* Only the horizontal axis is contained, so a sideways swipe at the
+	   table's edge cannot turn into the browser's back gesture. Contained
+	   vertically too, a wheel over the table at its top or bottom went
+	   nowhere, and the page would not scroll back up from under the pointer. */
+	overscroll-behavior-x: contain;
 }
 
 table.grid {
