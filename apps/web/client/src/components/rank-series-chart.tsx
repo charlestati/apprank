@@ -46,11 +46,11 @@ const MARKER_SIZE = 14;
 const MARKER_STEP = 26;
 const UNRANKED_SIZE = 7;
 // Rails below the plot floor, in pixels: one for observations that landed
-// outside the top 200, one for days the fetch failed. 24px apart: at 18 their
-// two labels stacked into what read as one wrapped label, ">200 error".
-const RAIL_UNRANKED = 16;
-const RAIL_ERROR = 40;
-const PLOT_BOTTOM = H - PAD.bottom - 50;
+// outside the top 200, one for days the fetch failed. 34px apart: closer, their
+// two labels stacked into what read as one wrapped label, ">200 failed".
+const RAIL_UNRANKED = 14;
+const RAIL_ERROR = 48;
+const PLOT_BOTTOM = H - PAD.bottom - 58;
 const DAY_MS = 86_400_000;
 const READOUT_LIMIT = 8;
 /** Label line-height plus a little air, in pixels. */

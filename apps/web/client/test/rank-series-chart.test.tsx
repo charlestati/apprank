@@ -185,12 +185,10 @@ describe("Rank series chart", () => {
 		);
 		// Drawn even with nothing on the rails, as the rails themselves are.
 		// Not in a <title>, which neither touch nor the keyboard reaches.
-		const key = screen.getByText(/A frame around a square is another keyword/u);
+		const key = screen.getByText(/A frame is another keyword that day/u);
 		expect(key.closest("title")).toBeNull();
 		expect(key.closest(".rail-key")).not.toBeNull();
-		expect(
-			screen.getByText(/It is not a rank change/u).closest("title")
-		).toBeNull();
+		expect(screen.getByText(/not a rank change/u).closest("title")).toBeNull();
 	});
 
 	it("marks a failed fetch as a failure, never as a rank", () => {

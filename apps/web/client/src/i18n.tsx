@@ -290,8 +290,8 @@ const en = {
 	railUnranked: ">200",
 	railError: "failed",
 	railKeyUnranked:
-		">200: observed outside the top 200 that day, a square in the keyword's colour. A frame around a square is another keyword outside the top 200 the same day.",
-	railKeyError: "failed: collection failed that day. It is not a rank change.",
+		">200: outside the top 200. A frame is another keyword that day.",
+	railKeyError: "failed: collection failed, not a rank change.",
 	railUnrankedTitle: "{date}: {keyword} observed, outside the top 200",
 	railErrorTitle:
 		"{date}: {keyword} fetch failed ({errorClass}), not a rank change",
@@ -621,9 +621,8 @@ const fr: Dictionary = {
 	railUnranked: ">200",
 	railError: "échec",
 	railKeyUnranked:
-		">200 : observé hors du top 200 ce jour-là, un carré de la couleur du mot-clé. Un cadre autour d'un carré est un autre mot-clé hors du top 200 le même jour.",
-	railKeyError:
-		"échec : la collecte a échoué ce jour-là. Ce n'est pas un changement de rang.",
+		">200 : hors du top 200. Un cadre est un autre mot-clé ce jour-là.",
+	railKeyError: "échec : collecte échouée, pas un changement de rang.",
 	railUnrankedTitle: "{date} : {keyword} observé, hors du top 200",
 	railErrorTitle:
 		"{date} : échec de collecte pour {keyword} ({errorClass}), pas un changement de rang",
