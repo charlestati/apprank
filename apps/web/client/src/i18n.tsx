@@ -153,7 +153,7 @@ const en = {
 	count: "Count",
 	lastSeen: "Last seen",
 	detail: "Detail",
-	noErrors: "Clean. No errors recorded.",
+	noErrors: "No errors in the last 24 h",
 	difficultyFewIncumbents:
 		"Fewer than 5 of the top 10 have known ratings, so this score is a rough estimate.",
 	difficultyUnscored: "Not scored yet: this needs a ranked observation first.",
@@ -200,16 +200,12 @@ const en = {
 
 	// Data health
 	ascAnomalies: "ASC anomalies",
-	ascAnomaliesNote: "duplicate / skipped report dates",
 	budgetPending: "not computed yet, runs with the daily jobs",
-	budgetReserved: "{n} fetches/day reserved for app pulls.",
 	collapse: "Collapse",
-	healthCoverageNote: "{pct}% of Tier-1 pairs observed ({date})",
 	coverageToday: "Coverage today",
 	crawlBudget: "Crawl budget",
 	crawlPaused: "paused until {time}",
 	crawlRate: "Crawl rate",
-	crawlRateNote: "fetches/min, learned",
 	dailyCompleted: "completed",
 	dailyFailed: "failed",
 	dailyNoRun: "no run recorded yet",
@@ -241,12 +237,40 @@ const en = {
 	loopNeverTicked: "never ticked, the collector has not run",
 	loopQueued: "{n} queued",
 	loopIdle: "idle, nothing queued",
-	loopSinceTick: "since last tick",
-	overdueNote: "past due by more than one interval",
 	overduePairs: "Overdue pairs",
 	throttleHits: "Throttle hits (24h)",
-	throttleNote: "403/429 from Apple",
 	workLoop: "Work loop",
+	statusOk: "Healthy",
+	statusProgress: "In progress",
+	statusWarn: "Worth a look",
+	statusBad: "Needs attention",
+	durationMinutes: "{m} min",
+	durationHours: "{h} h",
+	durationHoursMinutes: "{h} h {m} min",
+	durationDaysHours: "{d} d {h} h",
+	coveragePct: "{pct}% observed",
+	perMinute: "fetches/min",
+	budgetOf: "of {capacity} a day",
+	helpCoverage:
+		"Tier-1 searches observed today ({date}), out of those due. One search is one keyword in one storefront. The count fills up as the day's crawl runs, and the clock becomes a tick once every search is in.",
+	helpCrawlRate:
+		"The fetch rate the crawler has learned Apple tolerates. Cloudflare's addresses are shared and Apple rate-limits per address, so the crawler finds its own pace and backs off hard after a throttle; a pause is that back-off at work.",
+	helpThrottle:
+		"403 and 429 answers from Apple in the last 24 hours. The search is requeued and runs late rather than never, but a count that keeps growing means the pace is too high.",
+	helpBudget:
+		"Searches a day the cadence needs, against what the learned crawl rate can make once {n} fetches a day are set aside for app pulls. Red when the need is larger: intervals then stretch, and no keyword is dropped.",
+	helpBudgetPending:
+		"Worked out with the daily jobs, and nothing has been computed yet.",
+	helpLoop:
+		"Time since the collector's work loop last ran. The loop parks when nothing is due, so a long gap is normal while nothing is queued. The line below says what is waiting.",
+	helpLoopStalled:
+		"No tick for {age}, with {n} queued. The watchdog restarts the loop every ten minutes, so work left waiting past fifteen means the loop is stuck: check the collector's logs.",
+	helpDailyJob:
+		"The 03:00 job that queues the day's App Store Connect and Apple Ads work. Red when it has not run in 26 hours, started and never finished, or failed.",
+	helpOverdue:
+		"Searches past due by more than one interval of their cadence. They run late rather than never, but a growing count means the budget is short.",
+	helpAscAnomalies:
+		"App Store Connect report days Apple delivered twice or skipped. A finding about Apple's data, not a failure of ours.",
 
 	// Result page drawer
 	appFallback: "App {id}",
@@ -314,7 +338,6 @@ const en = {
 	deltaDown: "down",
 	deltaAge: "{n}d",
 	meterNoData: "{label}: no data",
-	minutesShort: "{n}m",
 	// The fields a release can change, as the report names them.
 	fieldTitle: "title",
 	fieldSubtitle: "subtitle",
@@ -510,7 +533,7 @@ const fr: Dictionary = {
 	count: "Nombre",
 	lastSeen: "Dernière fois",
 	detail: "Détail",
-	noErrors: "Rien à signaler. Aucune erreur enregistrée.",
+	noErrors: "Aucune erreur ces dernières 24 h",
 	difficultyFewIncumbents:
 		"Moins de 5 apps du top 10 ont des notes connues : ce score reste une estimation grossière.",
 	difficultyUnscored:
@@ -543,16 +566,12 @@ const fr: Dictionary = {
 
 	// Data health
 	ascAnomalies: "Anomalies ASC",
-	ascAnomaliesNote: "dates de rapport dupliquées ou manquantes",
 	budgetPending: "pas encore calculé, s'exécute avec les tâches quotidiennes",
-	budgetReserved: "{n} requêtes/jour réservées aux relevés d'app.",
 	collapse: "Réduire",
-	healthCoverageNote: "{pct} % des paires Tier-1 observées ({date})",
 	coverageToday: "Couverture du jour",
 	crawlBudget: "Budget de collecte",
 	crawlPaused: "en pause jusqu'à {time}",
 	crawlRate: "Cadence de collecte",
-	crawlRateNote: "requêtes/min, apprise",
 	dailyCompleted: "terminée",
 	dailyFailed: "échouée",
 	dailyNoRun: "aucune exécution enregistrée",
@@ -582,12 +601,40 @@ const fr: Dictionary = {
 	loopNeverTicked: "jamais démarrée, le collecteur n'a pas tourné",
 	loopQueued: "{n} en file",
 	loopIdle: "au repos, rien en file",
-	loopSinceTick: "depuis le dernier passage",
-	overdueNote: "en retard de plus d'un intervalle",
 	overduePairs: "Paires en retard",
 	throttleHits: "Limitations (24 h)",
-	throttleNote: "403/429 renvoyés par Apple",
 	workLoop: "Boucle de collecte",
+	statusOk: "Normal",
+	statusProgress: "En cours",
+	statusWarn: "À vérifier",
+	statusBad: "À traiter",
+	durationMinutes: "{m} min",
+	durationHours: "{h} h",
+	durationHoursMinutes: "{h} h {m} min",
+	durationDaysHours: "{d} j {h} h",
+	coveragePct: "{pct} % observées",
+	perMinute: "requêtes/min",
+	budgetOf: "sur {capacity} par jour",
+	helpCoverage:
+		"Recherches Tier-1 observées aujourd'hui ({date}), sur celles prévues. Une recherche, c'est un mot-clé dans une boutique. Le compte se remplit au fil de la collecte, et l'horloge devient une coche quand toutes sont faites.",
+	helpCrawlRate:
+		"Le rythme de requêtes qu'Apple tolère, appris par le collecteur. Les adresses de Cloudflare sont partagées et Apple limite par adresse : le collecteur trouve son propre rythme et ralentit fortement après une limitation. Une pause, c'est ce ralentissement.",
+	helpThrottle:
+		"Réponses 403 et 429 d'Apple sur les dernières 24 heures. La recherche est remise en file et passe en retard plutôt que jamais, mais un compte qui grossit signifie un rythme trop élevé.",
+	helpBudget:
+		"Recherches par jour dont la cadence a besoin, face à ce que le rythme appris permet une fois {n} requêtes par jour réservées aux relevés d'app. Rouge quand le besoin dépasse : les intervalles s'allongent et aucun mot-clé n'est abandonné.",
+	helpBudgetPending:
+		"Calculé avec les tâches quotidiennes ; rien n'a encore été calculé.",
+	helpLoop:
+		"Temps écoulé depuis le dernier passage de la boucle de collecte. La boucle se met en veille quand rien n'est dû : un long écart est normal tant que rien n'est en file. La ligne du dessous dit ce qui attend.",
+	helpLoopStalled:
+		"Aucun passage depuis {age}, avec {n} en file. Le chien de garde relance la boucle toutes les dix minutes : du travail en attente depuis plus de quinze minutes signifie que la boucle est bloquée. Consultez les journaux du collecteur.",
+	helpDailyJob:
+		"La tâche de 03:00 qui met en file le travail du jour pour App Store Connect et Apple Ads. Rouge si elle n'a pas tourné depuis 26 heures, a démarré sans se terminer, ou a échoué.",
+	helpOverdue:
+		"Recherches en retard de plus d'un intervalle de leur cadence. Elles passent en retard plutôt que jamais, mais un compte qui grossit signifie un budget trop court.",
+	helpAscAnomalies:
+		"Jours de rapport App Store Connect livrés deux fois ou sautés par Apple. Un constat sur les données d'Apple, pas une défaillance de notre part.",
 
 	// Result page drawer
 	appFallback: "App {id}",
@@ -655,7 +702,6 @@ const fr: Dictionary = {
 	deltaDown: "en baisse",
 	deltaAge: "{n} j",
 	meterNoData: "{label} : aucune donnée",
-	minutesShort: "{n} min",
 	fieldTitle: "titre",
 	fieldSubtitle: "sous-titre",
 	fieldVersion: "version",

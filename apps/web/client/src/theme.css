@@ -687,6 +687,62 @@ h1 {
 	color: var(--ds-text-warning);
 }
 
+/* Health tiles lead with a status mark: a tick, a clock or a triangle, so the
+   state reads by shape before colour, and a word for a screen reader. Only
+   the triangle is coloured strongly; a healthy tile stays quiet. */
+.health-tile .tile-title {
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-075);
+}
+.health-tile .tile-title .infotip {
+	margin-left: 0;
+}
+.tile-status {
+	display: inline-flex;
+	flex: none;
+}
+.tile-status-ok {
+	color: var(--ds-text-success);
+}
+.tile-status-progress {
+	color: var(--ds-text-subtlest);
+}
+.tile-status-warn {
+	color: var(--ds-text-warning);
+}
+.tile-status-bad {
+	color: var(--ds-text-danger);
+}
+.budget-track {
+	display: block;
+	height: 6px;
+	margin-top: var(--ds-space-100);
+	border-radius: var(--ds-radius-full);
+	background: var(--ds-background-neutral);
+	overflow: hidden;
+}
+.budget-fill {
+	display: block;
+	height: 100%;
+	border-radius: inherit;
+	background: var(--ds-chart-neutral);
+}
+.budget-full {
+	background: var(--ds-chart-danger);
+}
+
+/* An empty table said as a state, not as a header row over nothing. */
+.empty-state {
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-100);
+	margin: 0;
+	padding: var(--ds-space-200);
+	color: var(--ds-text-success);
+	border-top: 1px solid var(--ds-border);
+}
+
 .stat-of {
 	color: var(--ds-text-subtlest);
 	font: var(--ds-font-body);

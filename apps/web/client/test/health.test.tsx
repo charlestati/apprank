@@ -37,13 +37,19 @@ function dailyRun(startedAt: number): DataHealth["lastDailyRun"] {
 }
 
 function statDetail(label: string): string {
-	const card = screen.getByText(label).parentElement;
+	const card = screen.getByText(label).closest(".tile");
 	return card?.querySelector(".tile-note")?.textContent ?? "";
 }
 
 function statValue(label: string): HTMLElement | null {
-	const card = screen.getByText(label).parentElement;
+	const card = screen.getByText(label).closest(".tile");
 	return card?.querySelector<HTMLElement>(".stat-value") ?? null;
+}
+
+/** The status word a tile carries for a screen reader beside its icon. */
+function statusWord(label: string): string | null | undefined {
+	return screen.getByText(label).closest(".tile")?.querySelector(".sr-only")
+		?.textContent;
 }
 
 async function renderLoop(over: Partial<DataHealth>) {
@@ -83,13 +89,11 @@ describe("Health page", () => {
 		});
 		render(<Health onAcknowledge={() => {}} unread={0} />);
 		await expect(screen.findByText("Data health")).resolves.toBeDefined();
-		expect(statDetail("Coverage today")).toBe(
-			"100% of Tier-1 pairs observed (10 Jan 2026)"
-		);
-		expect(statValue("Crawl rate")?.textContent).toBe("12.0");
-		expect(statDetail("Crawl rate")).toBe("fetches/min, learned");
+		expect(statDetail("Coverage today")).toBe("100% observed");
+		expect(statValue("Crawl rate")?.textContent).toBe("12.0 fetches/min");
+		expect(statDetail("Crawl rate")).toBe("");
 		expect(statValue("Throttle hits (24h)")?.getAttribute("style")).toBeNull();
-		expect(screen.getByText("Clean. No errors recorded.")).toBeDefined();
+		expect(screen.getByText("No errors in the last 24 h")).toBeDefined();
 	});
 
 	it("reports zero coverage rather than dividing by zero", async () => {
@@ -98,9 +102,7 @@ describe("Health page", () => {
 		});
 		render(<Health onAcknowledge={() => {}} unread={0} />);
 		await expect(screen.findByText("Data health")).resolves.toBeDefined();
-		expect(statDetail("Coverage today")).toBe(
-			"0% of Tier-1 pairs observed (10 Jan 2026)"
-		);
+		expect(statDetail("Coverage today")).toBe("0% observed");
 	});
 
 	it("flags a paused crawl, throttling and ASC anomalies", async () => {
@@ -248,22 +250,84 @@ describe("Health page", () => {
 		expect(toggle.getAttribute("aria-expanded")).toBe("true");
 	});
 
-	it("colours the all-clear with the theme's success text token", async () => {
-		// The page once named a token theme.css never defined, so the all-clear
-		// silently fell back to the body colour. Vitest serves CSS empty, so the
-		// test cannot read the theme and names the token instead.
+	it("says a clean day as a state, with no header row over nothing", async () => {
 		stubFetch({ "health/data": dataHealth({ errorsLast24h: [] }) });
 		render(<Health onAcknowledge={() => {}} unread={0} />);
-		const cell = await screen.findByText("Clean. No errors recorded.");
-		expect(cell.style.color).toBe("var(--ds-text-success)");
+		const clean = await screen.findByText("No errors in the last 24 h");
+		expect(clean.className).toBe("empty-state");
+		expect(clean.querySelector("svg")).not.toBeNull();
+		expect(screen.queryByText("Last seen")).toBeNull();
+	});
+
+	it("marks each tile's state with a word as well as a colour", async () => {
+		stubFetch({
+			"health/data": dataHealth({
+				collectedToday: 4,
+				overduePairs: 2,
+				pacing: null,
+			}),
+		});
+		render(<Health onAcknowledge={() => {}} unread={0} />);
+		await expect(screen.findByText("Data health")).resolves.toBeDefined();
+		expect(statusWord("Coverage today")).toBe("In progress");
+		expect(statusWord("Overdue pairs")).toBe("Worth a look");
+		expect(statusWord("Throttle hits (24h)")).toBe("Healthy");
+		expect(statValue("Overdue pairs")?.className).toContain("stat-warn");
+	});
+
+	it("keeps each tile's meaning behind its own trigger", async () => {
+		stubFetch({ "health/data": dataHealth() });
+		render(<Health onAcknowledge={() => {}} unread={0} />);
+		fireEvent.click(
+			await screen.findByRole("button", { name: "About Throttle hits (24h)" })
+		);
+		await expect(
+			screen.findByText(/403 and 429 answers from Apple/u)
+		).resolves.toBeDefined();
+	});
+
+	describe("crawl budget", () => {
+		it("prints the need against the limit and draws the share used", async () => {
+			stubFetch({ "health/data": dataHealth() });
+			render(<Health onAcknowledge={() => {}} unread={0} />);
+			await expect(screen.findByText("Data health")).resolves.toBeDefined();
+			expect(statValue("Crawl budget")?.textContent).toBe("10 of 600 a day");
+			const fill = document.querySelector<HTMLElement>(".budget-fill");
+			expect(fill?.style.width).toBe("2%");
+			expect(fill?.className).toBe("budget-fill");
+		});
+
+		it("turns red when the cadence needs more than the budget makes", async () => {
+			const base = dataHealth().cadence;
+			stubFetch({
+				"health/data": dataHealth({
+					cadence: base && { ...base, loadPerDay: 900, saturated: true },
+				}),
+			});
+			render(<Health onAcknowledge={() => {}} unread={0} />);
+			await expect(screen.findByText("Data health")).resolves.toBeDefined();
+			expect(statValue("Crawl budget")?.className).toContain("stat-bad");
+			const fill = document.querySelector<HTMLElement>(".budget-fill");
+			expect(fill?.style.width).toBe("100%");
+			expect(fill?.className).toContain("budget-full");
+		});
+
+		it("says the budget is not computed yet rather than drawing a bar", async () => {
+			stubFetch({ "health/data": dataHealth({ cadence: null }) });
+			render(<Health onAcknowledge={() => {}} unread={0} />);
+			await expect(screen.findByText("Data health")).resolves.toBeDefined();
+			expect(statValue("Crawl budget")?.textContent).toBe("–");
+			expect(statDetail("Crawl budget")).toMatch(/not computed yet/u);
+			expect(document.querySelector(".budget-fill")).toBeNull();
+		});
 	});
 
 	it("dashes the crawl rate when the collector has no pacing state yet", async () => {
 		stubFetch({ "health/data": dataHealth({ pacing: null }) });
 		render(<Health onAcknowledge={() => {}} unread={0} />);
 		await expect(screen.findByText("Data health")).resolves.toBeDefined();
-		expect(statValue("Crawl rate")?.textContent).toBe("–");
-		expect(statDetail("Crawl rate")).toBe("fetches/min, learned");
+		expect(statValue("Crawl rate")?.textContent).toBe("– fetches/min");
+		expect(statDetail("Crawl rate")).toBe("");
 	});
 
 	it("names a row with no class, rather than leaving the cell empty", async () => {
@@ -330,11 +394,9 @@ describe("Health page", () => {
 				lastDailyRun: daily(now - 400 * MIN_MS, 4),
 				loop: { at: now - 395 * MIN_MS, didWork: true, queued: 0 },
 			});
-			expect(value?.textContent).toBe("395m");
+			expect(value?.textContent).toBe("6 h 35 min");
 			expect(value?.className).not.toContain("stat-bad");
-			expect(statDetail("Work loop")).toBe(
-				"since last tick · idle, nothing queued"
-			);
+			expect(statDetail("Work loop")).toBe("idle, nothing queued");
 		});
 
 		it("turns red when queued work has gone untouched past the watchdog", async () => {
@@ -347,7 +409,12 @@ describe("Health page", () => {
 				},
 			});
 			expect(value?.className).toContain("stat-bad");
-			expect(statDetail("Work loop")).toBe("since last tick · asc_poll ×2");
+			expect(statDetail("Work loop")).toBe("asc_poll ×2");
+			// The red says why in its own "?".
+			fireEvent.click(screen.getByRole("button", { name: "About Work loop" }));
+			await expect(
+				screen.findByText(/No tick for 30 min, with 2 queued/u)
+			).resolves.toBeDefined();
 		});
 
 		it("stays neutral while queued work is still inside the watchdog window", async () => {
@@ -366,7 +433,22 @@ describe("Health page", () => {
 				loop: { at: now - 120 * MIN_MS, didWork: true, queued: 0 },
 			});
 			expect(value?.className).toContain("stat-bad");
-			expect(statDetail("Work loop")).toBe("since last tick · 4 queued");
+			expect(value?.textContent).toBe("2 h");
+			expect(statDetail("Work loop")).toBe("4 queued");
+		});
+
+		it("counts a wait past two days in days and hours", async () => {
+			const value = await renderLoop({
+				loop: { at: Date.now() - 3000 * MIN_MS, didWork: true, queued: 0 },
+			});
+			expect(value?.textContent).toBe("2 d 2 h");
+		});
+
+		it("says a loop that never ticked is a fault", async () => {
+			const value = await renderLoop({ loop: null });
+			expect(value?.textContent).toBe("–");
+			expect(value?.className).toContain("stat-bad");
+			expect(statDetail("Work loop")).toMatch(/never ticked/u);
 		});
 
 		it("stays neutral during a backoff pause, which parks the loop on purpose", async () => {

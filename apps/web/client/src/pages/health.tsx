@@ -1,10 +1,103 @@
+import { CircleCheck, Clock, TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 
 import { api } from "../api";
 import type { DataHealth } from "../api";
+import { InfoTip } from "../components/info-tip";
 import { useFormat } from "../format";
 import type { Dictionary } from "../i18n";
 import { fmt, useT } from "../i18n";
+
+/**
+ * How a tile reads at a glance. `bad` is the red the page reserves for
+ * "today's numbers need a second look"; `warn` is worth knowing but not a
+ * loss; `progress` is a day still being collected. Each has its own shape as
+ * well as its colour, and a word for a screen reader, so the colour is never
+ * the only channel.
+ */
+type TileStatus = "ok" | "progress" | "warn" | "bad";
+
+function StatusIcon({ status }: { status: TileStatus }) {
+	const t = useT();
+	const word = {
+		bad: t.statusBad,
+		ok: t.statusOk,
+		progress: t.statusProgress,
+		warn: t.statusWarn,
+	}[status];
+	let icon: ReactNode = <CircleCheck aria-hidden="true" size={18} />;
+	if (status === "progress") {
+		icon = <Clock aria-hidden="true" size={18} />;
+	} else if (status !== "ok") {
+		icon = <TriangleAlert aria-hidden="true" size={18} />;
+	}
+	return (
+		<span className={`tile-status tile-status-${status}`}>
+			{icon}
+			<span className="sr-only">{word}</span>
+		</span>
+	);
+}
+
+/**
+ * One health tile: a status mark, a label with its explanation behind "?",
+ * the number, and at most a short line of state ("paused until 14:05",
+ * "review_pull ×3"). What a tile means lives in the "?", because it is read
+ * once; the state line is read every visit.
+ */
+function HealthTile({
+	help,
+	label,
+	note,
+	status,
+	value,
+}: {
+	help: string;
+	label: string;
+	note?: ReactNode;
+	status: TileStatus;
+	value: ReactNode;
+}) {
+	let valueClass = "stat-value";
+	if (status === "bad") {
+		valueClass = "stat-value stat-bad";
+	} else if (status === "warn") {
+		valueClass = "stat-value stat-warn";
+	}
+	return (
+		<div className="tile health-tile">
+			<div className="tile-title">
+				<StatusIcon status={status} />
+				<span>{label}</span>
+				<InfoTip label={label}>{help}</InfoTip>
+			</div>
+			<div className={valueClass}>{value}</div>
+			{note ? <div className="tile-note">{note}</div> : null}
+		</div>
+	);
+}
+
+/**
+ * A wait in words a reader can hold: "13 h 10 min", not "790m". Days past 48
+ * hours, because at that point the minutes are noise.
+ */
+function humanMinutes(t: Dictionary, minutes: number): string {
+	if (minutes < 60) {
+		return fmt(t.durationMinutes, { m: minutes });
+	}
+	const hours = Math.floor(minutes / 60);
+	if (hours < 48) {
+		const m = minutes % 60;
+		return m === 0
+			? fmt(t.durationHours, { h: hours })
+			: fmt(t.durationHoursMinutes, { h: hours, m });
+	}
+	return fmt(t.durationDaysHours, {
+		d: Math.floor(hours / 24),
+		h: hours % 24,
+	});
+}
 
 /** "chart_pull ×6, review_pull ×2": what the depth is actually made of. */
 function queueSummary(tasks?: Record<string, number>): string | null {
@@ -63,33 +156,39 @@ function LoopTile({
 	const t = useT();
 	if (loop === null) {
 		return (
-			<div className="tile">
-				<div className="tile-title">{t.workLoop}</div>
-				<div className="stat-value stat-bad">–</div>
-				<div className="tile-note">{t.loopNeverTicked}</div>
-			</div>
+			<HealthTile
+				help={t.helpLoop}
+				label={t.workLoop}
+				note={t.loopNeverTicked}
+				status="bad"
+				value="–"
+			/>
 		);
 	}
 	const ageMin = Math.round((now - loop.at) / 60_000);
+	const age = humanMinutes(t, ageMin);
 	const waitingSince = loopWaitingSince(loop, run);
 	const stalled =
 		!paused && waitingSince !== null && now - waitingSince > LOOP_STALL_MS;
 	let queue = t.loopIdle;
+	let waiting = 0;
 	if (loop.queued > 0) {
+		waiting = loop.queued;
 		queue = queueSummary(loop.tasks) ?? fmt(t.loopQueued, { n: loop.queued });
 	} else if (waitingSince !== null) {
-		queue = fmt(t.loopQueued, { n: run?.queued ?? 0 });
+		waiting = run?.queued ?? 0;
+		queue = fmt(t.loopQueued, { n: waiting });
 	}
+	// The red explains itself: the "?" on a stalled loop says what is stuck
+	// and why that is a fault when an old heartbeat usually is not.
 	return (
-		<div className="tile">
-			<div className="tile-title">{t.workLoop}</div>
-			<div className={stalled ? "stat-value stat-bad" : "stat-value"}>
-				{fmt(t.minutesShort, { n: ageMin })}
-			</div>
-			<div className="tile-note">
-				{t.loopSinceTick} · {queue}
-			</div>
-		</div>
+		<HealthTile
+			help={stalled ? fmt(t.helpLoopStalled, { age, n: waiting }) : t.helpLoop}
+			label={t.workLoop}
+			note={queue}
+			status={stalled ? "bad" : "ok"}
+			value={age}
+		/>
 	);
 }
 
@@ -127,11 +226,13 @@ function DailyRunTile({
 	const t = useT();
 	if (run === null) {
 		return (
-			<div className="tile">
-				<div className="tile-title">{t.lastDailyJob}</div>
-				<div className="stat-value stat-bad">–</div>
-				<div className="tile-note">{t.dailyNoRun}</div>
-			</div>
+			<HealthTile
+				help={t.helpDailyJob}
+				label={t.lastDailyJob}
+				note={t.dailyNoRun}
+				status="bad"
+				value="–"
+			/>
 		);
 	}
 	// The server sends the newest run of any age. A clock time alone read as
@@ -141,18 +242,17 @@ function DailyRunTile({
 	// An unfinished row is the crash the observation tables cannot show.
 	const bad = stale || run.finishedAt === null || run.ok === false;
 	return (
-		<div className="tile">
-			<div className="tile-title">{t.lastDailyJob}</div>
-			<div className={bad ? "stat-value stat-bad" : "stat-value"}>
-				{sameLocalDay(run.startedAt, now)
+		<HealthTile
+			help={t.helpDailyJob}
+			label={t.lastDailyJob}
+			note={`${stale ? `${t.dailyStale} · ` : ""}${dailyRunNote(run, t)}`}
+			status={bad ? "bad" : "ok"}
+			value={
+				sameLocalDay(run.startedAt, now)
 					? f.time(run.startedAt)
-					: f.dayTime(run.startedAt)}
-			</div>
-			<div className="tile-note">
-				{stale ? `${t.dailyStale} · ` : ""}
-				{dailyRunNote(run, t)}
-			</div>
-		</div>
+					: f.dayTime(run.startedAt)
+			}
+		/>
 	);
 }
 
@@ -160,13 +260,12 @@ function OverdueTile({ n }: { n: number }) {
 	const f = useFormat();
 	const t = useT();
 	return (
-		<div className="tile">
-			<div className="tile-title">{t.overduePairs}</div>
-			<div className={n > 0 ? "stat-value stat-warn" : "stat-value"}>
-				{f.number(n)}
-			</div>
-			<div className="tile-note">{t.overdueNote}</div>
-		</div>
+		<HealthTile
+			help={t.helpOverdue}
+			label={t.overduePairs}
+			status={n > 0 ? "warn" : "ok"}
+			value={f.number(n)}
+		/>
 	);
 }
 
@@ -249,6 +348,59 @@ function ErrorRow({ entry }: { entry: DataHealth["errorsLast24h"][number] }) {
 	);
 }
 
+/**
+ * The crawl budget: searches a day the cadence needs, against what the
+ * learned rate can make once app pulls have their share. Drawn as a used
+ * share of a bar, with both numbers printed, because a bare "3208 / 387" left
+ * the reader to guess which was the limit.
+ */
+function BudgetTile({ cadence }: { cadence: DataHealth["cadence"] }) {
+	const f = useFormat();
+	const t = useT();
+	if (cadence === null) {
+		return (
+			<HealthTile
+				help={t.helpBudgetPending}
+				label={t.crawlBudget}
+				note={t.budgetPending}
+				status="progress"
+				value="–"
+			/>
+		);
+	}
+	const load = Math.round(cadence.loadPerDay);
+	const capacity = cadence.capacity.keywordsPerDay;
+	const share = capacity > 0 ? Math.min(load / capacity, 1) : 1;
+	return (
+		<HealthTile
+			help={`${fmt(t.helpBudget, {
+				n: f.number(cadence.capacity.overheadPerDay),
+			})} ${cadence.summary}`}
+			label={t.crawlBudget}
+			note={
+				<span aria-hidden="true" className="budget-track">
+					<span
+						className={
+							cadence.saturated ? "budget-fill budget-full" : "budget-fill"
+						}
+						style={{ width: `${Math.round(share * 100)}%` }}
+					/>
+				</span>
+			}
+			status={cadence.saturated ? "bad" : "ok"}
+			value={
+				<>
+					{f.number(load)}
+					<span className="stat-of">
+						{" "}
+						{fmt(t.budgetOf, { capacity: f.number(capacity) })}
+					</span>
+				</>
+			}
+		/>
+	);
+}
+
 export function Health({
 	onAcknowledge,
 	unread,
@@ -291,61 +443,50 @@ export function Health({
 
 	return (
 		<>
-			<h1>{t.dataHealth}</h1>
-			<p className="page-sub">{t.healthIntro}</p>
+			<header className="page-header">
+				<div className="page-title">
+					<h1>{t.dataHealth}</h1>
+					<InfoTip label={t.dataHealth}>{t.healthIntro}</InfoTip>
+				</div>
+			</header>
 			<div className="tiles">
-				<div className="tile">
-					<div className="tile-title">{t.coverageToday}</div>
-					<div className="stat-value">
-						{h.collectedToday}
-						<span className="stat-of"> / {h.tier1Pairs}</span>
-					</div>
-					<div className="tile-note">
-						{fmt(t.healthCoverageNote, {
-							date: f.day(h.date),
-							pct: coverage,
-						})}
-					</div>
-				</div>
-				<div className="tile">
-					<div className="tile-title">{t.crawlRate}</div>
-					<div className="stat-value">
-						{h.pacing ? f.decimal(h.pacing.ratePerMin, 1) : "–"}
-					</div>
-					<div className="tile-note">
-						{paused
-							? fmt(t.crawlPaused, { time: f.time(pauseUntil) })
-							: t.crawlRateNote}
-					</div>
-				</div>
-				<div className="tile">
-					<div className="tile-title">{t.throttleHits}</div>
-					<div className={throttled > 0 ? "stat-value stat-bad" : "stat-value"}>
-						{throttled}
-					</div>
-					<div className="tile-note">{t.throttleNote}</div>
-				</div>
-				<div className="tile">
-					<div className="tile-title">{t.crawlBudget}</div>
-					<div
-						className={
-							h.cadence?.saturated ? "stat-value stat-bad" : "stat-value"
-						}
-					>
-						{h.cadence ? h.cadence.capacity.keywordsPerDay : "–"}
-						<span className="stat-of">
-							{" "}
-							/ {h.cadence ? Math.round(h.cadence.loadPerDay) : "–"}
-						</span>
-					</div>
-					<div className="tile-note">
-						{h.cadence
-							? `${h.cadence.summary} ${fmt(t.budgetReserved, {
-									n: h.cadence.capacity.overheadPerDay,
-								})}`
-							: t.budgetPending}
-					</div>
-				</div>
+				<HealthTile
+					help={fmt(t.helpCoverage, { date: f.day(h.date) })}
+					label={t.coverageToday}
+					note={fmt(t.coveragePct, { pct: coverage })}
+					status={
+						h.tier1Pairs > 0 && h.collectedToday >= h.tier1Pairs
+							? "ok"
+							: "progress"
+					}
+					value={
+						<>
+							{h.collectedToday}
+							<span className="stat-of"> / {h.tier1Pairs}</span>
+						</>
+					}
+				/>
+				<HealthTile
+					help={t.helpCrawlRate}
+					label={t.crawlRate}
+					note={
+						paused ? fmt(t.crawlPaused, { time: f.time(pauseUntil) }) : null
+					}
+					status={paused ? "warn" : "ok"}
+					value={
+						<>
+							{h.pacing ? f.decimal(h.pacing.ratePerMin, 1) : "–"}
+							<span className="stat-of"> {t.perMinute}</span>
+						</>
+					}
+				/>
+				<HealthTile
+					help={t.helpThrottle}
+					label={t.throttleHits}
+					status={throttled > 0 ? "bad" : "ok"}
+					value={throttled}
+				/>
+				<BudgetTile cadence={h.cadence} />
 				<LoopTile
 					loop={h.loop}
 					now={loadedAt}
@@ -354,17 +495,12 @@ export function Health({
 				/>
 				<DailyRunTile now={loadedAt} run={h.lastDailyRun} />
 				<OverdueTile n={h.overduePairs} />
-				<div className="tile">
-					<div className="tile-title">{t.ascAnomalies}</div>
-					<div
-						className={
-							h.ascAnomalies.length > 0 ? "stat-value stat-warn" : "stat-value"
-						}
-					>
-						{h.ascAnomalies.length}
-					</div>
-					<div className="tile-note">{t.ascAnomaliesNote}</div>
-				</div>
+				<HealthTile
+					help={t.helpAscAnomalies}
+					label={t.ascAnomalies}
+					status={h.ascAnomalies.length > 0 ? "warn" : "ok"}
+					value={h.ascAnomalies.length}
+				/>
 			</div>
 
 			{/* The same card, toolbar and scrollport as the report's table, so the
@@ -392,31 +528,33 @@ export function Health({
 						</button>
 					)}
 				</div>
-				<div className="table-scroll">
-					<table className="grid">
-						<thead>
-							<tr>
-								<th className="col-when">{t.lastSeen}</th>
-								<th className="col-class">{t.classLabel}</th>
-								<th className="col-where">{t.errorsWhere}</th>
-								<th className="col-count">{t.count}</th>
-								<th>{t.detail}</th>
-							</tr>
-						</thead>
-						<tbody>
-							{h.errorsLast24h.map((e) => (
-								<ErrorRow entry={e} key={`${e.errorClass}|${e.endpoint}`} />
-							))}
-							{h.errorsLast24h.length === 0 && (
+				{/* No header row over nothing: an empty table is a state, said as
+				    one. */}
+				{h.errorsLast24h.length === 0 ? (
+					<p className="empty-state">
+						<CircleCheck aria-hidden="true" size={18} />
+						{t.noErrors}
+					</p>
+				) : (
+					<div className="table-scroll">
+						<table className="grid">
+							<thead>
 								<tr>
-									<td colSpan={5} style={{ color: "var(--ds-text-success)" }}>
-										{t.noErrors}
-									</td>
+									<th className="col-when">{t.lastSeen}</th>
+									<th className="col-class">{t.classLabel}</th>
+									<th className="col-where">{t.errorsWhere}</th>
+									<th className="col-count">{t.count}</th>
+									<th>{t.detail}</th>
 								</tr>
-							)}
-						</tbody>
-					</table>
-				</div>
+							</thead>
+							<tbody>
+								{h.errorsLast24h.map((e) => (
+									<ErrorRow entry={e} key={`${e.errorClass}|${e.endpoint}`} />
+								))}
+							</tbody>
+						</table>
+					</div>
+				)}
 			</section>
 		</>
 	);
