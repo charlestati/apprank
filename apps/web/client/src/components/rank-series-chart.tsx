@@ -36,8 +36,7 @@ const H = 360;
 // a legend to name a line.
 const PAD = { bottom: 26, left: 56, right: 132, top: 32 };
 // The rail labels sit further from the plot than the rank labels: the first
-// day's mark is centred on the plot's edge, and with three keywords outside
-// the top 200 that day its outer frame reached into ">200".
+// day's marks are centred on the plot's edge and would touch ">200".
 const RAIL_LABEL_GAP = 16;
 /** The error rail's icon trigger, square, in pixels. */
 const RAIL_HINT_SIZE = 18;
@@ -48,6 +47,8 @@ const MARKER_SIZE = 14;
 /** Room for one tag and its numeral, when two releases share a day. */
 const MARKER_STEP = 26;
 const UNRANKED_SIZE = 7;
+/** One square plus a pixel of air, for keywords sharing a day on the rail. */
+const UNRANKED_STEP = 8;
 // Rails below the plot floor, in pixels: one for observations that landed
 // outside the top 200, one for days the fetch failed. 34px apart: closer, their
 // two labels stacked into what read as one wrapped label, ">200 failed".
@@ -329,7 +330,7 @@ export function RankSeriesChart({
 			const segments: Segment[] = [];
 			// Observed, but nowhere in the top 200. Data, not a hole, so it gets a
 			// slot of its own instead of being drawn as an absence.
-			const unranked: { i: number; depth: number }[] = [];
+			const unranked: { i: number; offset: number }[] = [];
 			// One mark per failed day, whatever number of classes it failed with:
 			// the server groups by day and class, and two rects on one slot were
 			// two elements with one key and one visible hatch.
@@ -343,7 +344,7 @@ export function RankSeriesChart({
 					}
 					current = [];
 					if (pos === null) {
-						unranked.push({ depth: 0, i });
+						unranked.push({ i, offset: 0 });
 					}
 				} else {
 					current.push({ depth: 0, x: xOf(i), y: yOf(pos) });
@@ -383,15 +384,24 @@ export function RankSeriesChart({
 		}
 
 		// The rail has one row, so two keywords outside the top 200 on the same
-		// day land on the same pixel too. Same answer as the dots: the later ones
-		// are hollow squares around the first, never nudged to a day they were
-		// not observed on.
+		// day would land on the same pixel. They stack across the rail instead,
+		// each a filled square in its own keyword's colour, centred on the rail.
+		// The rail has no rank to misstate, so a vertical step says nothing false,
+		// and each keyword stays readable by its colour. (They used to be hollow
+		// frames around the first, which needed a legend nobody could parse.)
+		// Counted across every series, so the stack holds still under the pointer.
 		const railed = new Map<number, number>();
 		for (const line of built) {
 			for (const mark of line.unranked) {
 				const depth = railed.get(mark.i) ?? 0;
-				mark.depth = depth;
+				mark.offset = depth;
 				railed.set(mark.i, depth + 1);
+			}
+		}
+		for (const line of built) {
+			for (const mark of line.unranked) {
+				const count = railed.get(mark.i) ?? 1;
+				mark.offset = (mark.offset - (count - 1) / 2) * UNRANKED_STEP;
 			}
 		}
 
@@ -735,20 +745,17 @@ export function RankSeriesChart({
 											))}
 								</g>
 							))}
-							{unranked.map(({ i, depth }) => {
-								const side = UNRANKED_SIZE + depth * 6;
+							{unranked.map(({ i, offset }) => {
+								const side = UNRANKED_SIZE;
 								return (
 									<rect
-										className={
-											depth > 0 ? "unranked-mark-ring" : "unranked-mark"
-										}
-										fill={depth > 0 ? "none" : stroke}
+										className="unranked-mark"
+										fill={stroke}
 										height={side}
 										key={`u-${i}`}
-										stroke={depth > 0 ? stroke : undefined}
 										width={side}
 										x={x(i) - side / 2}
-										y={unrankedRailY - side / 2}
+										y={unrankedRailY + offset - side / 2}
 									>
 										<title>
 											{fmt(t.railUnrankedTitle, {
@@ -829,25 +836,16 @@ export function RankSeriesChart({
 			</div>
 			{/* The rails' marks explained where a sighted reader sees them. The
           caption says it too, but only to a screen reader, and a <title> on
-          each mark answers neither touch nor the keyboard: nested frames on
-          the rail meant nothing until someone hovered one. */}
+          each mark answers neither touch nor the keyboard. */}
 			<ul className="rail-key">
 				<li>
-					<svg aria-hidden="true" height="14" width="22">
+					<svg aria-hidden="true" height="14" width="10">
 						<rect
 							className="rail-key-mark"
 							height="7"
 							width="7"
-							x="7.5"
+							x="1.5"
 							y="3.5"
-						/>
-						<rect
-							className="rail-key-ring"
-							fill="none"
-							height="13"
-							width="13"
-							x="4.5"
-							y="0.5"
 						/>
 					</svg>
 					{t.railKeyUnranked}

@@ -329,8 +329,7 @@ const en = {
 	railErrorHelp:
 		"Collection failed that day, so there is no rank to draw. A failure is not a rank change.",
 	axisRank: "Rank",
-	railKeyUnranked:
-		">200: outside the top 200. A frame is another keyword that day.",
+	railKeyUnranked: ">200: outside the top 200 that day",
 	railUnrankedTitle: "{date}: {keyword} observed, outside the top 200",
 	railErrorTitle:
 		"{date}: {keyword} fetch failed ({errorClass}), not a rank change",
@@ -693,8 +692,7 @@ const fr: Dictionary = {
 	railErrorHelp:
 		"La collecte a échoué ce jour-là : il n'y a pas de rang à tracer. Un échec n'est pas un changement de rang.",
 	axisRank: "Rang",
-	railKeyUnranked:
-		">200 : hors du top 200. Un cadre est un autre mot-clé ce jour-là.",
+	railKeyUnranked: ">200 : hors du top 200 ce jour-là",
 	railUnrankedTitle: "{date} : {keyword} observé, hors du top 200",
 	railErrorTitle:
 		"{date} : échec de collecte pour {keyword} ({errorClass}), pas un changement de rang",

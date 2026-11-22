@@ -185,7 +185,7 @@ describe("Rank series chart", () => {
 		);
 		// Drawn even with nothing on the rails, as the rails themselves are,
 		// and never in a <title>, which neither touch nor the keyboard reaches.
-		const key = screen.getByText(/A frame is another keyword that day/u);
+		const key = screen.getByText(/outside the top 200 that day/u);
 		expect(key.closest("title")).toBeNull();
 		// The error rail is an icon: a real button whose popover says what a
 		// failure means.
@@ -511,7 +511,7 @@ describe("Rank series chart", () => {
 		);
 	});
 
-	it("rings keywords outside the top 200 on the same day instead of stacking them", () => {
+	it("stacks keywords outside the top 200 on the same day, each in its colour", () => {
 		const points = [
 			{ date: "2026-01-01", position: 4 },
 			{ date: "2026-01-02", position: null },
@@ -527,10 +527,15 @@ describe("Rank series chart", () => {
 			/>
 		);
 		// Two 7px squares on one pixel showed only the last one painted.
-		expect(container.querySelectorAll(".unranked-mark")).toHaveLength(1);
-		const ring = container.querySelector(".unranked-mark-ring");
-		expect(ring?.getAttribute("fill")).toBe("none");
-		expect(ring?.getAttribute("width")).toBe("13");
+		const marks = [...container.querySelectorAll(".unranked-mark")];
+		expect(marks).toHaveLength(2);
+		expect(marks.map((m) => m.getAttribute("x"))).toStrictEqual([
+			marks[0]?.getAttribute("x"),
+			marks[0]?.getAttribute("x"),
+		]);
+		const ys = marks.map((m) => Number(m.getAttribute("y")));
+		expect(Math.abs((ys[0] ?? 0) - (ys[1] ?? 0))).toBe(8);
+		expect(container.querySelector(".unranked-mark-ring")).toBeNull();
 	});
 
 	it("keeps a muted series visible when all it has is lone observations", () => {

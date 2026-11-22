@@ -1264,9 +1264,6 @@ line.marker-on {
 }
 /* A second and third keyword outside the top 200 on the same day: hollow
    squares around the first, as the dots do with rings. */
-.unranked-mark-ring {
-	stroke-width: 1.5;
-}
 .hatch-line {
 	stroke: var(--ds-chart-danger);
 	stroke-width: 2;
@@ -1339,10 +1336,6 @@ line.marker-on {
 }
 .rail-key-mark {
 	fill: var(--ds-chart-neutral);
-}
-.rail-key-ring {
-	stroke: var(--ds-chart-neutral);
-	stroke-width: 1.5;
 }
 
 .chart-note {
