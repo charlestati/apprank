@@ -126,6 +126,11 @@ const storefronts = [
 	{ code: "be", keywords: 25, name: "Belgium" },
 ];
 
+/** The keyword table, not the small tables inside the lanes. */
+function reportTable(): HTMLElement {
+	return document.querySelector("table.report") as HTMLElement;
+}
+
 describe("Keyword performance page", () => {
 	it("says so when no app is tracked, without fetching", () => {
 		const calls = stubFetch({});
@@ -235,12 +240,8 @@ describe("Keyword performance page", () => {
 
 		const search = screen.getByLabelText("Filter keywords");
 		fireEvent.change(search, { target: { value: "other" } });
-		expect(
-			within(screen.getByRole("table")).queryByText("example keyword")
-		).toBeNull();
-		expect(
-			within(screen.getByRole("table")).getByText("other term")
-		).toBeDefined();
+		expect(within(reportTable()).queryByText("example keyword")).toBeNull();
+		expect(within(reportTable()).getByText("other term")).toBeDefined();
 
 		fireEvent.change(search, { target: { value: "zzz" } });
 		expect(screen.getByText(/No keywords match/u)).toBeDefined();
@@ -469,6 +470,62 @@ describe("Opportunities panel", () => {
 			.closest(".lane") as HTMLElement;
 		expect(within(lane).getByText("reachable term")).toBeDefined();
 	});
+
+	it("names the rank and popularity columns, and says >200 for no rank", async () => {
+		renderPage({
+			report: report({
+				rows: [
+					keywordRow({
+						keyword: "far term",
+						popularity: 54,
+						position: null,
+						verdict: {
+							opportunity: "winning",
+							reason: "Winning.",
+							unproven: false,
+						},
+					}),
+				],
+			}),
+			storefronts,
+		});
+		await screen.findByText("What to work on");
+		const lane = laneOf(/Winning/u) as HTMLElement;
+		expect(
+			within(lane).getByRole("columnheader", { name: "Rank" })
+		).toBeDefined();
+		expect(within(lane).getByText(">200")).toBeDefined();
+		expect(
+			within(lane).getByRole("meter", { name: "Popularity" })
+		).toBeDefined();
+		expect(lane.textContent).not.toContain("pop");
+	});
+
+	it("leaves the popularity column out of the no-volume lane", async () => {
+		renderPage({
+			report: report({
+				insights: { ...report().insights, unknown: 1 },
+				rows: [
+					keywordRow({
+						keyword: "unmeasured term",
+						popularity: null,
+						verdict: {
+							opportunity: "unknown",
+							reason: "No volume.",
+							unproven: false,
+						},
+					}),
+				],
+			}),
+			storefronts,
+		});
+		await screen.findByText("What to work on");
+		const lane = laneOf(/No volume data/u) as HTMLElement;
+		expect(within(lane).getByText("unmeasured term")).toBeDefined();
+		expect(
+			within(lane).queryByRole("columnheader", { name: "Popularity" })
+		).toBeNull();
+	});
 });
 
 describe("Rank credibility", () => {
@@ -602,8 +659,9 @@ describe("Column explanations", () => {
 		renderPage({ report: report(), storefronts });
 		await screen.findAllByText("example keyword");
 		expect(
-			document.querySelector<HTMLElement>('.meter[aria-label="Popularity"]')
-				?.title
+			document.querySelector<HTMLElement>(
+				'.report .meter[aria-label="Popularity"]'
+			)?.title
 		).toContain("Search popularity 55 of 100 — Medium");
 	});
 });
@@ -883,7 +941,7 @@ describe("Popularity filter", () => {
 		await screen.findAllByText("example keyword");
 
 		chooseOption("Filter by popularity", "Very high (85–100)");
-		const table = screen.getByRole("table");
+		const table = reportTable();
 		expect(within(table).getByText("example keyword")).toBeDefined();
 		expect(within(table).queryByText("quiet term")).toBeNull();
 		// A keyword Apple gave no reading for cannot be placed in a band.

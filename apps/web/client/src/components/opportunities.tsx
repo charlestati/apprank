@@ -24,6 +24,7 @@ import type { KeywordRow, Report } from "../api";
 import { fmt, plural, useT } from "../i18n";
 import type { Dictionary } from "../i18n";
 import { Hint, InfoTip } from "./info-tip";
+import { Meter } from "./meter";
 
 // No lane carries a colour. The label already says which lane it is, so a
 // tinted panel behind a coloured rule was decoration standing in for a
@@ -210,25 +211,49 @@ export function Opportunities({
 					{filled.map((lane) => (
 						<div className="lane" key={lane.key}>
 							<LaneHead count={counts[lane.key] ?? 0} lane={lane} />
-							<ul className="lane-examples">
-								{pickExamples(rows, lane.key).map((row) => (
-									<li key={row.pairId}>
-										<button
-											className="link"
-											onClick={() => onSelect(row)}
-											type="button"
-										>
-											{row.keyword}
-										</button>
-										<span className="lane-rank">
-											{row.position === null ? "—" : `#${row.position}`}
-											{row.popularity === null
-												? ""
-												: fmt(t.opportunityPop, { n: row.popularity })}
-										</span>
-									</li>
-								))}
-							</ul>
+							{/* A small table: the keyword, its rank and Apple's popularity,
+							    under column names. As "#178 · pop 57" the two numbers were
+							    a code the reader had to know. */}
+							<table className="lane-examples">
+								<thead>
+									<tr>
+										<th className="sr-only" scope="col">
+											{t.keyword}
+										</th>
+										<th scope="col">{t.axisRank}</th>
+										{lane.key === "unknown" ? null : (
+											<th scope="col">{t.popularity}</th>
+										)}
+									</tr>
+								</thead>
+								<tbody>
+									{pickExamples(rows, lane.key).map((row) => (
+										<tr key={row.pairId}>
+											<td>
+												<button
+													className="link"
+													onClick={() => onSelect(row)}
+													type="button"
+												>
+													{row.keyword}
+												</button>
+											</td>
+											{/* The chart's own name for a rank outside the top 200,
+											    rather than a dash that reads as "no data". */}
+											<td className="lane-rank">
+												{row.position ?? t.railUnranked}
+											</td>
+											{/* The no-volume lane is defined by having no popularity,
+											    so its column would be a stack of dashes. */}
+											{lane.key === "unknown" ? null : (
+												<td className="lane-pop">
+													<Meter label={t.popularity} value={row.popularity} />
+												</td>
+											)}
+										</tr>
+									))}
+								</tbody>
+							</table>
 						</div>
 					))}
 				</div>

@@ -352,7 +352,6 @@ const en = {
 	noChangeWindow: "no change in this window",
 	noFieldDiff: "no field diff",
 	notInTop200: "not in top 200",
-	opportunityPop: " · pop {n}",
 	pairFallback: "Pair {id}",
 
 	// Explanations. Every number here is derived from something the reader
@@ -714,7 +713,6 @@ const fr: Dictionary = {
 	noChangeWindow: "aucun changement sur la période",
 	noFieldDiff: "aucun champ modifié",
 	notInTop200: "hors du top 200",
-	opportunityPop: " · pop {n}",
 	pairFallback: "Paire {id}",
 
 	explainAbout: "À propos de {label}",
