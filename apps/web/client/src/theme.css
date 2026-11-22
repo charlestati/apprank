@@ -1086,6 +1086,38 @@ line.marker-on {
 	height: auto;
 	margin-top: 3px;
 }
+/* The error rail's label: an icon over the chart where the word was. */
+.rail-hint {
+	position: absolute;
+	display: flex;
+}
+.rail-hint-trigger {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	padding: 0;
+	border: 0;
+	border-radius: var(--ds-radius-full);
+	background: none;
+	color: var(--ds-text-subtlest);
+	cursor: help;
+}
+.rail-hint-trigger:hover,
+.rail-hint-trigger[data-popup-open] {
+	background: var(--ds-neutral-subtle-hovered);
+	color: var(--ds-text);
+}
+.rail-hint-trigger:focus-visible {
+	outline: 2px solid var(--ds-border-focused);
+	outline-offset: 1px;
+}
+.axis-title {
+	fill: var(--ds-text-subtle);
+	font: var(--ds-font-body);
+	font-weight: 600;
+}
 .rail-key-mark {
 	fill: var(--ds-chart-neutral);
 }

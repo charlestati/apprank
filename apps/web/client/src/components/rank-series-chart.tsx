@@ -16,13 +16,14 @@
    the same reason: a value a sighted mouse user can read has to be reachable
    without a mouse, and there is no interactive element to hang that on. */
 
-import { Tag } from "lucide-react";
+import { Tag, TriangleAlert } from "lucide-react";
 import { useCallback, useId, useMemo, useState } from "react";
 
 import type { KeywordRow, MetadataMarker } from "../api";
 import { useFormat } from "../format";
 import { changedFields, fmt, plural, useT } from "../i18n";
 import type { Dictionary } from "../i18n";
+import { Hint } from "./info-tip";
 
 // The viewBox is measured in CSS pixels, not in an arbitrary design unit, so
 // one unit is one pixel at every container width. A fixed 960-unit box scaled
@@ -38,6 +39,8 @@ const PAD = { bottom: 26, left: 56, right: 132, top: 32 };
 // day's mark is centred on the plot's edge, and with three keywords outside
 // the top 200 that day its outer frame reached into ">200".
 const RAIL_LABEL_GAP = 16;
+/** The error rail's icon trigger, square, in pixels. */
+const RAIL_HINT_SIZE = 18;
 // Release pins live above the plot, not on it: at the old top pad the pin for a
 // keyword sitting at rank 1 was drawn straight through its own line.
 const MARKER_ROW = 13;
@@ -584,6 +587,16 @@ export function RankSeriesChart({
 						</text>
 					</g>
 				))}
+				{/* The axis says what it counts, above its numbers rather than turned
+            on its side: rotated text is read by tilting the head. */}
+				<text
+					className="axis-title"
+					textAnchor="end"
+					x={PAD.left - 8}
+					y={PAD.top - 16}
+				>
+					{t.axisRank}
+				</text>
 				{/* The two rails are always drawn, labelled, even when empty: a reader
             has to be able to tell "nothing failed" from "failures not shown". */}
 				<line
@@ -609,14 +622,6 @@ export function RankSeriesChart({
 					y={unrankedRailY + 4}
 				>
 					{t.railUnranked}
-				</text>
-				<text
-					className="axis-label"
-					textAnchor="end"
-					x={PAD.left - RAIL_LABEL_GAP}
-					y={errorRailY + 4}
-				>
-					{t.railError}
 				</text>
 				{tickIndexes.map((i) => (
 					<text
@@ -804,6 +809,24 @@ export function RankSeriesChart({
 					</text>
 				))}
 			</svg>
+			{/* The error rail's label is a mark with its explanation behind it, an
+          HTML trigger laid over the chart where the word was: an SVG <title>
+          answers neither touch nor the keyboard. */}
+			<div
+				className="rail-hint"
+				style={{
+					left: `${PAD.left - RAIL_LABEL_GAP - RAIL_HINT_SIZE}px`,
+					top: `${errorRailY - RAIL_HINT_SIZE / 2}px`,
+				}}
+			>
+				<Hint
+					className="rail-hint-trigger"
+					label={t.railError}
+					mark={<TriangleAlert size={RAIL_HINT_SIZE - 4} />}
+				>
+					{t.railErrorHelp}
+				</Hint>
+			</div>
 			{/* The rails' marks explained where a sighted reader sees them. The
           caption says it too, but only to a screen reader, and a <title> on
           each mark answers neither touch nor the keyboard: nested frames on
@@ -828,12 +851,6 @@ export function RankSeriesChart({
 						/>
 					</svg>
 					{t.railKeyUnranked}
-				</li>
-				<li>
-					<svg aria-hidden="true" height="14" width="22">
-						<rect fill={`url(#${hatchId})`} height="9" width="22" y="2.5" />
-					</svg>
-					{t.railKeyError}
 				</li>
 			</ul>
 			{/* The same readout as the tooltip, for a reader who cannot see it. It is

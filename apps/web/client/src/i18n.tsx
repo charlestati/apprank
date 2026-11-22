@@ -288,10 +288,12 @@ const en = {
 	noKeywordSelected:
 		"No keyword is on the chart. Tick one in the table below to draw it.",
 	railUnranked: ">200",
-	railError: "failed",
+	railError: "Days the collection failed",
+	railErrorHelp:
+		"Collection failed that day, so there is no rank to draw. A failure is not a rank change.",
+	axisRank: "Rank",
 	railKeyUnranked:
 		">200: outside the top 200. A frame is another keyword that day.",
-	railKeyError: "failed: collection failed, not a rank change.",
 	railUnrankedTitle: "{date}: {keyword} observed, outside the top 200",
 	railErrorTitle:
 		"{date}: {keyword} fetch failed ({errorClass}), not a rank change",
@@ -619,10 +621,12 @@ const fr: Dictionary = {
 	noKeywordSelected:
 		"Aucun mot-clé n'est sur le graphique. Cochez-en un dans le tableau ci-dessous pour le tracer.",
 	railUnranked: ">200",
-	railError: "échec",
+	railError: "Jours où la collecte a échoué",
+	railErrorHelp:
+		"La collecte a échoué ce jour-là : il n'y a pas de rang à tracer. Un échec n'est pas un changement de rang.",
+	axisRank: "Rang",
 	railKeyUnranked:
 		">200 : hors du top 200. Un cadre est un autre mot-clé ce jour-là.",
-	railKeyError: "échec : collecte échouée, pas un changement de rang.",
 	railUnrankedTitle: "{date} : {keyword} observé, hors du top 200",
 	railErrorTitle:
 		"{date} : échec de collecte pour {keyword} ({errorClass}), pas un changement de rang",
