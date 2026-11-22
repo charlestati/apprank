@@ -654,13 +654,6 @@ h1 {
 	font: var(--ds-font-heading-small);
 }
 
-.tile-body {
-	display: flex;
-	align-items: center;
-	gap: var(--ds-space-300);
-	flex-wrap: wrap;
-}
-
 .tile-note {
 	margin-top: var(--ds-space-050);
 	color: var(--ds-text-subtlest);
@@ -743,6 +736,93 @@ h1 {
 	border-top: 1px solid var(--ds-border);
 }
 
+/* The three summary tiles share a row and so a height. Each one's figure
+   sits on the tile's bottom edge, so the bars line up across the row and the
+   slack collects under the titles instead of as a hole under the shortest. */
+.summary-tiles .tile {
+	display: flex;
+	flex-direction: column;
+}
+.summary-tiles .tile > :last-child {
+	margin-top: auto;
+}
+.summary-tiles .movement {
+	flex: 1;
+	justify-content: space-between;
+}
+/* The three counts are the tile's figures, so they take a figure's size
+   rather than a label's. */
+.summary-tiles .movement-stats .delta {
+	font: var(--ds-font-heading-large);
+	font-weight: var(--ds-weight-bold);
+	font-variant-numeric: tabular-nums;
+}
+.summary-tiles .movement-bar {
+	height: 8px;
+}
+.stat-pair.stat-aside {
+	align-self: center;
+	margin-left: auto;
+	text-align: right;
+}
+/* The count over its label, as the movement tile's counts stand. */
+.stat-aside > div {
+	display: flex;
+	flex-direction: column-reverse;
+	align-items: flex-end;
+}
+.stat-aside dd {
+	margin: 0;
+}
+/* The spread of ranks: a track for ranks 1 to 200, a band from the best to
+   the worst, a dot at the average. */
+.rank-range {
+	padding-top: var(--ds-space-200);
+}
+.rank-range-track {
+	position: relative;
+	height: 8px;
+	border-radius: var(--ds-radius-full);
+	background: var(--ds-background-neutral);
+}
+.rank-range-band {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	min-width: 4px;
+	border-radius: inherit;
+	background: color-mix(in oklab, var(--ds-chart-1) 45%, transparent);
+}
+.rank-range-dot {
+	position: absolute;
+	top: 50%;
+	width: 14px;
+	height: 14px;
+	border: 2px solid var(--ds-surface-raised);
+	border-radius: 50%;
+	background: var(--ds-chart-1);
+	transform: translate(-50%, -50%);
+}
+.rank-range-ends {
+	display: flex;
+	justify-content: space-between;
+	margin: var(--ds-space-100) 0 0;
+}
+.rank-range-ends > div {
+	display: flex;
+	align-items: baseline;
+	gap: var(--ds-space-075);
+}
+.rank-range-ends dt {
+	color: var(--ds-text-subtle);
+	font: var(--ds-font-body);
+}
+.rank-range-ends dd {
+	margin: 0;
+	font: var(--ds-font-body);
+	font-weight: var(--ds-weight-bold);
+	font-variant-numeric: tabular-nums;
+}
 .stat-of {
 	color: var(--ds-text-subtlest);
 	font: var(--ds-font-body);
@@ -940,6 +1020,29 @@ h1 {
 .lane-empty .lane-label {
 	color: var(--ds-text-subtlest);
 	font-weight: var(--ds-weight-medium);
+}
+/* Empty lanes, folded: one hairline row of icon, zero and label. */
+.lanes-empty {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--ds-space-050) var(--ds-space-300);
+	padding: var(--ds-space-100) var(--ds-space-200);
+	border-top: 1px solid var(--ds-border);
+}
+.lanes-empty .lane {
+	padding: 0;
+	border: 0;
+}
+.lanes-empty .lane-head {
+	font: var(--ds-font-body);
+}
+.lanes-empty .lane-count {
+	font: var(--ds-font-body);
+	font-weight: var(--ds-weight-bold);
+}
+.lanes-empty .lane-icon {
+	width: 16px;
+	height: 16px;
 }
 .lane-examples {
 	margin: var(--ds-space-100) 0 0;

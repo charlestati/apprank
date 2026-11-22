@@ -99,6 +99,24 @@ function pickExamples(rows: KeywordRow[], key: string): KeywordRow[] {
 		.slice(0, 3);
 }
 
+type Lane = ReturnType<typeof lanesFor>[number];
+
+function LaneHead({ lane, count }: { lane: Lane; count: number }) {
+	const Icon = lane.icon;
+	return (
+		<h3 className="lane-head">
+			<Icon aria-hidden="true" className="lane-icon" size={18} />
+			<span className="lane-count">{count}</span>
+			{/* The "?" inside the label, so a label that wraps keeps it beside its
+			    last word rather than parked at the far edge. */}
+			<span className="lane-label">
+				{lane.label}
+				<InfoTip label={lane.label}>{lane.hint}</InfoTip>
+			</span>
+		</h3>
+	);
+}
+
 export function Opportunities({
 	report,
 	onSelect,
@@ -116,6 +134,8 @@ export function Opportunities({
 		vanity: insights.vanity,
 		winning: insights.winning,
 	};
+	const filled = lanes.filter((lane) => (counts[lane.key] ?? 0) > 0);
+	const empty = lanes.filter((lane) => (counts[lane.key] ?? 0) === 0);
 	return (
 		<section className="card insights">
 			<header className="insights-head">
@@ -185,27 +205,11 @@ export function Opportunities({
 				) : null}
 			</header>
 
-			<div className="lanes">
-				{lanes.map((lane) => {
-					const count = counts[lane.key] ?? 0;
-					const Icon = lane.icon;
-					return (
-						// An empty lane steps back rather than disappearing: "nothing is
-						// blocked" is an answer, but it should not draw the eye.
-						<div
-							className={count === 0 ? "lane lane-empty" : "lane"}
-							key={lane.key}
-						>
-							<h3 className="lane-head">
-								<Icon aria-hidden="true" className="lane-icon" size={18} />
-								<span className="lane-count">{count}</span>
-								{/* The "?" inside the label, so a label that wraps keeps it
-							    beside its last word rather than parked at the far edge. */}
-								<span className="lane-label">
-									{lane.label}
-									<InfoTip label={lane.label}>{lane.hint}</InfoTip>
-								</span>
-							</h3>
+			{filled.length > 0 ? (
+				<div className="lanes">
+					{filled.map((lane) => (
+						<div className="lane" key={lane.key}>
+							<LaneHead count={counts[lane.key] ?? 0} lane={lane} />
 							<ul className="lane-examples">
 								{pickExamples(rows, lane.key).map((row) => (
 									<li key={row.pairId}>
@@ -226,9 +230,21 @@ export function Opportunities({
 								))}
 							</ul>
 						</div>
-					);
-				})}
-			</div>
+					))}
+				</div>
+			) : null}
+			{/* Empty lanes fold into one slim row under the others. As full
+			    columns they were boxes with nothing in them; dropped, "nothing is
+			    winning" would go unsaid, and that is an answer too. */}
+			{empty.length > 0 ? (
+				<div className="lanes-empty">
+					{empty.map((lane) => (
+						<div className="lane lane-empty" key={lane.key}>
+							<LaneHead count={0} lane={lane} />
+						</div>
+					))}
+				</div>
+			) : null}
 		</section>
 	);
 }

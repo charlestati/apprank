@@ -440,6 +440,13 @@ describe("Opportunities panel", () => {
 		expect(laneOf(/Winning/u)?.classList.contains("lane-empty")).toBeFalsy();
 	});
 
+	it("folds empty lanes into one row under the others", async () => {
+		renderPage({ report: report(), storefronts });
+		await screen.findByText("What to work on");
+		expect(laneOf(/Blocked/u)?.parentElement?.className).toBe("lanes-empty");
+		expect(laneOf(/Winning/u)?.parentElement?.className).toBe("lanes");
+	});
+
 	it("lists example keywords in the lane they belong to", async () => {
 		renderPage({
 			report: report({
@@ -962,6 +969,38 @@ describe(SummaryTiles, () => {
 		expect(document.querySelector(".stat-pair")?.textContent).toContain(
 			"1 of 2"
 		);
+	});
+
+	it("draws the spread from best to worst with the average on it", () => {
+		render(
+			<SummaryTiles
+				days={30}
+				stats={{ ...report().stats, averageRank: 100, best: 1, worst: 199 }}
+			/>
+		);
+		const band = document.querySelector(".rank-range-band") as HTMLElement;
+		expect(band.style.left).toBe("0%");
+		expect(band.style.width).toContain("99.49");
+		const dot = document.querySelector(".rank-range-dot") as HTMLElement;
+		expect(dot.style.left).toContain("49.7");
+		expect(document.querySelector(".rank-range-ends")?.textContent).toContain(
+			"199"
+		);
+	});
+
+	it("draws no spread before anything has ranked", () => {
+		render(
+			<SummaryTiles
+				days={30}
+				stats={{
+					...report().stats,
+					averageRank: null,
+					best: null,
+					worst: null,
+				}}
+			/>
+		);
+		expect(document.querySelector(".rank-range-track")).toBeNull();
 	});
 
 	it("marks a worsening average as a fall", () => {

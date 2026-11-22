@@ -40,6 +40,54 @@ function DistributionBar({
 	);
 }
 
+// The spread of ranks drawn as a span on a 1-to-200 scale, the average a dot
+// on it. Best and worst printed as two loose numbers beside the average left
+// the tile half empty and asked the reader to picture where 57 sits between 1
+// and 187; the span shows it.
+const RANGE_FLOOR = 200;
+
+function RankRange({
+	average,
+	best,
+	worst,
+}: {
+	average: number | null;
+	best: number | null;
+	worst: number | null;
+}) {
+	const t = useT();
+	const scale = Math.max(RANGE_FLOOR, worst ?? 0);
+	const at = (rank: number) => ((rank - 1) / (scale - 1)) * 100;
+	return (
+		<div className="rank-range">
+			{best !== null && worst !== null ? (
+				<div aria-hidden="true" className="rank-range-track">
+					<span
+						className="rank-range-band"
+						style={{ left: `${at(best)}%`, width: `${at(worst) - at(best)}%` }}
+					/>
+					{average === null ? null : (
+						<span
+							className="rank-range-dot"
+							style={{ left: `${at(average)}%` }}
+						/>
+					)}
+				</div>
+			) : null}
+			<dl className="rank-range-ends">
+				<div>
+					<dt>{t.best}</dt>
+					<dd>{best ?? "—"}</dd>
+				</div>
+				<div>
+					<dt>{t.worst}</dt>
+					<dd>{worst ?? "—"}</dd>
+				</div>
+			</dl>
+		</div>
+	);
+}
+
 export function SummaryTiles({
 	stats,
 	days,
@@ -58,7 +106,7 @@ export function SummaryTiles({
 		});
 
 	return (
-		<div className="tiles">
+		<div className="tiles summary-tiles">
 			<section className="tile">
 				<h2 className="tile-title">
 					{t.averageRank}
@@ -66,31 +114,21 @@ export function SummaryTiles({
 						{fmt(t.helpAverageRank, { n: days })}
 					</InfoTip>
 				</h2>
-				<div className="tile-body">
-					<div className="stat-hero">
-						<span className="stat-value">{stats.averageRank ?? "—"}</span>
-						{stats.averageRankChange ? (
-							<span
-								className={
-									stats.averageRankChange > 0
-										? "delta delta-up"
-										: "delta delta-down"
-								}
-							>
-								<TrendArrow up={stats.averageRankChange > 0} />
-								{Math.abs(stats.averageRankChange)}
-							</span>
-						) : null}
-					</div>
-					<dl className="stat-pair">
-						<div>
-							<dt>{t.best}</dt>
-							<dd>{stats.best ?? "—"}</dd>
-						</div>
-						<div>
-							<dt>{t.worst}</dt>
-							<dd>{stats.worst ?? "—"}</dd>
-						</div>
+				<div className="stat-hero">
+					<span className="stat-value">{stats.averageRank ?? "—"}</span>
+					{stats.averageRankChange ? (
+						<span
+							className={
+								stats.averageRankChange > 0
+									? "delta delta-up"
+									: "delta delta-down"
+							}
+						>
+							<TrendArrow up={stats.averageRankChange > 0} />
+							{Math.abs(stats.averageRankChange)}
+						</span>
+					) : null}
+					<dl className="stat-pair stat-aside">
 						<div>
 							<dt>{t.ranked}</dt>
 							<dd>
@@ -102,6 +140,11 @@ export function SummaryTiles({
 						</div>
 					</dl>
 				</div>
+				<RankRange
+					average={stats.averageRank}
+					best={stats.best}
+					worst={stats.worst}
+				/>
 			</section>
 
 			<section className="tile">
