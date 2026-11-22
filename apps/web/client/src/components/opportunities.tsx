@@ -7,21 +7,84 @@
 // so counting them alongside generic wins flatters the picture; ASO progress
 // is the generic column.
 
+import {
+	CircleHelp,
+	Ghost,
+	Hourglass,
+	Lock,
+	SearchX,
+	Tag,
+	Target,
+	Trophy,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
+
 import type { KeywordRow, Report } from "../api";
 import { fmt, plural, useT } from "../i18n";
 import type { Dictionary } from "../i18n";
+import { Hint, InfoTip } from "./info-tip";
 
 // No lane carries a colour. The label already says which lane it is, so a
 // tinted panel behind a coloured rule was decoration standing in for a
-// distinction the words had already made.
+// distinction the words had already made. Each lane has a shape instead, so
+// the five columns are told apart at a glance and the sentence that defines a
+// lane waits behind its "?" rather than being read five times a visit.
 const lanesFor = (t: Dictionary) =>
 	[
-		{ hint: t.laneWinningHint, key: "winning", label: t.laneWinning },
-		{ hint: t.laneCloseHint, key: "close", label: t.laneClose },
-		{ hint: t.laneBlockedHint, key: "blocked", label: t.laneBlocked },
-		{ hint: t.laneVanityHint, key: "vanity", label: t.laneVanity },
-		{ hint: t.laneUnknownHint, key: "unknown", label: t.laneUnknown },
+		{
+			hint: t.laneWinningHint,
+			icon: Trophy,
+			key: "winning",
+			label: t.laneWinning,
+		},
+		{ hint: t.laneCloseHint, icon: Target, key: "close", label: t.laneClose },
+		{
+			hint: t.laneBlockedHint,
+			icon: Lock,
+			key: "blocked",
+			label: t.laneBlocked,
+		},
+		{ hint: t.laneVanityHint, icon: Ghost, key: "vanity", label: t.laneVanity },
+		{
+			hint: t.laneUnknownHint,
+			icon: CircleHelp,
+			key: "unknown",
+			label: t.laneUnknown,
+		},
 	] as const;
+
+/**
+ * A caveat as a chip: an icon and a count, with the sentence that qualifies
+ * the headline one hover, tap or Enter away. The visible text is the trigger's
+ * name too, so what a voice user reads is what they can say.
+ */
+function NoteChip({
+	icon: Icon,
+	label,
+	children,
+}: {
+	icon: LucideIcon;
+	label: string;
+	children: string;
+}): ReactNode {
+	return (
+		<li>
+			<Hint
+				className="note-chip"
+				label={label}
+				mark={
+					<>
+						<Icon size={14} />
+						{label}
+					</>
+				}
+			>
+				{children}
+			</Hint>
+		</li>
+	);
+}
 
 // Brand terms are excluded here for the same reason they are excluded from the
 // counts: a lane that reads 15 while listing three brand keywords under it is
@@ -57,9 +120,10 @@ export function Opportunities({
 		<section className="card insights">
 			<header className="insights-head">
 				<h2 className="section-title">{t.whatToWorkOn}</h2>
-				{/* The headline first, in a sentence, then the two caveats that
-				    qualify it. Run together in one paragraph, the three read as a
-				    single statistic nobody could parse. */}
+				{/* The headline first, in a sentence, then the caveats that qualify
+				    it as chips. Run together in one paragraph, the three read as a
+				    single statistic nobody could parse; as bullets, they were two
+				    more paragraphs to read before the lanes. */}
 				<p className="insights-lede">
 					{fmt(t.genericProgress, {
 						inZone: insights.genericInTapZone,
@@ -69,69 +133,101 @@ export function Opportunities({
 				{insights.brandKeywords > 0 ||
 				insights.unmeasuredKeywords > 0 ||
 				insights.unqueriedKeywords > 0 ? (
-					<ul className="insights-notes">
+					<ul className="note-chips">
 						{insights.brandKeywords > 0 ? (
-							<li>
+							<NoteChip
+								icon={Tag}
+								label={plural(
+									t,
+									insights.brandKeywords,
+									"brandChipOne",
+									"brandChip"
+								)}
+							>
 								{plural(
 									t,
 									insights.brandKeywords,
 									"brandCountedOne",
 									"brandCounted"
 								)}
-							</li>
+							</NoteChip>
 						) : null}
 						{insights.unmeasuredKeywords > 0 ? (
-							<li>
+							<NoteChip
+								icon={SearchX}
+								label={fmt(t.noVolumeChip, {
+									n: insights.unmeasuredKeywords,
+								})}
+							>
 								{fmt(t.coverageNote, {
 									n: insights.unmeasuredKeywords,
 									total: insights.brandKeywords + insights.genericKeywords,
 								})}
-							</li>
+							</NoteChip>
 						) : null}
 						{/* Two separate notes on purpose. Merging them under one count
 						    reported a gap in our own collection as a fact about Apple's
 						    data. */}
 						{insights.unqueriedKeywords > 0 ? (
-							<li>
+							<NoteChip
+								icon={Hourglass}
+								label={fmt(t.pendingVolumeChip, {
+									n: insights.unqueriedKeywords,
+								})}
+							>
 								{fmt(t.coveragePending, {
 									n: insights.unqueriedKeywords,
 									total: insights.brandKeywords + insights.genericKeywords,
 								})}
-							</li>
+							</NoteChip>
 						) : null}
 					</ul>
 				) : null}
 			</header>
 
 			<div className="lanes">
-				{lanes.map((lane) => (
-					<div className="lane" key={lane.key}>
-						<h3 className="lane-head">
-							<span className="lane-count">{counts[lane.key] ?? 0}</span>
-							<span className="lane-label">{lane.label}</span>
-						</h3>
-						<p className="lane-hint">{lane.hint}</p>
-						<ul className="lane-examples">
-							{pickExamples(rows, lane.key).map((row) => (
-								<li key={row.pairId}>
-									<button
-										className="link"
-										onClick={() => onSelect(row)}
-										type="button"
-									>
-										{row.keyword}
-									</button>
-									<span className="lane-rank">
-										{row.position === null ? "—" : `#${row.position}`}
-										{row.popularity === null
-											? ""
-											: fmt(t.opportunityPop, { n: row.popularity })}
-									</span>
-								</li>
-							))}
-						</ul>
-					</div>
-				))}
+				{lanes.map((lane) => {
+					const count = counts[lane.key] ?? 0;
+					const Icon = lane.icon;
+					return (
+						// An empty lane steps back rather than disappearing: "nothing is
+						// blocked" is an answer, but it should not draw the eye.
+						<div
+							className={count === 0 ? "lane lane-empty" : "lane"}
+							key={lane.key}
+						>
+							<h3 className="lane-head">
+								<Icon aria-hidden="true" className="lane-icon" size={18} />
+								<span className="lane-count">{count}</span>
+								{/* The "?" inside the label, so a label that wraps keeps it
+							    beside its last word rather than parked at the far edge. */}
+								<span className="lane-label">
+									{lane.label}
+									<InfoTip label={lane.label}>{lane.hint}</InfoTip>
+								</span>
+							</h3>
+							<ul className="lane-examples">
+								{pickExamples(rows, lane.key).map((row) => (
+									<li key={row.pairId}>
+										<button
+											className="link"
+											onClick={() => onSelect(row)}
+											type="button"
+										>
+											{row.keyword}
+										</button>
+										<span className="lane-rank">
+											{row.position === null ? "—" : `#${row.position}`}
+											{row.popularity === null
+												? ""
+												: fmt(t.opportunityPop, { n: row.popularity })}
+										</span>
+									</li>
+								))}
+							</ul>
+						</div>
+					);
+				})}
 			</div>
 		</section>
 	);

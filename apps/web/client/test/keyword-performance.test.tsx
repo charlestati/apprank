@@ -354,6 +354,10 @@ describe("Keyword performance page", () => {
 	});
 });
 
+function laneOf(name: RegExp): Element | null {
+	return screen.getByRole("heading", { name }).closest(".lane");
+}
+
 describe("Opportunities panel", () => {
 	it("leads with generic progress rather than a flattering average", async () => {
 		renderPage({
@@ -379,9 +383,38 @@ describe("Opportunities panel", () => {
 		expect(
 			screen.getByText(/top 10 for 1 of your 9 generic keywords/u)
 		).toBeDefined();
+		// The caveat is a chip with its sentence behind it, not a paragraph.
 		expect(
-			screen.getByText(/2 brand terms .* are counted separately/u)
+			screen.queryByText(/2 brand terms .* are counted separately/u)
+		).toBeNull();
+		fireEvent.click(screen.getByRole("button", { name: "2 brand terms" }));
+		await expect(
+			screen.findByText(/2 brand terms .* are counted separately/u)
+		).resolves.toBeDefined();
+	});
+
+	it("says how many terms Apple published no volume for, as a chip", async () => {
+		renderPage({
+			report: report({
+				insights: {
+					...report().insights,
+					brandKeywords: 1,
+					genericKeywords: 4,
+					unmeasuredKeywords: 3,
+					unqueriedKeywords: 2,
+				},
+			}),
+			storefronts,
+		});
+		await screen.findByText("What to work on");
+		expect(screen.getByRole("button", { name: "1 brand term" })).toBeDefined();
+		expect(
+			screen.getByRole("button", { name: "2 awaiting volume" })
 		).toBeDefined();
+		fireEvent.click(screen.getByRole("button", { name: "3 without volume" }));
+		await expect(
+			screen.findByText(/no volume for 3 of the 5/u)
+		).resolves.toBeDefined();
 	});
 
 	it("names each lane with its count", async () => {
@@ -390,6 +423,21 @@ describe("Opportunities panel", () => {
 		for (const lane of ["Winning", "Within reach", "Blocked", "Vanity ranks"]) {
 			expect(screen.getByText(lane)).toBeDefined();
 		}
+	});
+
+	it("keeps each lane's definition behind its own trigger", async () => {
+		renderPage({ report: report(), storefronts });
+		await screen.findByText("What to work on");
+		expect(screen.queryByText(/Defend these/u)).toBeNull();
+		fireEvent.click(screen.getByRole("button", { name: "About Winning" }));
+		await expect(screen.findByText(/Defend these/u)).resolves.toBeDefined();
+	});
+
+	it("mutes a lane with nothing in it, and only that one", async () => {
+		renderPage({ report: report(), storefronts });
+		await screen.findByText("What to work on");
+		expect(laneOf(/Blocked/u)?.classList.contains("lane-empty")).toBeTruthy();
+		expect(laneOf(/Winning/u)?.classList.contains("lane-empty")).toBeFalsy();
 	});
 
 	it("lists example keywords in the lane they belong to", async () => {
@@ -941,6 +989,21 @@ describe(SummaryTiles, () => {
 		);
 		expect(screen.getAllByText("—").length).toBeGreaterThan(0);
 		expect(document.querySelector(".stat-hero .delta")).toBeNull();
+	});
+
+	it("states each tile's period in its explanation, not a footnote", async () => {
+		render(<SummaryTiles days={14} stats={report().stats} />);
+		expect(document.querySelector(".tile-note")).toBeNull();
+		fireEvent.click(screen.getByRole("button", { name: "About Average rank" }));
+		await expect(
+			screen.findByText(/ranked in the last 14 days/u)
+		).resolves.toBeDefined();
+		fireEvent.click(
+			screen.getByRole("button", { name: "About Keyword movement" })
+		);
+		await expect(
+			screen.findByText(/over the last 14 days/u)
+		).resolves.toBeDefined();
 	});
 
 	it("sizes the distribution bars against the largest bucket", () => {

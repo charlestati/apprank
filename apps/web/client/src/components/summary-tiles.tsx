@@ -2,7 +2,9 @@
 // spread, and which way they moved.
 //
 // Each tile names its own period and its own denominator. A tile that says
-// "Ranked 41/129" and nothing else asks the reader to guess both.
+// "Ranked 41/129" and nothing else asks the reader to guess both. The period
+// is stated in the tile's "?", not in a footnote under it: three footnotes
+// were three more sentences between the reader and the numbers.
 
 import type { Report } from "../api";
 import { fmt, useT } from "../i18n";
@@ -60,7 +62,9 @@ export function SummaryTiles({
 			<section className="tile">
 				<h2 className="tile-title">
 					{t.averageRank}
-					<InfoTip label={t.averageRank}>{t.helpAverageRank}</InfoTip>
+					<InfoTip label={t.averageRank}>
+						{fmt(t.helpAverageRank, { n: days })}
+					</InfoTip>
 				</h2>
 				<div className="tile-body">
 					<div className="stat-hero">
@@ -98,7 +102,6 @@ export function SummaryTiles({
 						</div>
 					</dl>
 				</div>
-				<p className="tile-note">{fmt(t.averageRankNote, { n: days })}</p>
 			</section>
 
 			<section className="tile">
@@ -132,13 +135,14 @@ export function SummaryTiles({
 						title={bucketTitle(t.beyond100, d.beyond)}
 					/>
 				</div>
-				<p className="tile-note">{t.distributionNote}</p>
 			</section>
 
 			<section className="tile">
 				<h2 className="tile-title">
 					{t.keywordMovement}
-					<InfoTip label={t.keywordMovement}>{t.helpMovement}</InfoTip>
+					<InfoTip label={t.keywordMovement}>
+						{fmt(t.helpMovement, { n: days })}
+					</InfoTip>
 				</h2>
 				<div className="movement">
 					<div className="movement-stats">
@@ -174,7 +178,6 @@ export function SummaryTiles({
 						/>
 					</div>
 				</div>
-				<p className="tile-note">{fmt(t.movementPeriod, { n: days })}</p>
 			</section>
 		</div>
 	);

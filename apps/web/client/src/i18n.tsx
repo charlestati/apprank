@@ -76,6 +76,10 @@ const en = {
 		"Apple published no volume for {n} of the {total} when we asked, so those are judged on rank and difficulty alone.",
 	coveragePending:
 		"{n} of the {total} have not been through a popularity pull yet, so their volume is unknown rather than absent.",
+	brandChip: "{n} brand terms",
+	brandChipOne: "{n} brand term",
+	noVolumeChip: "{n} without volume",
+	pendingVolumeChip: "{n} awaiting volume",
 
 	// Verdict reasons, keyed to the server's ReasonKey.
 	reasonBlocked:
@@ -340,13 +344,12 @@ const en = {
 	helpTopResults:
 		"The apps holding the first places for this term. Open the list to see the whole result page.",
 	helpAverageRank:
-		"The mean rank across the keywords that are ranking now. A rough gauge only: one dead keyword moves it more than a real win does, so read the distribution beside it first.",
+		"The mean rank across the keywords that ranked in the last {n} days. A rough gauge only: one dead keyword moves it more than a real win does, so read the distribution beside it first.",
 	helpDistribution:
-		"Where the ranking keywords sit today. Only keywords with a rank in this period are counted.",
+		"Where the ranking keywords sit, by each keyword's most recent rank in this period. Only keywords with a rank in this period are counted.",
 	helpMovement:
-		"How many keywords rose, fell, or held still in this period, each measured against its own previous different rank.",
+		"How many keywords rose, fell, or held still over the last {n} days, each measured against its own previous different rank.",
 	rankedOf: "{n} of {total}",
-	movementPeriod: "Against each keyword's previous rank, over {n} days.",
 	chartFull: "Chart full: {max} keywords max. Uncheck one first.",
 	popularityTitle: "Search popularity {n} of 100 — {band}.",
 	popularityNone: "Apple publishes no search popularity for this keyword.",
@@ -356,10 +359,8 @@ const en = {
 	diffModerate: "moderate",
 	diffReachable: "reachable",
 	diffOpen: "open",
-	averageRankNote: "Across the keywords that ranked in the last {n} days.",
 	distributionBucket: "{count} keywords at rank {label}",
 	distributionBucketOne: "{count} keyword at rank {label}",
-	distributionNote: "Each keyword's most recent rank in this period.",
 } as const;
 
 /** Every locale must supply exactly the English keys, enforced at compile time. */
@@ -410,6 +411,10 @@ const fr: Dictionary = {
 		"Apple n'a publié aucun volume pour {n} des {total} au moment de la requête ; ceux-là se jugent au rang et à la difficulté.",
 	coveragePending:
 		"{n} des {total} n'ont pas encore fait l'objet d'un relevé de popularité : leur volume est inconnu, pas absent.",
+	brandChip: "{n} termes de marque",
+	brandChipOne: "{n} terme de marque",
+	noVolumeChip: "{n} sans volume",
+	pendingVolumeChip: "{n} en attente de volume",
 
 	reasonBlocked:
 		"Volume réel, mais le haut de la page est verrouillé ; les métadonnées seules n'y suffiront pas.",
@@ -666,14 +671,12 @@ const fr: Dictionary = {
 	helpTopResults:
 		"Les apps qui occupent les premières places sur ce terme. Ouvrez la liste pour voir toute la page de résultats.",
 	helpAverageRank:
-		"La moyenne des rangs des mots-clés actuellement classés. Un repère grossier seulement : un mot-clé mort la déplace plus qu'une vraie victoire, lisez d'abord la répartition à côté.",
+		"La moyenne des rangs des mots-clés classés ces {n} derniers jours. Un repère grossier seulement : un mot-clé mort la déplace plus qu'une vraie victoire, lisez d'abord la répartition à côté.",
 	helpDistribution:
-		"Où se situent aujourd'hui les mots-clés classés. Seuls ceux ayant un rang sur la période sont comptés.",
+		"Où se situent les mots-clés classés, selon le dernier rang connu de chacun sur la période. Seuls ceux ayant un rang sur la période sont comptés.",
 	helpMovement:
-		"Combien de mots-clés ont monté, baissé ou n'ont pas bougé sur la période, chacun par rapport à son rang différent précédent.",
+		"Combien de mots-clés ont monté, baissé ou n'ont pas bougé ces {n} derniers jours, chacun par rapport à son rang différent précédent.",
 	rankedOf: "{n} sur {total}",
-	movementPeriod:
-		"Par rapport au rang précédent de chaque mot-clé, sur {n} jours.",
 	chartFull: "Graphique plein : {max} mots-clés max. Décochez-en un d'abord.",
 	popularityTitle: "Popularité de recherche {n} sur 100 — {band}.",
 	popularityNone:
@@ -684,10 +687,8 @@ const fr: Dictionary = {
 	diffModerate: "modérée",
 	diffReachable: "accessible",
 	diffOpen: "ouverte",
-	averageRankNote: "Sur les mots-clés classés ces {n} derniers jours.",
 	distributionBucket: "{count} mots-clés au rang {label}",
 	distributionBucketOne: "{count} mot-clé au rang {label}",
-	distributionNote: "Le dernier rang connu de chaque mot-clé sur la période.",
 };
 
 const DICTIONARIES: Record<Lang, Dictionary> = { en, fr };

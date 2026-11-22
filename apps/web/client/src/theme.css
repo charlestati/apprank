@@ -790,21 +790,44 @@ h1 {
 	margin: var(--ds-space-050) 0 0;
 	color: var(--ds-text-subtle);
 }
-/* The headline reads at body size; the two caveats that qualify it sit under
-   it as a list, because run together in one paragraph the three sentences
-   read as a single unparseable statistic. */
+/* The headline reads at body size; the caveats that qualify it sit under it
+   as chips, a count and an icon each, with the sentence behind the chip. */
 .insights-lede {
 	margin: var(--ds-space-050) 0 0;
 	color: var(--ds-text);
 }
-.insights-notes {
-	margin: var(--ds-space-075) 0 0;
-	padding-left: var(--ds-space-200);
-	color: var(--ds-text-subtlest);
-	font: var(--ds-font-body);
+.note-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--ds-space-100);
+	margin: var(--ds-space-150) 0 0;
+	padding: 0;
+	list-style: none;
 }
-.insights-notes li + li {
-	margin-top: var(--ds-space-025);
+.note-chip {
+	display: inline-flex;
+	align-items: center;
+	padding: var(--ds-space-025) var(--ds-space-100);
+	border: 1px solid var(--ds-border);
+	border-radius: var(--ds-radius-full);
+	background: var(--ds-surface);
+	color: var(--ds-text-subtle);
+	font: var(--ds-font-body);
+	cursor: help;
+}
+.note-chip > span {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--ds-space-075);
+}
+.note-chip svg {
+	flex: none;
+	color: var(--ds-text-subtlest);
+}
+.note-chip:hover,
+.note-chip[data-popup-open] {
+	background: var(--ds-neutral-subtle-hovered);
+	color: var(--ds-text);
 }
 /* Columns divided by a hairline, not five tinted panels behind five coloured
    rules. A lane that happens to be empty then reads as a short column rather
@@ -823,7 +846,7 @@ h1 {
 }
 .lane-head {
 	display: flex;
-	align-items: baseline;
+	align-items: center;
 	gap: var(--ds-space-100);
 	margin: 0;
 	font: var(--ds-font-body-large);
@@ -837,13 +860,23 @@ h1 {
 .lane-label {
 	font-weight: 600;
 }
-.lane-hint {
-	margin: var(--ds-space-050) 0 var(--ds-space-100);
+.lane-icon {
+	flex: none;
+	color: var(--ds-text-subtle);
+}
+/* An empty lane steps back. Its count and label keep their contrast, since a
+   zero is still an answer someone may be looking for; only the icon and the
+   weight recede. */
+.lane-empty .lane-icon {
 	color: var(--ds-text-subtlest);
-	font: var(--ds-font-body);
+}
+.lane-empty .lane-count,
+.lane-empty .lane-label {
+	color: var(--ds-text-subtlest);
+	font-weight: var(--ds-weight-medium);
 }
 .lane-examples {
-	margin: 0;
+	margin: var(--ds-space-100) 0 0;
 	padding: 0;
 	list-style: none;
 	display: flex;
