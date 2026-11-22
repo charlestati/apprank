@@ -2235,6 +2235,10 @@ table.grid tbody tr:hover {
 	   viewport and every card with it. */
 	.shell {
 		grid-template-columns: minmax(0, 1fr);
+		/* The page's slack goes to main, the third row. Left to the two-row
+		   template, the sidebar sat in the stretching row and a short page
+		   drew its links as 100px-tall tabs. */
+		grid-template-rows: auto auto 1fr;
 	}
 	.sidebar {
 		flex-direction: row;
