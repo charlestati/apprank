@@ -508,6 +508,16 @@ h1 {
 	font-weight: var(--ds-weight-bold);
 }
 
+/* A page title with its "?" beside it, on the heading's centre line. */
+.page-title {
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-050);
+}
+.page-title .infotip {
+	margin-left: 0;
+}
+
 .page-sub {
 	margin: var(--ds-space-050) 0 0;
 	color: var(--ds-text-subtle);
@@ -1966,8 +1976,100 @@ table.grid tbody tr:hover {
    of floating in the middle of the pane. */
 .review-list {
 	display: grid;
+	align-content: start;
 	gap: var(--ds-space-150);
 	max-width: 72ch;
+}
+
+/* The summary rides beside the column on a wide screen and stays in view
+   while the cards scroll, so the spread is there to check a review against.
+   Under 900px it stacks above the list. */
+.reviews-layout {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: var(--ds-space-200);
+}
+@media (min-width: 901px) {
+	.reviews-layout {
+		grid-template-columns: minmax(0, 72ch) minmax(240px, 300px);
+		align-items: start;
+	}
+	.reviews-layout .rating-summary {
+		position: sticky;
+		top: var(--ds-space-200);
+		grid-column: 2;
+		grid-row: 1;
+	}
+}
+.rating-summary {
+	padding: var(--ds-space-200);
+}
+.rating-average {
+	display: flex;
+	align-items: center;
+	gap: var(--ds-space-150);
+}
+.rating-value {
+	font: var(--ds-font-heading-xlarge);
+	line-height: 1;
+	font-weight: var(--ds-weight-bold);
+	font-variant-numeric: tabular-nums;
+}
+.rating-from {
+	margin: var(--ds-space-025) 0 0;
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
+}
+.rating-bars {
+	display: grid;
+	gap: var(--ds-space-075);
+	margin: var(--ds-space-200) 0 0;
+}
+.rating-row {
+	display: grid;
+	grid-template-columns: 2.25rem 1fr;
+	align-items: center;
+	gap: var(--ds-space-100);
+}
+.rating-row dt,
+.rating-row dd {
+	margin: 0;
+}
+.rating-key {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--ds-space-025);
+	color: var(--ds-text-subtle);
+	font: var(--ds-font-body);
+	font-variant-numeric: tabular-nums;
+}
+.rating-key svg {
+	fill: currentColor;
+	color: var(--ds-chart-4);
+}
+.rating-row dd {
+	display: grid;
+	grid-template-columns: 1fr 3ch;
+	align-items: center;
+	gap: var(--ds-space-100);
+}
+.rating-track {
+	height: 8px;
+	border-radius: var(--ds-radius-full);
+	background: var(--ds-background-neutral);
+	overflow: hidden;
+}
+.rating-fill {
+	display: block;
+	height: 100%;
+	border-radius: inherit;
+	background: var(--ds-chart-4);
+}
+.rating-count {
+	color: var(--ds-text-subtle);
+	font: var(--ds-font-body);
+	font-variant-numeric: tabular-nums;
+	text-align: right;
 }
 
 .review {

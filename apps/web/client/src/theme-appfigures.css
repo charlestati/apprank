@@ -77,6 +77,9 @@
 	   under that left 1.1:1, which is a line that has gone rather than one that
 	   has receded. */
 	--ds-chart-neutral: #85888f;
+	/* Stars. The skin's chart-4 is a pink, which reads as a brand colour on a
+	   rating rather than as stars; this amber holds 3:1 on white. */
+	--af-star: #d97706;
 
 	/* Rank distribution: a lavender ramp, deepest for the best bucket. */
 	--af-dist-1: #5856c4;
@@ -162,6 +165,7 @@
 		--ds-chart-success: #13a36e;
 		--ds-chart-danger: #c0283a;
 		--ds-chart-neutral: #7e8188;
+		--af-star: #fbbf24;
 
 		--af-dist-1: #6b69c9;
 		--af-dist-2: #8583d3;
@@ -393,4 +397,17 @@
 	[data-skin="appfigures"] .wordmark {
 		position: static;
 	}
+}
+
+/* ── Reviews: stars and the three-star rail in amber, not the pink slot ── */
+
+[data-skin="appfigures"] .stars,
+[data-skin="appfigures"] .rating-key svg {
+	color: var(--af-star);
+}
+[data-skin="appfigures"] .rating-fill {
+	background: var(--af-star);
+}
+[data-skin="appfigures"] .review-neutral {
+	border-left-color: var(--af-star);
 }

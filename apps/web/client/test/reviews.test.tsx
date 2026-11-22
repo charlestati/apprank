@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { Reviews } from "../src/pages/reviews";
@@ -81,6 +81,73 @@ describe("Reviews page", () => {
 		stubFetch({ reviews: [review({ rating: 1 })] });
 		render(<Reviews app={trackedApp} />);
 		await expect(screen.findByLabelText("1 star")).resolves.toBeDefined();
+	});
+
+	it("sums up the loaded ratings: the average and a bar per star", async () => {
+		stubFetch({
+			reviews: [
+				review({ id: "a", rating: 5 }),
+				review({ id: "b", rating: 5 }),
+				review({ id: "c", rating: 2 }),
+				review({ id: "d", rating: null }),
+			],
+		});
+		render(<Reviews app={trackedApp} />);
+		const summary = await screen.findByRole("region", {
+			name: /Rating summary/u,
+		});
+		expect(
+			within(summary).getByLabelText("Average 4.0 out of 5")
+		).toBeDefined();
+		expect(within(summary).getByText("from 3 rated reviews")).toBeDefined();
+		// Each bar says its count in text, five rows from five stars down.
+		const rows = summary.querySelectorAll(".rating-row");
+		expect([...rows].map((r) => r.textContent)).toStrictEqual([
+			"55 stars2",
+			"44 stars0",
+			"33 stars0",
+			"22 stars1",
+			"11 star0",
+		]);
+	});
+
+	it("sizes each star's bar against the most common rating", async () => {
+		stubFetch({
+			reviews: [
+				review({ id: "a", rating: 5 }),
+				review({ id: "b", rating: 5 }),
+				review({ id: "c", rating: 2 }),
+			],
+		});
+		render(<Reviews app={trackedApp} />);
+		const summary = await screen.findByRole("region", {
+			name: /Rating summary/u,
+		});
+		const fills = summary.querySelectorAll<HTMLElement>(".rating-fill");
+		expect(fills[0]?.style.width).toBe("100%");
+		expect(fills[3]?.style.width).toBe("50%");
+	});
+
+	it("leaves the summary out when nothing loaded carries a rating", async () => {
+		stubFetch({ reviews: [review({ rating: null })] });
+		render(<Reviews app={trackedApp} />);
+		await screen.findByLabelText("Not rated");
+		expect(
+			screen.queryByRole("region", { name: /Rating summary/u })
+		).toBeNull();
+	});
+
+	it("keeps the feed's cap behind the title's trigger", async () => {
+		stubFetch({ reviews: [review()] });
+		render(<Reviews app={trackedApp} />);
+		const trigger = await screen.findByRole("button", {
+			name: "About Reviews",
+		});
+		expect(screen.queryByText(/latest 500 per storefront/u)).toBeNull();
+		fireEvent.click(trigger);
+		await expect(
+			screen.findByText(/latest 500 per storefront/u)
+		).resolves.toBeDefined();
 	});
 
 	it("splits author, storefront and version into their own tags", async () => {
