@@ -42,10 +42,11 @@ const MARKER_SIZE = 14;
 const MARKER_STEP = 26;
 const UNRANKED_SIZE = 7;
 // Rails below the plot floor, in pixels: one for observations that landed
-// outside the top 200, one for days the fetch failed.
-const RAIL_UNRANKED = 20;
-const RAIL_ERROR = 38;
-const PLOT_BOTTOM = H - PAD.bottom - 46;
+// outside the top 200, one for days the fetch failed. 24px apart: at 18 their
+// two labels stacked into what read as one wrapped label, ">200 error".
+const RAIL_UNRANKED = 16;
+const RAIL_ERROR = 40;
+const PLOT_BOTTOM = H - PAD.bottom - 50;
 const DAY_MS = 86_400_000;
 const READOUT_LIMIT = 8;
 /** Label line-height plus a little air, in pixels. */
@@ -588,6 +589,15 @@ export function RankSeriesChart({
 					y1={unrankedRailY}
 					y2={unrankedRailY}
 				/>
+				{/* Each rail draws its own line. With one line, the error rail's label
+            hung under the other's and the two read as one wrapped label. */}
+				<line
+					className="rail-line"
+					x1={PAD.left}
+					x2={w - PAD.right}
+					y1={errorRailY}
+					y2={errorRailY}
+				/>
 				<text
 					className="axis-label"
 					textAnchor="end"
@@ -790,6 +800,38 @@ export function RankSeriesChart({
 					</text>
 				))}
 			</svg>
+			{/* The rails' marks explained where a sighted reader sees them. The
+          caption says it too, but only to a screen reader, and a <title> on
+          each mark answers neither touch nor the keyboard: nested frames on
+          the rail meant nothing until someone hovered one. */}
+			<ul className="rail-key">
+				<li>
+					<svg aria-hidden="true" height="14" width="22">
+						<rect
+							className="rail-key-mark"
+							height="7"
+							width="7"
+							x="7.5"
+							y="3.5"
+						/>
+						<rect
+							className="rail-key-ring"
+							fill="none"
+							height="13"
+							width="13"
+							x="4.5"
+							y="0.5"
+						/>
+					</svg>
+					{t.railKeyUnranked}
+				</li>
+				<li>
+					<svg aria-hidden="true" height="14" width="22">
+						<rect fill={`url(#${hatchId})`} height="9" width="22" y="2.5" />
+					</svg>
+					{t.railKeyError}
+				</li>
+			</ul>
 			{/* The same readout as the tooltip, for a reader who cannot see it. It is
           polite, not assertive: walking the axis with the arrow keys should not
           interrupt whatever is already being announced. */}

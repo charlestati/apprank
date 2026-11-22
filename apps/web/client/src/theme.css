@@ -1062,6 +1062,38 @@ line.marker-on {
 	flex: none;
 }
 
+/* The key to the rails' marks, under the chart: the square and its frame in
+   the neutral grey, since the colour of a real mark is the keyword's. */
+.rail-key {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--ds-space-050) var(--ds-space-300);
+	margin: var(--ds-space-100) 0 0;
+	padding: 0;
+	list-style: none;
+	color: var(--ds-text-subtlest);
+	font: var(--ds-font-body);
+}
+.rail-key li {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--ds-space-075);
+}
+.rail-key svg {
+	/* Its own size, not the plot's: .chart svg stretches to the card. */
+	flex: none;
+	width: auto;
+	height: auto;
+	margin-top: 3px;
+}
+.rail-key-mark {
+	fill: var(--ds-chart-neutral);
+}
+.rail-key-ring {
+	stroke: var(--ds-chart-neutral);
+	stroke-width: 1.5;
+}
+
 .chart-note {
 	margin: var(--ds-space-050) 0 0;
 	color: var(--ds-text-subtlest);

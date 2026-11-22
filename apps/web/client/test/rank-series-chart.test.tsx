@@ -175,6 +175,24 @@ describe("Rank series chart", () => {
 		expect(container.querySelectorAll(".unranked-mark")).toHaveLength(1);
 	});
 
+	it("explains the rails' marks in text a sighted reader can see", () => {
+		render(
+			<RankSeriesChart
+				series={[row({ points: [{ date: "2026-01-01", position: 4 }] })]}
+				styleOf={solid}
+				window={{ from: "2026-01-01", to: "2026-01-02" }}
+			/>
+		);
+		// Drawn even with nothing on the rails, as the rails themselves are.
+		// Not in a <title>, which neither touch nor the keyboard reaches.
+		const key = screen.getByText(/A frame around a square is another keyword/u);
+		expect(key.closest("title")).toBeNull();
+		expect(key.closest(".rail-key")).not.toBeNull();
+		expect(
+			screen.getByText(/It is not a rank change/u).closest("title")
+		).toBeNull();
+	});
+
 	it("marks a failed fetch as a failure, never as a rank", () => {
 		const { container } = render(
 			<RankSeriesChart
