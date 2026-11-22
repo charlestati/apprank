@@ -60,9 +60,57 @@ describe("Suggestions page", () => {
 		await expect(
 			screen.findByText("météo locale gratuite")
 		).resolves.toBeDefined();
-		expect(screen.getByText(/alongside météo locale, in FR/u)).toBeDefined();
+		const row = screen.getByText("météo locale gratuite").closest("tr");
+		expect(
+			[...(row?.querySelectorAll("td") ?? [])].map((td) => td.textContent)
+		).toStrictEqual([
+			"météo locale gratuite",
+			"météo locale",
+			"🇫🇷FR",
+			"DismissTrack it",
+		]);
 		expect(screen.getByRole("button", { name: "Track it" })).toBeDefined();
 		expect(screen.getByRole("button", { name: "Dismiss" })).toBeDefined();
+	});
+
+	it("gives the same term one row per storefront, each with its own answer", async () => {
+		stubFetch({
+			suggestions: [
+				suggestion({
+					id: 1,
+					payload: JSON.stringify({
+						seed: "top 7",
+						storefront: "fr",
+						term: "agenda",
+					}),
+				}),
+				suggestion({
+					id: 2,
+					payload: JSON.stringify({
+						seed: "top 7",
+						storefront: "be",
+						term: "agenda",
+					}),
+				}),
+			],
+		});
+		render(<Suggestions />);
+		await expect(screen.findAllByText("agenda")).resolves.toHaveLength(2);
+		expect(screen.getAllByRole("button", { name: "Track it" })).toHaveLength(2);
+		expect(screen.getByTitle("Belgium")).toBeDefined();
+	});
+
+	it("keeps the queue's explanation behind the title's trigger", async () => {
+		stubFetch({ suggestions: [promote(1, "agenda")] });
+		render(<Suggestions />);
+		const trigger = await screen.findByRole("button", {
+			name: "About Suggestions",
+		});
+		expect(screen.queryByText(/without approval here/u)).toBeNull();
+		fireEvent.click(trigger);
+		await expect(
+			screen.findByText(/without approval here/u)
+		).resolves.toBeDefined();
 	});
 
 	it("removes the row once the answer reaches the server", async () => {

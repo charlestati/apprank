@@ -1292,39 +1292,112 @@ line.marker-on {
 	margin: 0;
 }
 
-/* One decision per card: what the term is on the left, the two answers on the
-   right, so a queue of them scans as a column of choices rather than as prose.
-   Wraps rather than shrinking the buttons, because a control whose label is
-   clipped is worse than one on its own line. */
-.suggestion-body {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	justify-content: space-between;
-	gap: var(--ds-space-200);
+/* One decision per row: the term, what Apple suggested it alongside, where,
+   and the two answers, so a queue scans as a column of choices rather than as
+   prose. The actions column never wraps its buttons apart. */
+.suggestion-table {
+	margin-bottom: var(--ds-space-200);
 }
 .suggestion-term {
-	margin: 0;
-	font: var(--ds-font-heading-small);
-	font-weight: var(--ds-weight-bold);
+	color: var(--ds-text);
+	font-weight: var(--ds-weight-medium);
 }
-.suggestion-why {
-	margin: var(--ds-space-050) 0 0;
-	color: var(--ds-text-subtle);
+.storefront-code {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--ds-space-050);
+	font-variant-numeric: tabular-nums;
+}
+.storefront-code abbr {
+	text-decoration: none;
+}
+table.grid .col-actions {
+	width: 1%;
+	text-align: right;
 }
 .suggestion-actions {
 	display: flex;
+	justify-content: flex-end;
 	gap: var(--ds-space-100);
+}
+/* Under 600px the four columns do not fit, and a sideways scroll hid the very
+   buttons the row exists for. Each row becomes a small block instead: the term
+   and its storefront, then what it was suggested alongside (named, since the
+   header row is no longer beside it), then the two answers. */
+@media (max-width: 600px) {
+	.suggestion-table thead {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
+	}
+	.suggestion-table tr {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		grid-template-areas:
+			"term store"
+			"seed seed"
+			"actions actions";
+		padding: var(--ds-space-100) 0;
+		border-bottom: 1px solid var(--ds-border);
+	}
+	.suggestion-table tr:last-child {
+		border-bottom: 0;
+	}
+	/* The skin draws column rules between cells; stacked, there are no
+	   columns left to rule. */
+	.suggestion-table table.grid.suggestion-grid td {
+		height: auto;
+		padding: var(--ds-space-025) var(--ds-space-150);
+		border: 0;
+		white-space: normal;
+	}
+	.suggestion-table .suggestion-term {
+		grid-area: term;
+	}
+	.suggestion-table .suggestion-store {
+		grid-area: store;
+	}
+	.suggestion-table .suggestion-seed {
+		grid-area: seed;
+	}
+	.suggestion-table .suggestion-seed::before {
+		content: attr(data-label) ": ";
+	}
+	.suggestion-table .col-actions {
+		grid-area: actions;
+		width: auto;
+	}
+	.suggestion-table .suggestion-actions {
+		justify-content: flex-start;
+		margin-top: var(--ds-space-050);
+	}
+}
+.button-small {
+	gap: var(--ds-space-050);
+	white-space: nowrap;
+	height: 32px;
+	padding: 0 var(--ds-space-100);
+	font: var(--ds-font-body);
+	font-weight: var(--ds-weight-medium);
+}
+.button:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
 }
 /* The affirmative answer is the one that spends budget, so it carries the
    weight; dismissing stays neutral rather than becoming a second call to
    action. */
-.button-primary {
+/* Two classes, not one: `.button` is declared further down and, at equal
+   weight, its surface and text colour won, so the primary answer drew as a
+   plain outlined button. */
+.button.button-primary {
 	border-color: var(--ds-border-brand, transparent);
 	background: var(--ds-bg-brand-bold, var(--ds-text-information));
 	color: var(--ds-text-inverse, #fff);
 }
-.button-primary:hover {
+.button.button-primary:hover {
 	filter: brightness(0.94);
 }
 

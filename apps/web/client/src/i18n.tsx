@@ -179,7 +179,10 @@ const en = {
 	theTrackedApp: "the tracked app",
 	top10Presence: "Top-10 presence",
 	suggestionPayload: "Payload",
-	suggestionWhy: "Apple suggests this alongside {seed}, in {storefront}.",
+	suggestedAlongside: "Suggested alongside",
+	helpSuggestedAlongside:
+		"The keyword you already track that Apple suggested this one alongside, in that storefront. Tracking it spends crawl budget from then on.",
+	actions: "Actions",
 	trackKeyword: "Track it",
 	dismiss: "Dismiss",
 	best: "Best rank",
@@ -493,7 +496,10 @@ const fr: Dictionary = {
 	theTrackedApp: "l'application suivie",
 	top10Presence: "Présence top 10",
 	suggestionPayload: "Contenu",
-	suggestionWhy: "Apple le propose à côté de {seed}, sur {storefront}.",
+	suggestedAlongside: "Suggéré avec",
+	helpSuggestedAlongside:
+		"Le mot-clé déjà suivi à côté duquel Apple a suggéré celui-ci, dans cette boutique. Le suivre consomme du budget de collecte dès lors.",
+	actions: "Actions",
 	trackKeyword: "Suivre",
 	dismiss: "Ignorer",
 
