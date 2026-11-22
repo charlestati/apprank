@@ -53,9 +53,12 @@
 	--ds-bg-information: #e9f2fe;
 	--ds-text-information: #1558bc;
 
-	/* Categorical chart series, used in numeric order and never cycled */
+	/* Categorical chart slots. The rank chart takes them in the order of
+	   SERIES_STYLES, not numerically (test/series.test.ts). */
 	--ds-chart-1: #357de8;
-	--ds-chart-2: #82b536;
+	/* Atlassian's #82b536 is 2.44:1 on white, under the 3:1 a chart line needs
+	   (WCAG 1.4.11); darkened in OKLCH lightness only, to 3.13:1. */
+	--ds-chart-2: #6fa018;
 	--ds-chart-3: #bf63f3;
 	--ds-chart-4: #f68909;
 	--ds-chart-5: #1558bc;
@@ -165,7 +168,9 @@
 		--ds-chart-3: #c97cf4;
 		--ds-chart-4: #fca700;
 		--ds-chart-5: #1558bc;
-		--ds-chart-6: #964ac0;
+		/* Atlassian keeps #964ac0 in dark, 2.95:1 on the raised surface; lightened
+		   in OKLCH lightness only, to 3.15:1 (WCAG 1.4.11). */
+		--ds-chart-6: #9b4fc5;
 		--ds-chart-7: #42b2d7;
 		--ds-chart-8: #e06c00;
 		--ds-chart-success: #94c748;

@@ -297,6 +297,9 @@ importers:
       '@vitest/coverage-istanbul':
         specifier: 'catalog:'
         version: 5.0.4(vitest@5.0.4)
+      category-colors:
+        specifier: 3.7.0
+        version: 3.7.0
       happy-dom:
         specifier: 21.0.4
         version: 21.0.4
@@ -2136,6 +2139,11 @@ packages:
   capnweb@0.12.0:
     resolution: {integrity: sha512-jgZ/LMtMVTi+RVlooIslH78Gg23XbDTdvcLghWx3oz17D6u5GuJARt+uhZk/wcTo+f81eeabfnow4d3zLBj+JQ==}
 
+  category-colors@3.7.0:
+    resolution: {integrity: sha512-POYxFH+YbeBlWsYZUveW9KaVetLF3KgYVFIEoU1kaj0NU/KkxwGOPH/WDurFW3/TFxfUtsduqSZCBWRCEyBJgw==}
+    engines: {node: '>=22.12.0'}
+    hasBin: true
+
   chai@6.3.0:
     resolution: {integrity: sha512-XWAtwJ6OHO+tj0EKCs0Y2UamnyOxseZWltU4x2U2wh8g4AigdjwvtUjvLP2tqkA/avxHEtzxNaqGq/YGNwckKg==}
     engines: {node: '>=18'}
@@ -2208,6 +2216,10 @@ packages:
 
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
+
+  culori@4.0.2:
+    resolution: {integrity: sha512-1+BhOB8ahCn4O0cep0Sh2l9KCOfOdY+BXJnKMHFFzDEouSr/el18QwXEMRlOj9UY5nCeA8UN3a/82rUWRBeyBw==}
+    engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
 
   debug@4.4.3:
     resolution: {integrity: sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==}
@@ -2807,6 +2819,9 @@ packages:
 
   ms@2.1.3:
     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
+
+  munkres-algorithm@1.0.2:
+    resolution: {integrity: sha512-8XyWpmwmRCDkdBNw4jfYKyxfzrv51MJrR7OpMFdytO1oEElz5zqC2IuwgZeiBWfXhcd6eOaHQOAQossTB1e3tQ==}
 
   nanoid@3.3.20:
     resolution: {integrity: sha512-uKdg2G3GNCKQn9byYOpxbGqrT2fGO5KRt5J/8b3pok8rT6qxGWF6hxMyJiEYtAf+FVyYuD9hRaDqX5uPFYJ4ZQ==}
@@ -4684,6 +4699,11 @@ snapshots:
 
   capnweb@0.12.0: {}
 
+  category-colors@3.7.0:
+    dependencies:
+      culori: 4.0.2
+      munkres-algorithm: 1.0.2
+
   chai@6.3.0: {}
 
   citty@0.2.2: {}
@@ -4735,6 +4755,8 @@ snapshots:
       which: 2.0.2
 
   csstype@3.2.3: {}
+
+  culori@4.0.2: {}
 
   debug@4.4.3(supports-color@10.2.2):
     dependencies:
@@ -5270,6 +5292,8 @@ snapshots:
       ufo: 1.6.4
 
   ms@2.1.3: {}
+
+  munkres-algorithm@1.0.2: {}
 
   nanoid@3.3.20: {}
 

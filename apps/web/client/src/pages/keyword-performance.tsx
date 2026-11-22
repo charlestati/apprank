@@ -43,24 +43,29 @@ const RANGES = [{ days: 7 }, { days: 30 }, { days: 90, label: "90 days" }];
 // Four lines is the readable ceiling for a categorical palette; beyond it the
 // hues stop surviving a colour-vision check side by side. Enforced on the drawn
 // set, whatever a stored selection says.
-const CHART_SERIES = 4;
+export const CHART_SERIES = 4;
 // Enough of the leaderboard to see who owns the keyword, without wrapping the
 // row onto a second line.
 const TOP_RESULTS_SHOWN = 3;
-// Atlassian's categorical chart slots, assigned in a fixed order and never
-// cycled. Slots 5 and 6 are deliberately skipped: they are the darker pairs of
-// 1 and 3, and sit too close to them on the dark surface to tell apart.
+// The chart slots in the order series take them, fixed and never cycled.
+// The first four are the ones the cap lets the chart draw, chosen among the
+// eight slots for how far apart they stay for colour-blind readers, in both
+// skins and both themes (test/series.test.ts measures it): blue, green, the
+// deep violet of slot 6, orange. Slot 3, the light violet, used to be third,
+// and to a protan or deutan eye it was the blue again (2.2 to 3.0 CIEDE2000
+// in the shipped skin). Slots 4 and 7 follow for a reader past the cap only
+// if the cap is ever raised.
 //
 // Each slot carries a dash pattern as well as a hue. Colour is never the only
 // thing separating two lines, the same rule the status pills follow, and the
 // reason the chart stays readable printed in grey.
-const SERIES_STYLES: SeriesStyle[] = [
+export const SERIES_STYLES: SeriesStyle[] = [
 	{ color: "var(--ds-chart-1)", dash: "" },
 	{ color: "var(--ds-chart-2)", dash: "7 3" },
-	{ color: "var(--ds-chart-3)", dash: "2 3" },
-	{ color: "var(--ds-chart-4)", dash: "11 4" },
-	{ color: "var(--ds-chart-7)", dash: "7 3 2 3" },
-	{ color: "var(--ds-chart-8)", dash: "1 4" },
+	{ color: "var(--ds-chart-6)", dash: "2 3" },
+	{ color: "var(--ds-chart-8)", dash: "11 4" },
+	{ color: "var(--ds-chart-4)", dash: "7 3 2 3" },
+	{ color: "var(--ds-chart-7)", dash: "1 4" },
 ];
 const FALLBACK_STYLE: SeriesStyle = { color: "var(--ds-chart-1)", dash: "" };
 

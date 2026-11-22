@@ -97,15 +97,20 @@ cadence never scheduled that day), and **collected and failed**
 read as a ranking collapse). Series carry a dash pattern as well as a hue, and
 the same glyph keys the legend, the table toggle and the line: colour is never
 the only channel, and the categorical palette is capped at four because past
-that the hues stop surviving a colour-vision check side by side. That cap is
-enforced, not merely a default: the table's tick boxes disable once four
-keywords are on the chart and say why, rather than accepting a fifth and drawing
-it in a hue nobody can separate from the other four. The tick box also has to be
-a tick box — a bare swatch only answers "is this on the chart?" after it has
-been clicked. The cap is counted on what is drawn, never on the stored list: a
-stored selection is filtered to the pairs the report has rows for and sliced to
-four, so a selection saved before the cap, or one naming a pair that has gone,
-can neither draw a fifth line nor make a chart showing three refuse a fourth.
+that the hues stop surviving a colour-vision check side by side. Which four is
+measured too: series take the slots in `SERIES_STYLES` order (blue, green, the
+deep violet of slot 6, orange), not numerically, because slot 3's light violet
+is the blue again to a protan or deutan eye. `client/test/series.test.ts` holds
+the drawn four to 3:1 on the chart's surfaces and apart under each dichromacy,
+in both skins and both themes. That cap is enforced, not merely a default: the
+table's tick boxes disable once four keywords are on the chart and say why,
+rather than accepting a fifth and drawing it in a hue nobody can separate from
+the other four. The tick box also has to be a tick box — a bare swatch only
+answers "is this on the chart?" after it has been clicked. The cap is counted on
+what is drawn, never on the stored list: a stored selection is filtered to the
+pairs the report has rows for and sliced to four, so a selection saved before
+the cap, or one naming a pair that has gone, can neither draw a fifth line nor
+make a chart showing three refuse a fourth.
 
 The table keeps the same states apart, and `position: null` alone cannot: the
 server sends it both for "observed outside the top 200" and for a keyword with

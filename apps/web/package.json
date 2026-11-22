@@ -36,6 +36,7 @@
 		"@types/react-dom": "19.3.0",
 		"@vitejs/plugin-react": "6.1.2",
 		"@vitest/coverage-istanbul": "catalog:",
+		"category-colors": "3.7.0",
 		"happy-dom": "21.0.1",
 		"typescript": "catalog:",
 		"vite": "8.3.4",
