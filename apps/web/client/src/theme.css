@@ -271,6 +271,23 @@ body {
 	gap: var(--ds-space-025);
 }
 
+/* The sidebar holds its place while the report scrolls under it. Stretched
+   to its grid row instead, it scrolled away with the page, and its surface
+   ended where the first screen did, leaving bare page below. `align-self:
+   start` is what lets sticky act at all: a stretched item is already as tall
+   as its track and has nowhere to stick. `dvh` after `vh`, so a mobile
+   browser's collapsing toolbar does not cut off the last link. */
+@media (min-width: 901px) {
+	.sidebar {
+		position: sticky;
+		top: 0;
+		align-self: start;
+		height: 100vh;
+		height: 100dvh;
+		overflow-y: auto;
+	}
+}
+
 .nav-heading {
 	margin: var(--ds-space-200) 0 var(--ds-space-050);
 	padding: 0 var(--ds-space-100);

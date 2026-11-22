@@ -196,8 +196,12 @@
 	gap: 0;
 }
 
+/* Fixed, not absolute: the sidebar it sits on is sticky, so a mark anchored
+   to the shell scrolled away and left the sidebar's top 64px empty. Above the
+   sidebar in paint order, which comes after it in the DOM. */
 [data-skin="appfigures"] .wordmark {
-	position: absolute;
+	position: fixed;
+	z-index: 1;
 	top: 16px;
 	left: 16px;
 	gap: 1px;
